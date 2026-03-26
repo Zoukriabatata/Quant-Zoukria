@@ -116,64 +116,44 @@ MULTIPLICATIF (NON ergodique) :
 
 ## Croissance geometrique vs arithmetique
 
-```
-MOYENNE ARITHMETIQUE (ce qu'on calcule navement) :
-  E[r] = (r1 + r2 + ... + rn) / n
+**Moyenne arithmetique** (ce qu'on calcule navement) :
 
-MOYENNE GEOMETRIQUE (ce que tu VIS reellement) :
-  g = (produit de (1+ri))^(1/n) - 1
+$$E[r] = \frac{r_1 + r_2 + \cdots + r_n}{n}$$
 
-Relation :
-  g = E[r] - variance/2
+**Moyenne geometrique** (ce que tu VIS reellement) :
 
-       ^       ^         ^
-       |       |         |
-  ta croissance  ton edge   PENALITE de volatilite !
-  reelle                    (toujours negative)
-```
+$$g = \left(\prod_{i=1}^n (1+r_i)\right)^{1/n} - 1$$
 
-**C'est LA formule la plus importante de ce cours.**
+**LA formule la plus importante de ce cours :**
 
-```
-g = E[r] - sigma^2 / 2
+$$\boxed{g = E[r] - \frac{\sigma^2}{2}}$$
 
-Exemple :
-  E[r] = 5% (ton edge)
-  sigma = 30% (ta volatilite)
+| | $E[r]$ | $\sigma$ | $g$ (croissance reelle) |
+|---|---|---|---|
+| Bon | 5% | 10% | $5\% - 0.5\% = +4.5\%$ |
+| Moyen | 5% | 30% | $5\% - 4.5\% = +0.5\%$ |
+| **Mort** | 5% | 40% | $5\% - 8\% = -3\%$ |
 
-  g = 5% - (30%)^2 / 2 = 5% - 4.5% = 0.5%
-
-  Ton edge de 5% est mange a 90% par la volatilite !
-
-  Si sigma = 40% :
-  g = 5% - (40%)^2 / 2 = 5% - 8% = -3%  --> TU PERDS
-```
+Avec $\sigma = 40\%$, ton edge de 5% est **negatif** en realite !
 
 ## Le Kelly Criterion
 
-Kelly repond a : "Quelle taille de position maximise g ?"
+Kelly repond a : "Quelle taille de position maximise $g$ ?"
 
-```
-f* = (p * b - q) / b
+$$f^* = \frac{p \cdot b - q}{b}$$
 
-  f* = fraction optimale de ton capital a risquer
-  p  = probabilite de gagner
-  q  = 1 - p = probabilite de perdre
-  b  = ratio gain/perte (combien tu gagnes vs perds)
+- $f^*$ = fraction optimale de ton capital a risquer
+- $p$ = probabilite de gagner
+- $q = 1 - p$ = probabilite de perdre
+- $b$ = ratio gain/perte
 
-Exemple :
-  Tu gagnes 60% du temps (p = 0.6)
-  Quand tu gagnes : +2R
-  Quand tu perds : -1R
-  b = 2
+**Exemple :** $p = 0.6$, gain $= +2R$, perte $= -1R$, donc $b = 2$
 
-  f* = (0.6 * 2 - 0.4) / 2 = (1.2 - 0.4) / 2 = 0.4
+$$f^* = \frac{0.6 \times 2 - 0.4}{2} = \frac{0.8}{2} = 0.40 = 40\%$$
 
-  Kelly dit : risque 40% max de ton capital.
-  En pratique on utilise "demi-Kelly" (20%) car :
-  1. On connait mal les vrais p et b
-  2. La variance est douloureuse psychologiquement
-```
+En pratique on utilise **demi-Kelly** ($20\%$) car :
+1. On connait mal les vrais $p$ et $b$
+2. La variance est douloureuse psychologiquement
 
 ## Visualisation de l'impact du sizing
 

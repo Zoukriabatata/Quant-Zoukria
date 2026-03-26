@@ -71,20 +71,15 @@ AVEC Kalman (moyenne adaptative) :
 
 Le modele mathematique du mean reversion :
 
-```
-dX(t) = theta * (mu - X(t)) * dt + sigma * dW(t)
+$$dX_t = \theta(\mu - X_t)\,dt + \sigma\,dW_t$$
 
-  X(t)  = le prix actuel
-  mu    = la moyenne long-terme (ou le prix revient)
-  theta = la VITESSE de retour (plus theta est grand, plus vite ca revient)
-  sigma = la volatilite
-  dW(t) = bruit aleatoire (mouvement brownien)
+- $X_t$ = le prix actuel
+- $\mu$ = la moyenne long-terme (ou le prix revient)
+- $\theta$ = la **vitesse** de retour (plus $\theta$ est grand, plus vite)
+- $\sigma$ = la volatilite
+- $dW_t$ = bruit aleatoire (mouvement brownien)
 
-En francais :
-  "Le prix est tire vers mu comme un elastique.
-   Plus il est loin de mu, plus la force de rappel est forte.
-   Mais le bruit le pousse dans tous les sens."
-```
+**En francais :** le prix est tire vers $\mu$ comme un elastique. Plus il est loin, plus la force de rappel est forte.
 
 Visuellement :
 
@@ -198,23 +193,22 @@ Le "noise lever" de l'app kts.py :
 
 ## 5. Bandes de trading
 
-```
 Distribution stationnaire du OU :
-  X ~ Normal(mu, sigma^2 / (2*theta))
 
-  sigma_stat = sigma / sqrt(2*theta)
+$$X \sim \mathcal{N}\left(\mu,\; \frac{\sigma^2}{2\theta}\right) \quad \Rightarrow \quad \sigma_{stat} = \frac{\sigma}{\sqrt{2\theta}}$$
 
-Bandes :
-  Upper = x_kalman + k * sigma_stat
-  Lower = x_kalman - k * sigma_stat
+Bandes de trading :
 
-  k = 0.8 a 1.5 selon l'agressivite
+$$\text{Upper} = \hat{x}_{kalman} + k \cdot \sigma_{stat}$$
+$$\text{Lower} = \hat{x}_{kalman} - k \cdot \sigma_{stat}$$
 
-REGLES :
-  Prix > Upper : SHORT (vendre)
-  Prix < Lower : LONG (acheter)
-  Prix ~ x_kalman : FERMER la position
-```
+avec $k$ entre 0.8 et 1.5 selon l'agressivite.
+
+| Condition | Action |
+|---|---|
+| Prix $>$ Upper | **SHORT** |
+| Prix $<$ Lower | **LONG** |
+| Prix $\approx \hat{x}_{kalman}$ | **FERMER** |
 
 ## 6. Le forecast OU
 

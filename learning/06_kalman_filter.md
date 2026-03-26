@@ -101,22 +101,18 @@ AVEC Kalman (signal filtre) :
 
 ## Le cadre : 2 equations
 
-```
-EQUATION 1 — Le modele (comment l'etat EVOLUE) :
-  x(t) = F * x(t-1) + B * u + w(t)
+**Equation 1 — Le modele** (comment l'etat EVOLUE) :
 
-  x(t)   = etat vrai (ce qu'on cherche)
-  F      = comment l'etat se transforme (dynamique)
-  B * u  = force externe (ex: retour a la moyenne)
-  w(t)   = bruit du modele ~ Normal(0, Q)
+$$x_t = F \cdot x_{t-1} + B \cdot u + w_t \quad ,\quad w_t \sim \mathcal{N}(0, Q)$$
 
-EQUATION 2 — L'observation (ce qu'on MESURE) :
-  z(t) = H * x(t) + v(t)
+**Equation 2 — L'observation** (ce qu'on MESURE) :
 
-  z(t)   = ce qu'on observe (le tick, le prix)
-  H      = comment l'etat se traduit en observation
-  v(t)   = bruit de mesure ~ Normal(0, R)
-```
+$$z_t = H \cdot x_t + v_t \quad ,\quad v_t \sim \mathcal{N}(0, R)$$
+
+- $x_t$ = etat vrai (ce qu'on cherche)
+- $F$ = dynamique du modele
+- $z_t$ = observation (le tick, le prix)
+- $Q$ = bruit du processus, $R$ = bruit de mesure
 
 ## Les 2 etapes du Kalman Filter
 
@@ -149,23 +145,17 @@ A CHAQUE nouveau point de donnee, tu fais :
 
 ## Le KALMAN GAIN (K) — la cle de tout
 
-```
-K = P_pred / (P_pred + R)
+$$\boxed{K = \frac{P_{pred}}{P_{pred} + R}}$$
 
-  P_pred = incertitude du MODELE
-  R = incertitude de la MESURE (bruit des donnees)
-  K = entre 0 et 1
+- $P_{pred}$ = incertitude du **MODELE**
+- $R$ = incertitude de la **MESURE** (bruit des donnees)
+- $K$ est toujours entre 0 et 1
 
-SI P_pred est GRAND (modele incertain) :
-  K --> proche de 1
-  --> "Je ne fais pas confiance a mon modele"
-  --> "Je suis les donnees"
-
-SI R est GRAND (donnees bruitees) :
-  K --> proche de 0
-  --> "Les donnees sont pourries"
-  --> "Je fais confiance a mon modele"
-```
+| Situation | $K$ | Comportement |
+|---|---|---|
+| $P$ grand (modele incertain) | $K \to 1$ | Suit les **donnees** |
+| $R$ grand (donnees bruitees) | $K \to 0$ | Suit le **modele** |
+| $P = R$ | $K = 0.5$ | Equilibre |
 
 Visuellement :
 

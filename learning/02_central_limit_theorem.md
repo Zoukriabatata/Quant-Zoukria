@@ -77,38 +77,31 @@ Le CLT te dit :
 
 ## La formule du CLT
 
-```
-Soit X1, X2, ..., Xn des variables aleatoires
-  avec moyenne mu et ecart-type sigma
+Soit $X_1, X_2, \ldots, X_n$ des variables aleatoires avec moyenne $\mu$ et ecart-type $\sigma$.
 
-Alors la moyenne X_bar = (X1 + X2 + ... + Xn) / n
+La moyenne empirique :
+
+$$\bar{X} = \frac{X_1 + X_2 + \cdots + X_n}{n}$$
 
 suit approximativement :
 
-  X_bar ~ Normal( mu, sigma / sqrt(n) )
+$$\bar{X} \sim \mathcal{N}\left(\mu,\; \frac{\sigma}{\sqrt{n}}\right)$$
 
-          ^         ^        ^
-          |         |        |
-    distribution   centre   largeur
-    en cloche      = mu     RETRECIT avec n
-```
+- La distribution est en **cloche**
+- Le centre = $\mu$ (ta vraie moyenne)
+- La largeur **retrecit** avec $n$
 
-## Le truc magique : sigma / sqrt(n)
+## Le truc magique : $\sigma / \sqrt{n}$
 
-```
-sigma = volatilite de tes trades individuels
-n = nombre de trades
+$$SE = \frac{\sigma}{\sqrt{n}}$$
 
-sigma / sqrt(n) = precision de ta moyenne
-
-Exemple :
-  sigma = 100$ par trade
-  n = 25 trades  -->  100/sqrt(25) = 100/5  = 20$
-  n = 100 trades -->  100/sqrt(100)= 100/10 = 10$
-  n = 400 trades -->  100/sqrt(400)= 100/20 = 5$
+| $n$ (trades) | $SE$ (si $\sigma = 100\$$) |
+|---|---|
+| 25 | $100/\sqrt{25} = 20\$$ |
+| 100 | $100/\sqrt{100} = 10\$$ |
+| 400 | $100/\sqrt{400} = 5\$$ |
 
 Plus tu as de trades, plus ta moyenne est PRECISE.
-```
 
 Visuellement :
 
@@ -137,49 +130,31 @@ Visuellement :
 
 ## La regle des 68-95-99.7 (empirical rule)
 
-```
 Pour une distribution normale :
 
-  68%  des valeurs sont dans [mu - 1*sigma, mu + 1*sigma]
-  95%  des valeurs sont dans [mu - 2*sigma, mu + 2*sigma]
-  99.7% des valeurs sont dans [mu - 3*sigma, mu + 3*sigma]
-
-         99.7%
-      |---------|
-       95%
-      |-------|
-        68%
-       |----|
-
-        _____
-      /|  |  |\
-     / |  |  | \
-    /  |  |  |  \
-   /   |  |  |   \
-  -3s -2s -1s 0 +1s +2s +3s
-```
+| Intervalle | Probabilite |
+|---|---|
+| $[\mu - 1\sigma,\; \mu + 1\sigma]$ | **68%** |
+| $[\mu - 2\sigma,\; \mu + 2\sigma]$ | **95%** |
+| $[\mu - 3\sigma,\; \mu + 3\sigma]$ | **99.7%** |
 
 ## Application : "Est-ce que j'ai un edge ?"
 
-```
-Tes 100 derniers trades :
-  Moyenne (X_bar) = +15$ par trade
-  Ecart-type (sigma) = 80$ par trade
+Tes 100 derniers trades : $\bar{X} = +15\$$ , $\sigma = 80\$$
 
-Erreur standard = sigma / sqrt(n) = 80 / sqrt(100) = 8$
+$$SE = \frac{\sigma}{\sqrt{n}} = \frac{80}{\sqrt{100}} = 8\$$
 
 Intervalle de confiance a 95% :
-  [15 - 2*8, 15 + 2*8] = [-1$, +31$]
 
-Comme 0$ est DANS l'intervalle --> pas assez de preuves
-Tu as PEUT-ETRE un edge, mais 100 trades ne suffisent pas.
+$$IC = [\bar{X} - 2 \cdot SE,\; \bar{X} + 2 \cdot SE] = [15 - 16,\; 15 + 16] = [-1\$,\; +31\$]$$
 
-Apres 400 trades (si la moyenne reste a +15$) :
-  Erreur standard = 80 / sqrt(400) = 4$
-  IC 95% = [15 - 8, 15 + 8] = [+7$, +23$]
+$0\$$ est **DANS** l'intervalle → pas assez de preuves. 100 trades ne suffisent pas.
 
-Maintenant 0$ est EN DEHORS --> ton edge est REEL (95% confiance)
-```
+Apres 400 trades (si la moyenne reste a $+15\$$) :
+
+$$SE = \frac{80}{\sqrt{400}} = 4\$ \quad \Rightarrow \quad IC = [+7\$,\; +23\$]$$
+
+$0\$$ est **EN DEHORS** → ton edge est REEL (95% confiance)
 
 ---
 

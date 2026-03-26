@@ -93,18 +93,13 @@ rendement(t) = mu + erreur(t)
 ## Etape 2 : ARCH(1) — Engle 1982
 
 **ARCH = AutoRegressive Conditional Heteroskedasticity**
-(Hetero = different, skedasticity = variance)
 
-```
-sigma^2(t) = alpha0 + alpha1 * erreur^2(t-1)
+$$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2$$
 
-  alpha0 = "plancher" de volatilite (toujours > 0)
-  alpha1 = "reaction" aux chocs recents
+- $\alpha_0$ = "plancher" de volatilite (toujours $> 0$)
+- $\alpha_1$ = "reaction" aux chocs recents
 
-En francais :
-  La volatilite d'aujourd'hui depend de
-  la TAILLE du mouvement d'hier (au carre).
-```
+En francais : la volatilite d'aujourd'hui depend de la **TAILLE** du mouvement d'hier (au carre).
 
 Visuellement :
 
@@ -132,14 +127,11 @@ Visuellement :
 
 **GARCH ajoute la MEMOIRE :**
 
-```
-sigma^2(t) = alpha0 + alpha1 * erreur^2(t-1) + beta1 * sigma^2(t-1)
+$$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2 + \beta_1 \cdot \sigma_{t-1}^2$$
 
-                ^           ^                        ^
-                |           |                        |
-             plancher    reaction au              MEMOIRE
-                         choc d'hier          (vol d'hier persiste)
-```
+- $\alpha_0$ = plancher
+- $\alpha_1 \cdot \varepsilon_{t-1}^2$ = reaction au choc d'hier
+- $\beta_1 \cdot \sigma_{t-1}^2$ = **MEMOIRE** (la vol d'hier persiste)
 
 **Le truc genial :** le terme `beta1 * sigma^2(t-1)` fait que
 la volatilite d'hier INFLUENCE celle d'aujourd'hui.
@@ -168,28 +160,21 @@ Avec GARCH :
 
 ## Conditions importantes
 
-```
-alpha1 + beta1 < 1   (sinon la vol explose a l'infini)
+$$\alpha_1 + \beta_1 < 1 \quad \text{(sinon la vol explose)}$$
 
-Typiquement on trouve :
-  alpha1 = 0.05 a 0.15  (faible reaction aux chocs)
-  beta1  = 0.80 a 0.95  (forte persistance)
-  alpha1 + beta1 = 0.90 a 0.99
-
-Plus alpha1+beta1 est proche de 1 = plus la vol persiste longtemps
-```
+| Parametre | Valeur typique | Role |
+|---|---|---|
+| $\alpha_1$ | 0.05 - 0.15 | Reaction aux chocs |
+| $\beta_1$ | 0.80 - 0.95 | Persistance |
+| $\alpha_1 + \beta_1$ | 0.90 - 0.99 | Plus c'est proche de 1 = plus la vol persiste |
 
 ## Volatilite long terme (inconditionnelle)
 
-```
-sigma^2_LT = alpha0 / (1 - alpha1 - beta1)
+$$\sigma_{LT}^2 = \frac{\alpha_0}{1 - \alpha_1 - \beta_1}$$
 
-Exemple :
-  alpha0 = 0.00001, alpha1 = 0.1, beta1 = 0.85
-  sigma^2_LT = 0.00001 / (1 - 0.1 - 0.85) = 0.00001 / 0.05 = 0.0002
-  sigma_LT = sqrt(0.0002) = 1.41% par jour
-  sigma_LT annualisee = 1.41% * sqrt(252) = 22.4%
-```
+**Exemple :** $\alpha_0 = 0.00001$, $\alpha_1 = 0.1$, $\beta_1 = 0.85$
+
+$$\sigma_{LT}^2 = \frac{0.00001}{1 - 0.1 - 0.85} = \frac{0.00001}{0.05} = 0.0002 \quad \Rightarrow \quad \sigma_{LT} = 1.41\%/\text{jour} = 22.4\%/\text{an}$$
 
 ## Application : Value at Risk (VaR)
 

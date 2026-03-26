@@ -85,52 +85,37 @@ MAX DRAWDOWN :
 
 ## 1. Sharpe Ratio
 
-```
-Sharpe = sqrt(252) * E[R_daily - Rf] / sigma(R_daily)
+$$\text{Sharpe} = \sqrt{252} \cdot \frac{E[R - R_f]}{\sigma(R)}$$
 
-  sqrt(252) = annualisation (252 jours de trading)
-  E[R - Rf] = rendement moyen en exces du taux sans risque
-  sigma = volatilite des rendements
+- $\sqrt{252}$ = annualisation (252 jours de trading)
+- $E[R - R_f]$ = rendement moyen en exces du taux sans risque
 
-  Sharpe = 0.5 : faible
-  Sharpe = 1.0 : acceptable
-  Sharpe = 2.0 : tres bon
-  Sharpe = 3.0+: suspicieux (overfitting probable)
+| Sharpe | Interpretation |
+|---|---|
+| 0.5 | Faible |
+| 1.0 | Acceptable |
+| 2.0 | Tres bon |
+| 3.0+ | **Suspicieux** (overfitting probable) |
 
-BIAIS DU SHARPE :
-  Le Sharpe sur petit echantillon est biaise vers le haut.
-  Sur 50 trades, un Sharpe de 2 pourrait etre 1.2 en realite.
-  (voir module 02b Asymptotics)
-```
+**Biais :** le Sharpe sur petit echantillon est biaise vers le haut. Sur 50 trades, un Sharpe de 2 pourrait etre 1.2 en realite (voir module 02b).
 
 ## 2. Sortino Ratio
 
-```
-Sortino = sqrt(252) * E[R - Rf] / sigma_downside
+$$\text{Sortino} = \sqrt{252} \cdot \frac{E[R - R_f]}{\sigma_{downside}}$$
 
-  sigma_downside = ecart-type des rendements NEGATIFS seulement
-
-  Pourquoi c'est mieux que le Sharpe ?
-  Si tu fais +5% un jour, c'est de la "volatilite" pour le Sharpe.
-  Mais c'est un BON mouvement ! Le Sortino ne te penalise pas.
-```
+$\sigma_{downside}$ = ecart-type des rendements **NEGATIFS** seulement. Mieux que le Sharpe car la volatilite haussiere n'est pas du "risque".
 
 ## 3. Max Drawdown
 
-```
-MaxDD = max sur t de [ (pic(t) - creux(t)) / pic(t) ]
+$$\text{MaxDD} = \max_t \left(\frac{\text{pic}(t) - \text{valeur}(t)}{\text{pic}(t)}\right)$$
 
-  pic(t) = max cumulatif du portefeuille jusqu'a t
-  creux(t) = valeur actuelle
+| MaxDD | Interpretation |
+|---|---|
+| 10% | Tres bon controle |
+| 25% | Acceptable |
+| 50%+ | Dangereux ($+100\%$ pour recuperer) |
 
-  MaxDD = 10% : tres bon controle du risque
-  MaxDD = 25% : acceptable
-  MaxDD = 50%+: dangereux (tu dois faire +100% pour recuperer)
-
-ATTENTION : le MaxDD est NON CONSISTANT
-  Plus tu trades longtemps, plus le MaxDD sera grand.
-  Utilise plutot le drawdown MOYEN ou des drawdowns rolling.
-```
+**Attention :** le MaxDD est **NON CONSISTANT** — il grandit avec le temps (voir module 02b).
 
 ## 4. Le test de stabilite (la cle de tout)
 

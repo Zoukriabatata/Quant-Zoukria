@@ -89,19 +89,12 @@ Poisson : N(t) compte les evenements jusqu'a temps t
 
 ## 2. Hawkes : intensite auto-excitante
 
-```
-lambda(t) = mu + SUM sur tous les events passes ti < t de : alpha * e^(-beta*(t-ti))
+$$\lambda(t) = \mu + \sum_{t_i < t} \alpha \cdot e^{-\beta(t - t_i)}$$
 
-  mu    = taux de base (background rate)
-  alpha = excitation par event (combien l'intensite MONTE)
-  beta  = vitesse de declin (combien vite l'excitation RETOMBE)
-  ti    = temps de chaque event passe
-
-En francais :
-  "L'intensite = un taux de base
-   + une contribution de CHAQUE event passe
-   qui decroit exponentiellement avec le temps"
-```
+- $\mu$ = taux de base (background rate)
+- $\alpha$ = excitation par event (combien l'intensite **MONTE**)
+- $\beta$ = vitesse de declin (combien vite l'excitation **RETOMBE**)
+- $t_i$ = temps de chaque event passe
 
 Visuellement :
 
@@ -119,27 +112,17 @@ lambda(t)
 
 ## 3. Les 3 parametres
 
-```
-mu (baseline) :
-  Taux d'arrivee "normal" des events
-  Sans excitation, lambda(t) = mu
-  Petit mu = marche calme
-  Grand mu = marche actif
+| Parametre | Role | Petit | Grand |
+|---|---|---|---|
+| $\mu$ (baseline) | Taux normal d'arrivee | Marche calme | Marche actif |
+| $\alpha$ (excitation) | Saut d'intensite par event | Events independants | Gros clusters |
+| $\beta$ (decay) | Vitesse de retour au baseline | Memoire longue | Memoire courte |
 
-alpha (excitation) :
-  Combien l'intensite SAUTE apres un event
-  Grand alpha = forte auto-excitation = gros clusters
-  Petit alpha = faible excitation = events presque independants
+**Condition de stabilite :**
 
-beta (decay) :
-  Vitesse de retour au baseline apres un spike
-  Grand beta = retour rapide (memoire courte)
-  Petit beta = retour lent (memoire longue)
+$$\frac{\alpha}{\beta} < 1 \quad \text{(sinon l'intensite explose)}$$
 
-CONDITION DE STABILITE : alpha / beta < 1
-  Si alpha/beta >= 1 : l'intensite EXPLOSE (instable)
-  Typiquement : alpha/beta = 0.3 a 0.7
-```
+Typiquement $\alpha/\beta$ entre 0.3 et 0.7.
 
 ## 4. Simulation discrete
 
