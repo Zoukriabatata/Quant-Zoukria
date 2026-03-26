@@ -20,48 +20,25 @@ C'est ca le Monte Carlo : remplacer les maths par la simulation.
 
 ## C'est quoi le Monte Carlo ?
 
-```
-IDEE SIMPLE :
-  Si tu ne PEUX PAS calculer une reponse analytiquement,
-  tu peux la SIMULER en repetant l'experience des milliers de fois.
+**IDEE SIMPLE :**
+Si tu ne PEUX PAS calculer une reponse analytiquement,
+tu peux la SIMULER en repetant l'experience des milliers de fois.
 
-  La Loi des Grands Nombres (LGN) garantit que
-  la moyenne de tes simulations CONVERGE vers la vraie valeur.
-```
+La Loi des Grands Nombres (LGN) garantit que
+la moyenne de tes simulations CONVERGE vers la vraie valeur.
 
 ## Analogie : le de
 
-```
-Theorie : E[de] = 3.5
-  Tu ne peux pas obtenir 3.5 en un lancer.
+Theorie : $E[\text{de}] = 3.5$ — tu ne peux pas obtenir 3.5 en un lancer.
 
-Monte Carlo : lance le de 10 000 fois
-  Moyenne des 10 000 lancers --> 3.502
-  C'est TRES proche de 3.5
-
-  Plus tu lances, plus c'est precis.
-```
+Monte Carlo : lance le de 10 000 fois $\to$ moyenne des 10 000 lancers $\to 3.502$. C'est TRES proche de 3.5. Plus tu lances, plus c'est precis.
 
 ## Pourquoi c'est important pour ton trading ?
 
-```
-1. ESTIMER TA MOYENNE DE P&L
-   Tu ne connais pas ton "vrai" edge.
-   Mais tu peux simuler 10 000 seances de trading
-   et voir ou converge ta moyenne.
-
-2. ESTIMER DES PROBABILITES
-   "Quelle proba de ruine si je risque 2% par trade ?"
-   Simule 10 000 parcours --> compte combien finissent a 0.
-
-3. TESTER LA STABILITE
-   "Mon edge tient-il si les conditions changent ?"
-   Simule avec differents parametres et observe.
-
-4. PRICING
-   Les options sont pricees par Monte Carlo
-   (quand Black-Scholes ne suffit pas).
-```
+1. **ESTIMER TA MOYENNE DE P&L** — Tu ne connais pas ton "vrai" edge. Mais tu peux simuler 10 000 seances de trading et voir ou converge ta moyenne.
+2. **ESTIMER DES PROBABILITES** — "Quelle proba de ruine si je risque 2% par trade ?" Simule 10 000 parcours $\to$ compte combien finissent a 0.
+3. **TESTER LA STABILITE** — "Mon edge tient-il si les conditions changent ?" Simule avec differents parametres et observe.
+4. **PRICING** — Les options sont pricees par Monte Carlo (quand Black-Scholes ne suffit pas).
 
 ---
 
@@ -71,29 +48,25 @@ Monte Carlo : lance le de 10 000 fois
 
 ## 1. La LGN comme fondation
 
-```
 Monte Carlo repose ENTIEREMENT sur la LGN :
 
-  X1, X2, ..., Xn  tires de la meme distribution D
+$X_1, X_2, \ldots, X_n$ tires de la meme distribution $D$.
 
-  Moyenne = (X1 + X2 + ... + Xn) / n  -->  E[X]  quand n --> infini
+$$\boxed{\bar{X} = \frac{X_1 + X_2 + \cdots + X_n}{n} \;\xrightarrow{n \to \infty}\; E[X]}$$
 
-  Peu importe que D soit complique, bizarre, asymetrique...
-  La moyenne converge TOUJOURS.
-```
+Peu importe que $D$ soit complique, bizarre, asymetrique... la moyenne converge TOUJOURS.
 
 ## 2. Estimer des statistiques
 
-```
-Avec n simulations tu peux estimer :
+Avec $n$ simulations tu peux estimer :
 
-  Moyenne :    E[X] = (1/n) * SUM(Xi)
-  Variance :   Var[X] = (1/(n-1)) * SUM((Xi - Xbar)^2)
-  Proba :      P(X > seuil) = (nb de Xi > seuil) / n
+$$E[X] \approx \frac{1}{n}\sum_{i=1}^{n} X_i$$
 
-  Precision = sigma / sqrt(n)
-  Pour diviser l'erreur par 2 --> 4x plus de simulations
-```
+$$\text{Var}[X] \approx \frac{1}{n-1}\sum_{i=1}^{n}(X_i - \bar{X})^2$$
+
+$$P(X > \text{seuil}) \approx \frac{\#\{X_i > \text{seuil}\}}{n}$$
+
+Precision : $\sigma / \sqrt{n}$. Pour diviser l'erreur par 2 $\to$ $4\times$ plus de simulations.
 
 ## 3. Exemple : le jeu du casino (du notebook #33)
 
@@ -106,33 +79,29 @@ REGLES :
   3. Si PAIR (2,4,6) : piece equilibree (50%)
      - Face = perdre 500$
      - Pile = gagner 1000$
-
-CALCUL ANALYTIQUE :
-  EV = P(impair)*[0.6*1000 + 0.4*(-500)]
-     + P(pair)*[0.5*(-500) + 0.5*1000]
-  EV = 0.5*[600-200] + 0.5*[-250+500]
-  EV = 0.5*400 + 0.5*250
-  EV = 200 + 125 = 325$
-
-MONTE CARLO (10 000 parties) :
-  Moyenne simulee --> 324.8$  (tres proche de 325$)
 ```
+
+**CALCUL ANALYTIQUE :**
+
+$$EV = P(\text{impair})\cdot[0.6 \times 1000 + 0.4 \times (-500)] + P(\text{pair})\cdot[0.5 \times (-500) + 0.5 \times 1000]$$
+
+$$EV = 0.5 \times [600 - 200] + 0.5 \times [-250 + 500] = 0.5 \times 400 + 0.5 \times 250 = \boxed{325\$}$$
+
+**MONTE CARLO** (10 000 parties) : Moyenne simulee $\to 324.8\$$ (tres proche de 325$).
 
 ## 4. Estimer des probabilites
 
-```
 Question : "Quelle proba de gagner a ce jeu ?"
 
 Monte Carlo :
-  1. Simule 10 000 parties
-  2. Compte combien donnent un gain > 0
-  3. P(gagner) = nb_gains / 10 000
+1. Simule 10 000 parties
+2. Compte combien donnent un gain > 0
+3. $P(\text{gagner}) = n_{\text{gains}} / 10\,000$
 
-Resultat : P(gagner) = 55%
+Resultat : $P(\text{gagner}) = 55\%$
 
-C'est un Bernoulli : Xi = 1 si gain, 0 sinon
-La LGN dit : moyenne des Xi --> P(gagner)
-```
+C'est un Bernoulli : $X_i = 1$ si gain, 0 sinon.
+La LGN dit : $\bar{X} \to P(\text{gagner})$.
 
 ## 5. Wealth paths et ruine
 
@@ -153,23 +122,19 @@ Les parcours rouges = font faillite avant
 
 ## 6. Le defi en finance : la distribution CHANGE
 
-```
-PROBLEME :
-  Monte Carlo suppose une distribution FIXE.
-  En finance, la distribution des rendements CHANGE.
+**PROBLEME :** Monte Carlo suppose une distribution FIXE.
+En finance, la distribution des rendements CHANGE.
 
-  Janvier : rendements ~ Normal(+0.1%, 1%)
-  Mars (crise) : rendements ~ Normal(-0.5%, 3%)
+- Janvier : rendements $\sim \mathcal{N}(+0.1\%,\; 1\%)$
+- Mars (crise) : rendements $\sim \mathcal{N}(-0.5\%,\; 3\%)$
 
-  Si tu simules avec les parametres de janvier,
-  ta simulation est FAUSSE pour mars.
+Si tu simules avec les parametres de janvier, ta simulation est FAUSSE pour mars.
 
-SOLUTIONS :
-  1. HMM pour detecter le regime --> simule par regime
-  2. GARCH pour capturer la vol changeante
-  3. Recalibrer regulierement les parametres
-  4. Stress testing : simule avec des parametres extremes
-```
+**SOLUTIONS :**
+1. HMM pour detecter le regime $\to$ simule par regime
+2. GARCH pour capturer la vol changeante
+3. Recalibrer regulierement les parametres
+4. Stress testing : simule avec des parametres extremes
 
 ---
 
@@ -179,41 +144,36 @@ SOLUTIONS :
 
 ## Exercice 1 : Monte Carlo du de
 
-```
 Lance un de 10 fois (mentalement ou avec des vrais des) :
-  Resultats : 3, 5, 1, 6, 2, 4, 3, 5, 1, 4
 
-  Moyenne = (3+5+1+6+2+4+3+5+1+4)/10 = 34/10 = 3.4
-  Theorie = 3.5
-  Erreur = |3.4 - 3.5| = 0.1
+Resultats : 3, 5, 1, 6, 2, 4, 3, 5, 1, 4
 
-  Avec 100 lancers, l'erreur serait ~0.03
-  Avec 10 000 lancers, l'erreur serait ~0.003
-```
+$\text{Moyenne} = (3+5+1+6+2+4+3+5+1+4)/10 = 34/10 = 3.4$
+
+Theorie = 3.5. Erreur $= |3.4 - 3.5| = 0.1$.
+
+Avec 100 lancers, l'erreur serait $\sim 0.03$.
+Avec 10 000 lancers, l'erreur serait $\sim 0.003$.
 
 ## Exercice 2 : Ton edge par Monte Carlo
 
-```
-Tes stats (suppose) : winrate=55%, gain moyen=+150$, perte=-100$
+Tes stats (suppose) : winrate = 55%, gain moyen = +150$, perte = -100$.
 
-Simule 1 trade :
-  tire un nombre aleatoire entre 0 et 1
-  si < 0.55 : P&L = +150
-  sinon : P&L = -100
+Simule 1 trade : tire un nombre aleatoire entre 0 et 1 — si < 0.55 : P&L = +150, sinon : P&L = -100.
 
 Simule 10 000 trades, calcule la moyenne :
-  EV = 0.55*150 + 0.45*(-100) = 82.5 - 45 = +37.5$ par trade
 
-Monte Carlo confirmera ~37.5$ avec assez de simulations.
-```
+$$EV = 0.55 \times 150 + 0.45 \times (-100) = 82.5 - 45 = +37.5\$ \text{ par trade}$$
+
+Monte Carlo confirmera $\sim 37.5\$$ avec assez de simulations.
 
 ## Exercice 3 : Proba de ruine
 
-```
-Capital = 10 000$, risque 200$ par trade, edge = 37.5$/trade
+Capital = 10 000$, risque 200$ par trade, edge = 37.5$/trade.
 
 Question : quelle proba de toucher 0$ avant 20 000$ ?
 
+```
 Monte Carlo :
   1. Depart = 10 000
   2. Chaque trade : +150 (55%) ou -100 (45%) * 2 contrats
@@ -248,39 +208,37 @@ Si ta courbe REELLE ressemble au 3e cas :
 # RESUME — Fiche de revision
 # ============================================
 
-```
-MONTE CARLO = simuler des milliers de fois pour estimer
+**MONTE CARLO** = simuler des milliers de fois pour estimer.
 
-FONDATION : Loi des Grands Nombres
-  Moyenne des n simulations --> vraie valeur
-  Precision = sigma / sqrt(n)
+**FONDATION :** Loi des Grands Nombres — $\bar{X}_n \to E[X]$. Precision $= \sigma / \sqrt{n}$.
 
-3 USAGES PRINCIPAUX :
-  1. Estimer des STATISTIQUES (moyenne, variance)
-  2. Estimer des PROBABILITES (proba de ruine, de gain)
-  3. Estimer des PRIX (options, produits derives)
+**3 USAGES PRINCIPAUX :**
 
-RECETTE :
-  1. Definir le modele (distribution, regles du jeu)
-  2. Tirer n echantillons aleatoires
-  3. Calculer la statistique d'interet
-  4. La LGN garantit la convergence
+| Usage | Exemple |
+|-------|---------|
+| Estimer des STATISTIQUES | moyenne, variance |
+| Estimer des PROBABILITES | proba de ruine, de gain |
+| Estimer des PRIX | options, produits derives |
 
-PRECISION :
-  n = 100    --> erreur ~ sigma/10
-  n = 10 000 --> erreur ~ sigma/100
-  4x plus de sims = erreur / 2
+**RECETTE :**
+1. Definir le modele (distribution, regles du jeu)
+2. Tirer $n$ echantillons aleatoires
+3. Calculer la statistique d'interet
+4. La LGN garantit la convergence
 
-DEFI EN FINANCE :
-  La distribution CHANGE dans le temps
-  Monte Carlo suppose une distribution FIXE
-  Solution : recalibrer, HMM, GARCH, stress tests
+**PRECISION :**
 
-POUR TON TRADING :
-  - Simule 10 000 seances pour estimer ton vrai edge
-  - Calcule la proba de ruine avec ton sizing actuel
-  - Teste la stabilite : change les parametres et observe
-  - Si tes resultats reels sont HORS de l'IC simule :
-    --> soit tu as plus d'edge que prevu (rare)
-    --> soit ton modele est faux (plus probable)
-```
+| $n$ | Erreur |
+|-----|--------|
+| 100 | $\sim \sigma / 10$ |
+| 10 000 | $\sim \sigma / 100$ |
+
+$4\times$ plus de sims = erreur $/2$.
+
+**DEFI EN FINANCE :** La distribution CHANGE dans le temps. Monte Carlo suppose une distribution FIXE. Solution : recalibrer, HMM, GARCH, stress tests.
+
+**POUR TON TRADING :**
+- Simule 10 000 seances pour estimer ton vrai edge
+- Calcule la proba de ruine avec ton sizing actuel
+- Teste la stabilite : change les parametres et observe
+- Si tes resultats reels sont HORS de l'IC simule : soit tu as plus d'edge que prevu (rare), soit ton modele est faux (plus probable)

@@ -41,9 +41,9 @@ tu ne peux pas separer le SIGNAL du BRUIT.
 
 Imagine le prix comme la somme de 3 forces :
 
-```
-PRIX = TREND + SAISONNALITE + BRUIT (choc)
+$$\boxed{\text{Prix} = \text{Trend} + \text{Saisonnalite} + \text{Bruit}}$$
 
+```
 Exemple visuel :
 
 TREND (la direction generale)
@@ -91,17 +91,20 @@ Le marche c'est pareil. Sauf que :
 
 **Methode la plus simple : Moyenne Mobile (Moving Average)**
 
-```
-MA(n) = (prix[t] + prix[t-1] + ... + prix[t-n+1]) / n
+$$\boxed{MA(n) = \frac{P_t + P_{t-1} + \cdots + P_{t-n+1}}{n}}$$
 
-Exemple avec MA(3) :
-Prix:  10, 12, 11, 13, 12, 14
-MA(3):  -, -,  11, 12, 12, 13
-                ^
-                (10+12+11)/3 = 11
-```
+Exemple avec $MA(3)$ :
 
-**Probleme :** La MA est en RETARD. Plus n est grand, plus le retard est important.
+| t | Prix | MA(3) | Calcul |
+|---|------|-------|--------|
+| 1 | 10 | — | — |
+| 2 | 12 | — | — |
+| 3 | 11 | 11 | $(10+12+11)/3$ |
+| 4 | 13 | 12 | $(12+11+13)/3$ |
+| 5 | 12 | 12 | $(11+13+12)/3$ |
+| 6 | 14 | 13 | $(13+12+14)/3$ |
+
+**Probleme :** La MA est en RETARD. Plus $n$ est grand, plus le retard est important.
 
 ```
 n petit (MA 3)  = reactif mais bruite
@@ -117,13 +120,11 @@ n grand (MA 20) = lisse mais en retard
 
 **Exponential Moving Average (EMA) :**
 
-```
-EMA(t) = alpha * prix(t) + (1 - alpha) * EMA(t-1)
+$$\boxed{EMA(t) = \alpha \cdot P(t) + (1 - \alpha) \cdot EMA(t-1)}$$
 
-alpha = facteur de lissage (entre 0 et 1)
-  - alpha proche de 1 = reagit vite (suit le prix)
-  - alpha proche de 0 = reagit lentement (lisse beaucoup)
-```
+$\alpha$ = facteur de lissage (entre 0 et 1) :
+- $\alpha$ proche de 1 = reagit vite (suit le prix)
+- $\alpha$ proche de 0 = reagit lentement (lisse beaucoup)
 
 ```
 alpha = 0.9 (reactif)     alpha = 0.1 (lisse)
@@ -177,12 +178,10 @@ On dit : "le prix sera PROBABLEMENT dans cette zone"
 
 Le modele de base en finance :
 
-```
-prix(t+1) = prix(t) + bruit_aleatoire
+$$\boxed{P(t+1) = P(t) + \varepsilon_t}$$
 
 En gros : le meilleur predicateur du prix de demain
-           c'est le prix d'aujourd'hui + du hasard
-```
+c'est le prix d'aujourd'hui + du hasard ($\varepsilon_t$ = bruit aleatoire).
 
 C'est dur a accepter mais c'est le point de depart.
 Le but des modeles plus avances (GARCH, HMM, Kalman)
@@ -199,42 +198,26 @@ c'est de capturer ce que le random walk ne capture PAS.
 Regarde un graphique MNQ de la derniere semaine.
 Identifie visuellement :
 
-```
 1. Le TREND : le marche montait ou descendait globalement ?
 2. La SAISONNALITE : tu vois un pattern a l'ouverture US ? (9h30)
 3. Le BRUIT : les mouvements qui n'ont aucun sens
-```
 
 ## Exercice 2 : Moving Average a la main
 
-```
 Prix MNQ (5 barres) : 100, 102, 101, 103, 104
 
-Calcule MA(3) pour chaque point possible :
-- Point 3 : (100 + 102 + 101) / 3 = ?
-- Point 4 : (102 + 101 + 103) / 3 = ?
-- Point 5 : (101 + 103 + 104) / 3 = ?
-
-Reponse :
-- Point 3 : 101.0
-- Point 4 : 102.0
-- Point 5 : 102.67
-```
+Calcule $MA(3)$ pour chaque point possible :
+- Point 3 : $(100 + 102 + 101) / 3 = 101.0$
+- Point 4 : $(102 + 101 + 103) / 3 = 102.0$
+- Point 5 : $(101 + 103 + 104) / 3 = 102.67$
 
 ## Exercice 3 : EMA a la main
 
-```
-Prix : 100, 105, 103
-Alpha = 0.5
+Prix : 100, 105, 103 avec $\alpha = 0.5$
 
-EMA(1) = 100 (on demarre au premier prix)
-EMA(2) = 0.5 * 105 + 0.5 * 100 = ?
-EMA(3) = 0.5 * 103 + 0.5 * EMA(2) = ?
-
-Reponse :
-EMA(2) = 102.5
-EMA(3) = 102.75
-```
+- $EMA(1) = 100$ (on demarre au premier prix)
+- $EMA(2) = 0.5 \times 105 + 0.5 \times 100 = 102.5$
+- $EMA(3) = 0.5 \times 103 + 0.5 \times 102.5 = 102.75$
 
 ## Exercice 4 : Signal vs Bruit
 
@@ -259,33 +242,33 @@ Regarde la SOMME CUMULATIVE :
 # RESUME — Fiche de revision
 # ============================================
 
-```
-TIME SERIES = valeurs ordonnees dans le temps
-            = TREND + SAISONNALITE + BRUIT
+**TIME SERIES** = valeurs ordonnees dans le temps = $\text{Trend} + \text{Saisonnalite} + \text{Bruit}$
 
-3 TACHES :
-  Filtrage   = estimer le present (MA, EMA)
-  Lissage    = eliminer le bruit
-  Prevision  = estimer le futur (toujours incertain)
+**3 TACHES :**
 
-MOVING AVERAGE : moyenne des n derniers points
-  + simple
-  - en retard
+| Tache | But | Outils |
+|-------|-----|--------|
+| Filtrage | Estimer le present | MA, EMA |
+| Lissage | Eliminer le bruit | EMA, Kalman |
+| Prevision | Estimer le futur (toujours incertain) | GARCH, HMM |
 
-EMA : poids exponentiels (recent = plus important)
-  + reactif
-  - peut surreagir
+**MOVING AVERAGE :** $MA(n) = \frac{1}{n}\sum_{i=0}^{n-1} P_{t-i}$
+- (+) simple
+- (-) en retard
 
-RANDOM WALK : prix(t+1) = prix(t) + hasard
-  --> meilleur predicateur naif = prix actuel
+**EMA :** $EMA(t) = \alpha \cdot P(t) + (1-\alpha) \cdot EMA(t-1)$
+- (+) reactif
+- (-) peut surreagir
 
-LECON CLE :
-  Les previsions de prix EXACTES n'existent pas.
-  On travaille avec des DISTRIBUTIONS (probabilites).
-  Le but = filtrer le bruit pour voir le signal.
+**RANDOM WALK :** $P(t+1) = P(t) + \varepsilon$
+- meilleur predicateur naif = prix actuel
 
-POUR TON TRADING :
-  Ton signal d'absorption = une time series
-  Tu dois le FILTRER (Kalman) pour enlever le bruit
-  Et le CONTEXTUALISER (HMM/GARCH) par le regime
-```
+**LECON CLE :**
+Les previsions de prix EXACTES n'existent pas.
+On travaille avec des DISTRIBUTIONS (probabilites).
+Le but = filtrer le bruit pour voir le signal.
+
+**POUR TON TRADING :**
+Ton signal d'absorption = une time series.
+Tu dois le FILTRER (Kalman) pour enlever le bruit
+et le CONTEXTUALISER (HMM/GARCH) par le regime.

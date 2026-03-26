@@ -77,68 +77,52 @@ DONNEES BRUTES (prix, volume, orderflow MNQ)
 
 ## Etape 1 : GARCH calcule la vol actuelle
 
-```
-Input : rendements recents du MNQ
-Output : sigma_garch(t)
+Input : rendements recents du MNQ. Output : $\sigma_{garch}(t)$
 
-sigma^2(t) = alpha0 + alpha1 * r^2(t-1) + beta1 * sigma^2(t-1)
+$$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot r_{t-1}^2 + \beta_1 \cdot \sigma_{t-1}^2$$
 
-Ce sigma alimente :
-  1. Le Kalman Filter (ajuste Q = bruit du processus)
-  2. Le position sizing (plus sigma est grand = plus petit)
-```
+Ce $\sigma$ alimente :
+1. Le Kalman Filter (ajuste $Q$ = bruit du processus)
+2. Le position sizing (plus $\sigma$ est grand = plus petit)
 
 ## Etape 2 : HMM detecte le regime
 
-```
-Input : rendements + sigma_garch
-Output : P(etat=Low), P(etat=Med), P(etat=High)
+Input : rendements + $\sigma_{garch}$. Output : $P(\text{Low})$, $P(\text{Med})$, $P(\text{High})$
 
 Le regime alimente :
-  1. Le Kalman Filter (ajuste R selon le regime)
-  2. Le decision engine (filtre les trades)
+1. Le Kalman Filter (ajuste $R$ selon le regime)
+2. Le decision engine (filtre les trades)
 
-REGLES SIMPLES :
-  Si P(High-vol) > 0.7 :
-    --> R plus petit (signal change vite, suit les donnees)
-    --> Taille reduite ou no trade
-
-  Si P(Low-vol) > 0.7 :
-    --> R plus grand (signal stable, lisse davantage)
-    --> Taille normale
-```
+| Condition | $R$ | Taille |
+|---|---|---|
+| $P(\text{High-vol}) > 0.7$ | Plus petit (suit les donnees) | Reduite ou no trade |
+| $P(\text{Low-vol}) > 0.7$ | Plus grand (lisse davantage) | Normale |
 
 ## Etape 3 : Kalman filtre le signal d'absorption
 
-```
-Input : signal brut d'absorption + Q(GARCH) + R(HMM)
-Output : signal_filtered(t)
+Input : signal brut d'absorption + $Q(\text{GARCH})$ + $R(\text{HMM})$. Output : $\text{signal\_filtered}(t)$
 
-Le filtre s'adapte au contexte :
-  - High vol = Q augmente (le vrai signal bouge vite)
-  - Low vol  = Q diminue (le vrai signal est stable)
-  - High vol = R diminue (suit les donnees de pres)
-  - Low vol  = R augmente (lisse davantage)
-```
+| Regime | $Q$ | $R$ | Effet |
+|---|---|---|---|
+| High vol | Augmente | Diminue | Le vrai signal bouge vite, suit les donnees |
+| Low vol | Diminue | Augmente | Le vrai signal est stable, lisse davantage |
 
 ## Etape 4 : Decision de trading
 
-```
 ENTREES :
-  1. signal_filtered > seuil_absorption ?
-  2. regime = compatible avec absorption ?
-  3. sigma_garch = acceptable pour ma taille ?
+1. $\text{signal\_filtered} > \text{seuil\_absorption}$ ?
+2. regime = compatible avec absorption ?
+3. $\sigma_{garch}$ = acceptable pour ma taille ?
 
-MATRICE DE DECISION :
+**MATRICE DE DECISION :**
 
-  Regime     | Signal Fort | Signal Faible
-  -----------+-------------+--------------
-  Low vol    | TRADE (100%)| PAS DE TRADE
-  Med vol    | TRADE (50%) | PAS DE TRADE
-  High vol   | PAS DE TRADE| PAS DE TRADE
+| Regime | Signal Fort | Signal Faible |
+|---|---|---|
+| Low vol | TRADE ($100\%$) | PAS DE TRADE |
+| Med vol | TRADE ($50\%$) | PAS DE TRADE |
+| High vol | PAS DE TRADE | PAS DE TRADE |
 
-  "100%" et "50%" = pourcentage de ta taille normale
-```
+$100\%$ et $50\%$ = pourcentage de ta taille normale.
 
 ---
 
@@ -212,41 +196,33 @@ Decision : TRADE TAILLE PLEINE
 # RESUME — Fiche de revision
 # ============================================
 
-```
-PIPELINE :
-  Donnees --> GARCH --> sigma(t)     "Quelle vol ?"
-  Donnees --> HMM   --> regime(t)    "Quel marche ?"
-  Signal  --> Kalman --> clean(t)    "Quel signal vrai ?"
+**PIPELINE :**
+- Donnees $\to$ GARCH $\to$ $\sigma(t)$ : "Quelle vol ?"
+- Donnees $\to$ HMM $\to$ regime$(t)$ : "Quel marche ?"
+- Signal $\to$ Kalman $\to$ clean$(t)$ : "Quel signal vrai ?"
+- $\sigma$ + regime + clean $\to$ **DECISION**
 
-  sigma + regime + clean --> DECISION
+**INTERCONNEXIONS :** GARCH alimente Kalman ($Q = f(\sigma)$), HMM alimente Kalman ($R = f(\text{regime})$), les 3 alimentent la decision finale.
 
-INTERCONNEXIONS :
-  GARCH alimente Kalman (Q = f(sigma))
-  HMM alimente Kalman (R = f(regime))
-  Les 3 alimentent la decision finale
+**DECISION MATRIX :**
 
-DECISION MATRIX :
-  Low vol  + Signal : TRADE 100%
-  Med vol  + Signal : TRADE 50%
-  High vol          : PAS DE TRADE (meme avec signal)
-  Pas de signal     : PAS DE TRADE (quel que soit le regime)
+| Regime | Signal present | Action |
+|---|---|---|
+| Low vol | Oui | TRADE $100\%$ |
+| Med vol | Oui | TRADE $50\%$ |
+| High vol | Oui ou non | PAS DE TRADE |
+| Tout | Non | PAS DE TRADE |
 
-PHILOSOPHIE :
-  - Le SIGNAL dit "quoi" (absorption detectee)
-  - Le REGIME dit "quand" (conditions favorables)
-  - La VOL dit "combien" (taille de position)
+**PHILOSOPHIE :**
+- Le SIGNAL dit "quoi" (absorption detectee)
+- Le REGIME dit "quand" (conditions favorables)
+- La VOL dit "combien" (taille de position)
+- Les 3 doivent etre alignes pour trader.
 
-  Les 3 doivent etre alignes pour trader.
+**RAPPEL ERGODICITY :**
 
-RAPPEL ERGODICITY :
-  g = E[r] - sigma^2/2
+$$\boxed{g = E[r] - \frac{\sigma^2}{2}}$$
 
-  Si sigma est trop grand, ton edge est NEGATIF.
-  Le GARCH te dit quand sigma est trop grand.
-  Le HMM te dit quand le regime rend ton edge moins fiable.
-  Le Kalman te donne un signal propre pour eviter les faux signaux.
+Si $\sigma$ est trop grand, ton edge est NEGATIF. Le GARCH te dit quand $\sigma$ est trop grand. Le HMM te dit quand le regime rend ton edge moins fiable. Le Kalman te donne un signal propre pour eviter les faux signaux.
 
-  SURVIE > PROFIT
-  PATIENCE > ACTION
-  SIGNAL + CONTEXTE > SIGNAL SEUL
-```
+**SURVIE > PROFIT -- PATIENCE > ACTION -- SIGNAL + CONTEXTE > SIGNAL SEUL**

@@ -33,22 +33,17 @@ Tu vois juste le prix. Le regime est CACHE (hidden).
 
 Le marche a des "etats caches" qui influencent ce que tu observes.
 
-```
-ETATS CACHES (que tu ne vois pas) :
-  [Bull]  [Bear]  [Sideways]
+**ETATS CACHES** (que tu ne vois pas) : Bull, Bear, Sideways
 
-  Ces etats determinent les REGLES du jeu :
-  - En Bull : rendements positifs, vol moderee
-  - En Bear : rendements negatifs, vol elevee
-  - En Sideways : rendements ~0, vol faible
+Ces etats determinent les REGLES du jeu :
+- En Bull : rendements positifs, vol moderee
+- En Bear : rendements negatifs, vol elevee
+- En Sideways : rendements $\sim 0$, vol faible
 
-OBSERVATIONS (ce que tu vois) :
-  +0.5%, -0.2%, +0.8%, -3.2%, -1.5%, +0.1%, ...
+**OBSERVATIONS** (ce que tu vois) :
+$+0.5\%,\; -0.2\%,\; +0.8\%,\; -3.2\%,\; -1.5\%,\; +0.1\%, \ldots$
 
-LE DEFI :
-  A partir des observations (rendements),
-  deviner dans quel etat cache on est.
-```
+**LE DEFI :** A partir des observations (rendements), deviner dans quel etat cache on est.
 
 ## Analogie : la meteo interieure
 
@@ -87,33 +82,33 @@ Aujourd'hui = Bull
   +---> Sideways (5% de chance)  <-- changement rare
 ```
 
-On ecrit ca dans une **matrice de transition** :
+On ecrit ca dans une **matrice de transition** $A$ :
 
-```
-              Vers:
-              Bull   Bear   Side
-Depuis: Bull [ 0.85   0.10   0.05 ]
-        Bear [ 0.10   0.80   0.10 ]
-        Side [ 0.15   0.10   0.75 ]
+|  | $\to$ Bull | $\to$ Bear | $\to$ Side |
+|---|-----------|-----------|-----------|
+| **Bull** | 0.85 | 0.10 | 0.05 |
+| **Bear** | 0.10 | 0.80 | 0.10 |
+| **Side** | 0.15 | 0.10 | 0.75 |
 
-Lecture : "Si on est en Bull, on a 85% de chance
-           de rester en Bull demain"
+Lecture : "Si on est en Bull, on a 85% de chance de rester en Bull demain."
 
-REMARQUE IMPORTANTE :
-  Les diagonales sont GRANDES (0.75-0.85)
-  --> les regimes PERSISTENT (ils ne changent pas tout le temps)
-  --> c'est realiste : un marche bullish ne devient pas
-      bearish en 1 jour
-```
+**REMARQUE IMPORTANTE :**
+Les diagonales sont GRANDES (0.75–0.85)
+$\to$ les regimes PERSISTENT (ils ne changent pas tout le temps).
+C'est realiste : un marche bullish ne devient pas bearish en 1 jour.
 
 ## Etape 2 : Les distributions conditionnelles
 
 Chaque etat a sa propre distribution de rendements :
 
+| Etat | Distribution | Interpretation |
+|------|-------------|----------------|
+| Bull | $\mathcal{N}(+0.1\%,\; 1.5\%)$ | Centree sur +0.1% (positif), vol petite (calme) |
+| Bear | $\mathcal{N}(-0.5\%,\; 3.0\%)$ | Centree sur -0.5% (negatif), vol GRANDE (volatile) |
+| Sideways | $\mathcal{N}(0\%,\; 1.0\%)$ | Centree sur 0% (pas de direction), vol tres petite |
+
 ```
 ETAT BULL :
-  Rendements ~ Normal(+0.1%, 1.5%)
-
       ___
      / | \
     /  |  \       <-- centree sur +0.1% (positif)
@@ -122,8 +117,6 @@ ETAT BULL :
   -3%  0  +3%
 
 ETAT BEAR :
-  Rendements ~ Normal(-0.5%, 3.0%)
-
     ___
    / | \
   /  |  \         <-- centree sur -0.5% (negatif)
@@ -132,8 +125,6 @@ ETAT BEAR :
 -8% -3%  0  +3%
 
 ETAT SIDEWAYS :
-  Rendements ~ Normal(0%, 1.0%)
-
        _
       /|\
      / | \        <-- centree sur 0% (pas de direction)
@@ -146,86 +137,72 @@ ETAT SIDEWAYS :
 
 Le HMM a 3 composantes :
 
-```
-1. pi = probabilites initiales
-   [0.33, 0.33, 0.33]  (on ne sait pas ou on commence)
+1. $\boldsymbol{\pi}$ = probabilites initiales : $[0.33,\; 0.33,\; 0.33]$ (on ne sait pas ou on commence)
 
-2. A = matrice de transition (comment les etats changent)
-   [0.85 0.10 0.05]
-   [0.10 0.80 0.10]
-   [0.15 0.10 0.75]
+2. $A$ = matrice de transition (comment les etats changent) :
 
-3. B = distributions d'emission (quoi observer dans chaque etat)
-   Bull:     N(mu=+0.1%, sigma=1.5%)
-   Bear:     N(mu=-0.5%, sigma=3.0%)
-   Sideways: N(mu=0.0%,  sigma=1.0%)
-```
+$$A = \begin{pmatrix} 0.85 & 0.10 & 0.05 \\ 0.10 & 0.80 & 0.10 \\ 0.15 & 0.10 & 0.75 \end{pmatrix}$$
+
+3. $B$ = distributions d'emission (quoi observer dans chaque etat) :
+
+| Etat | $\mu$ | $\sigma$ |
+|------|-------|----------|
+| Bull | +0.1% | 1.5% |
+| Bear | -0.5% | 3.0% |
+| Sideways | 0.0% | 1.0% |
 
 ## Etape 4 : L'algorithme de Baum-Welch
 
-**C'est l'algorithme qui APPREND les parametres (pi, A, B) a partir des donnees.**
+**C'est l'algorithme qui APPREND les parametres ($\pi$, $A$, $B$) a partir des donnees.**
 
 Il fonctionne en 2 etapes repetees (comme EM = Expectation-Maximization) :
 
-```
-ETAPE E (Expectation) : "Deviner les etats"
-  Avec les parametres actuels, calcule la probabilite
-  d'etre dans chaque etat a chaque instant.
+**ETAPE E (Expectation) : "Deviner les etats"**
+Avec les parametres actuels, calcule la probabilite d'etre dans chaque etat a chaque instant.
 
-  temps:    t1     t2     t3     t4
-  P(Bull):  0.8    0.7    0.3    0.1
-  P(Bear):  0.1    0.2    0.6    0.8
-  P(Side):  0.1    0.1    0.1    0.1
+| temps | $P(\text{Bull})$ | $P(\text{Bear})$ | $P(\text{Side})$ |
+|-------|-----------------|-----------------|-----------------|
+| $t_1$ | 0.8 | 0.1 | 0.1 |
+| $t_2$ | 0.7 | 0.2 | 0.1 |
+| $t_3$ | 0.3 | 0.6 | 0.1 |
+| $t_4$ | 0.1 | 0.8 | 0.1 |
 
-ETAPE M (Maximization) : "Mettre a jour les parametres"
-  Avec les etats devines, recalcule :
-  - La matrice de transition A
-  - Les moyennes et ecarts-types de chaque etat
-  - Les probabilites initiales pi
+**ETAPE M (Maximization) : "Mettre a jour les parametres"**
+Avec les etats devines, recalcule $A$, les $\mu$ et $\sigma$ de chaque etat, et $\pi$.
 
-REPETER jusqu'a convergence (les parametres ne bougent plus)
-```
+REPETER jusqu'a convergence (les parametres ne bougent plus).
 
 ### Forward Algorithm (calcul vers l'avant)
 
-```
-alpha(t, j) = P(observer O1...Ot ET etre dans l'etat j a t)
+$$\alpha(t, j) = P(O_1 \ldots O_t \text{ ET etat } j \text{ a } t)$$
 
 Initialisation :
-  alpha(1, j) = pi(j) * P(O1 | etat j)
+
+$$\alpha(1, j) = \pi(j) \cdot P(O_1 \mid \text{etat } j)$$
 
 Recursion :
-  alpha(t+1, j) = P(Ot+1 | etat j) * SUM_i[ alpha(t,i) * A(i,j) ]
 
-  En francais :
-  "La proba d'etre en j a t+1" =
-    "proba d'observer Ot+1 si on est en j"
-    * "somme sur tous les etats possibles a t
-       de (proba d'y etre * proba de transiter vers j)"
-```
+$$\boxed{\alpha(t+1, j) = P(O_{t+1} \mid \text{etat } j) \cdot \sum_i \alpha(t, i) \cdot A(i, j)}$$
+
+En francais : "La proba d'etre en $j$ a $t+1$" =
+"proba d'observer $O_{t+1}$ si on est en $j$"
+$\times$ "somme sur tous les etats possibles a $t$ de (proba d'y etre $\times$ proba de transiter vers $j$)"
 
 ### Backward Algorithm (calcul vers l'arriere)
 
-```
-beta(t, i) = P(observer Ot+1...OT | etre dans l'etat i a t)
+$$\beta(t, i) = P(O_{t+1} \ldots O_T \mid \text{etat } i \text{ a } t)$$
 
-Initialisation :
-  beta(T, i) = 1
+Initialisation : $\beta(T, i) = 1$
 
 Recursion :
-  beta(t, i) = SUM_j[ A(i,j) * P(Ot+1 | etat j) * beta(t+1, j) ]
-```
+
+$$\boxed{\beta(t, i) = \sum_j A(i, j) \cdot P(O_{t+1} \mid \text{etat } j) \cdot \beta(t+1, j)}$$
 
 ### Combinaison : probabilite d'etre dans chaque etat
 
-```
-gamma(t, i) = P(etat = i a temps t | toutes les observations)
+$$\boxed{\gamma(t, i) = P(\text{etat} = i \text{ a } t \mid \text{toutes les observations}) = \frac{\alpha(t, i) \cdot \beta(t, i)}{P(O)}}$$
 
-            = alpha(t,i) * beta(t,i) / P(O)
-
-C'est la REPONSE FINALE :
-  gamma(t, Bull) = 0.8 --> "80% de chance qu'on soit en Bull"
-```
+C'est la REPONSE FINALE : $\gamma(t, \text{Bull}) = 0.8$ $\to$ "80% de chance qu'on soit en Bull"
 
 ---
 
@@ -235,70 +212,67 @@ C'est la REPONSE FINALE :
 
 ## Exercice 1 : Matrice de transition a la main
 
-```
 Donnes : 20 jours de regime (tu les connais) :
-  L L L L H H H L L L M M M M L L L L H H
+L L L L H H H L L L M M M M L L L L H H
 
-  L = Low vol, M = Medium vol, H = High vol
+(L = Low vol, M = Medium vol, H = High vol)
 
 Compte les transitions :
-  L->L : 8 fois
-  L->H : 2 fois
-  L->M : 1 fois
-  H->H : 2 fois
-  H->L : 2 fois
-  H->M : 0 fois
-  M->M : 2 fois
-  M->L : 1 fois
-  M->H : 0 fois
 
-Total depuis L : 11 transitions
-Total depuis H : 4 transitions
-Total depuis M : 3 transitions (le dernier M n'a pas de "vers")
+| Transition | Compte |
+|-----------|--------|
+| L $\to$ L | 8 |
+| L $\to$ H | 2 |
+| L $\to$ M | 1 |
+| H $\to$ H | 2 |
+| H $\to$ L | 2 |
+| H $\to$ M | 0 |
+| M $\to$ M | 2 |
+| M $\to$ L | 1 |
+| M $\to$ H | 0 |
+
+Total depuis L : 11 transitions. Total depuis H : 4. Total depuis M : 3.
 
 Matrice :
-         L      H      M
-  L  [ 8/11   2/11   1/11 ] = [0.73  0.18  0.09]
-  H  [ 2/4    2/4    0/4  ] = [0.50  0.50  0.00]
-  M  [ 1/3    0/3    2/3  ] = [0.33  0.00  0.67]
+
+|  | $\to$ L | $\to$ H | $\to$ M |
+|---|---------|---------|---------|
+| **L** | $8/11 = 0.73$ | $2/11 = 0.18$ | $1/11 = 0.09$ |
+| **H** | $2/4 = 0.50$ | $2/4 = 0.50$ | $0/4 = 0.00$ |
+| **M** | $1/3 = 0.33$ | $0/3 = 0.00$ | $2/3 = 0.67$ |
 
 Interpretation :
-  - Low vol est PERSISTANT (73% de rester)
-  - High vol retourne souvent en Low (50%)
-  - Medium vol est aussi persistant (67%)
-```
+- Low vol est PERSISTANT (73% de rester)
+- High vol retourne souvent en Low (50%)
+- Medium vol est aussi persistant (67%)
 
 ## Exercice 2 : Dans quel regime suis-je ?
 
-```
-Tu observes les rendements suivants :
-  +0.2%, +0.1%, -0.1%, +0.3%, +0.2%
+Tu observes les rendements suivants : $+0.2\%,\; +0.1\%,\; -0.1\%,\; +0.3\%,\; +0.2\%$
 
 Tu connais les distributions :
-  Bull : N(+0.15%, 0.5%)
-  Bear : N(-0.3%, 1.5%)
+- Bull : $\mathcal{N}(+0.15\%,\; 0.5\%)$
+- Bear : $\mathcal{N}(-0.3\%,\; 1.5\%)$
 
-Pour le premier rendement (+0.2%) :
-  P(+0.2% | Bull) = eleve (proche de la moyenne Bull)
-  P(+0.2% | Bear) = faible (loin de la moyenne Bear)
+Pour le premier rendement ($+0.2\%$) :
+- $P(+0.2\% \mid \text{Bull})$ = eleve (proche de la moyenne Bull)
+- $P(+0.2\% \mid \text{Bear})$ = faible (loin de la moyenne Bear)
 
-Pour une serie de 5 rendements tous proches de +0.15% :
-  --> presque certainement en regime BULL
+Pour une serie de 5 rendements tous proches de $+0.15\%$ :
+$\to$ presque certainement en regime BULL
 
-Si soudain : -2.5%, -1.8%, -3.1%
-  --> probablement bascule en regime BEAR
-```
+Si soudain : $-2.5\%,\; -1.8\%,\; -3.1\%$
+$\to$ probablement bascule en regime BEAR
 
 ## Exercice 3 : Application a ton trading
 
-```
 Question : Comment utiliser le HMM pour ton absorption ?
 
 1. Calibre un HMM 3-etats sur les rendements MNQ
-   --> tu obtiens : Low-vol, Medium-vol, High-vol
+   $\to$ tu obtiens : Low-vol, Medium-vol, High-vol
 
-2. Chaque matin, calcule gamma(aujourd'hui) :
-   P(Low)=0.7, P(Med)=0.2, P(High)=0.1
+2. Chaque matin, calcule $\gamma(\text{aujourd'hui})$ :
+   $P(\text{Low})=0.7$, $P(\text{Med})=0.2$, $P(\text{High})=0.1$
 
 3. Adapte ta strategie :
    - Low vol : absorption fiable, taille normale
@@ -306,7 +280,6 @@ Question : Comment utiliser le HMM pour ton absorption ?
    - High vol : absorption moins fiable, petite taille ou pas de trade
 
 C'est ton FILTRE DE REGIME.
-```
 
 ---
 
@@ -314,44 +287,46 @@ C'est ton FILTRE DE REGIME.
 # RESUME — Fiche de revision
 # ============================================
 
-```
-HMM = Hidden Markov Model
-  "Deviner l'etat cache a partir de ce qu'on observe"
+**HMM** = Hidden Markov Model — "Deviner l'etat cache a partir de ce qu'on observe"
 
-3 COMPOSANTES :
-  1. pi   = ou on commence (probabilites initiales)
-  2. A    = comment les etats changent (matrice de transition)
-  3. B    = ce qu'on observe dans chaque etat (distributions)
+**3 COMPOSANTES :**
 
-PROPRIETE DE MARKOV :
-  Le futur depend UNIQUEMENT du present (pas du passe)
+| Composante | Symbole | Role |
+|-----------|---------|------|
+| Probabilites initiales | $\pi$ | Ou on commence |
+| Matrice de transition | $A$ | Comment les etats changent |
+| Distributions d'emission | $B$ | Ce qu'on observe dans chaque etat |
 
-BAUM-WELCH (apprentissage) :
-  Etape E : deviner les etats (forward + backward)
-  Etape M : mettre a jour les parametres
-  Repeter jusqu'a convergence
+**PROPRIETE DE MARKOV :** Le futur depend UNIQUEMENT du present (pas du passe).
 
-RESULTATS TYPIQUES (3 etats) :
-  Etat 1 : mean=+0.2%, std=1.5%  (calme, haussier)
-  Etat 2 : mean=-0.7%, std=4.5%  (volatile, baissier)
-  Etat 3 : mean=+0.1%, std=2.5%  (intermediaire)
+**BAUM-WELCH (apprentissage) :**
+- Etape E : deviner les etats (forward + backward)
+- Etape M : mettre a jour les parametres
+- Repeter jusqu'a convergence
 
-MATRICE DE TRANSITION : les diagonales sont grandes
-  --> les regimes PERSISTENT (changent rarement)
+**RESULTATS TYPIQUES (3 etats) :**
 
-ATTENTION :
-  - On peut OVERFITTER (trop d'etats = bruit)
-  - 2-3 etats suffisent generalement
-  - Toujours valider OUT OF SAMPLE
-  - Les etats ne sont pas forcement interpretables
+| Etat | $\mu$ | $\sigma$ | Interpretation |
+|------|-------|----------|---------------|
+| 1 | +0.2% | 1.5% | Calme, haussier |
+| 2 | -0.7% | 4.5% | Volatile, baissier |
+| 3 | +0.1% | 2.5% | Intermediaire |
 
-POUR TON TRADING :
-  HMM = FILTRE DE REGIME
-  "Dans quel type de marche suis-je aujourd'hui ?"
+**MATRICE DE TRANSITION :** les diagonales sont grandes $\to$ les regimes PERSISTENT.
 
-  Pipeline :
-  Donnees --> HMM --> regime --> adapte ta taille/strategie
+**ATTENTION :**
+- On peut OVERFITTER (trop d'etats = bruit)
+- 2–3 etats suffisent generalement
+- Toujours valider OUT OF SAMPLE
+- Les etats ne sont pas forcement interpretables
 
-  Low vol  = absorption fiable = taille normale
-  High vol = absorption risquee = petite taille / no trade
-```
+**POUR TON TRADING :**
+
+HMM = FILTRE DE REGIME : "Dans quel type de marche suis-je aujourd'hui ?"
+
+Pipeline : Donnees $\to$ HMM $\to$ regime $\to$ adapte ta taille/strategie
+
+| Regime | Action |
+|--------|--------|
+| Low vol | Absorption fiable = taille normale |
+| High vol | Absorption risquee = petite taille / no trade |

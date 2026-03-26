@@ -17,11 +17,9 @@ Un jeu te propose :
 
 La valeur attendue (expected value) :
 
-```
-EV = 0.5 * (+50%) + 0.5 * (-40%) = +5%
+$$EV = 0.5 \times (+50\%) + 0.5 \times (-40\%) = +5\%$$
 
 EV positif ! Super deal non ?
-```
 
 **FAUX.** Ce jeu va te RUINER.
 
@@ -49,20 +47,19 @@ MOYENNE D'ENSEMBLE (ce que dit l'EV) :
 Toi tu vis dans UN SEUL univers. Tu joues encore et encore.
 Ce qui compte c'est la croissance geometrique :
 
-```
-MOYENNE TEMPORELLE (ce que TU vis) :
+| Tour | Resultat | Solde |
+|---|---|---|
+| Depart | | $1000\$$ |
+| Tour 1 | $+50\%$ | $1500\$$ |
+| Tour 2 | $-40\%$ | $900\$$ -- tu as PERDU $100\$$ ! |
+| Tour 3 | $+50\%$ | $1350\$$ |
+| Tour 4 | $-40\%$ | $810\$$ -- encore moins ! |
 
-  Tu commences avec 1000$
-  Tour 1 : +50% --> 1500$
-  Tour 2 : -40% --> 900$    <-- tu as PERDU 100$ !
-  Tour 3 : +50% --> 1350$
-  Tour 4 : -40% --> 810$    <-- encore moins !
+Le taux de croissance geometrique :
 
-  Le TAUX DE CROISSANCE GEOMETRIQUE :
-  g = sqrt(1.5 * 0.6) - 1 = sqrt(0.9) - 1 = -0.051 = -5.1%
+$$g = \sqrt{1.5 \times 0.6} - 1 = \sqrt{0.9} - 1 = -0.051 = -5.1\%$$
 
-  Tu PERDS 5.1% a chaque cycle, malgre un EV de +5% !
-```
+Tu PERDS $5.1\%$ a chaque cycle, malgre un EV de $+5\%$ !
 
 ## Pourquoi ? La difference fondamentale
 
@@ -186,63 +183,42 @@ IMPORTANT : la RUINE est irreversible.
 
 ## Exercice 1 : Le jeu du casino
 
-```
-Jeu : tu mises 10% de ton capital a chaque tour
-  - 60% de chance de doubler ta mise (+10%)
-  - 40% de chance de perdre ta mise (-10%)
+Jeu : tu mises $10\%$ de ton capital a chaque tour :
+- $60\%$ de chance de doubler ta mise ($+10\%$)
+- $40\%$ de chance de perdre ta mise ($-10\%$)
 
-EV par tour = 0.6*(+10%) + 0.4*(-10%) = +2%
+$$EV = 0.6 \times (+10\%) + 0.4 \times (-10\%) = +2\%$$
 
-Croissance geometrique :
-g = E[r] - sigma^2/2
+Croissance geometrique : $g = E[r] - \frac{\sigma^2}{2}$
 
-sigma^2 de ce jeu = 0.6*(0.1)^2 + 0.4*(-0.1)^2 - (0.02)^2
-                  = 0.6*0.01 + 0.4*0.01 - 0.0004
-                  = 0.01 - 0.0004 = 0.0096
+$$\sigma^2 = 0.6 \times (0.1)^2 + 0.4 \times (-0.1)^2 - (0.02)^2 = 0.006 + 0.004 - 0.0004 = 0.0096$$
 
-g = 0.02 - 0.0096/2 = 0.02 - 0.0048 = +1.52%
+$$g = 0.02 - \frac{0.0096}{2} = 0.02 - 0.0048 = +1.52\%$$
 
---> g > 0, donc ce jeu est VIABLE.
-    Tu grandis de ~1.52% par tour en realite.
-```
+$g > 0$, donc ce jeu est **VIABLE**. Tu grandis de $\sim 1.52\%$ par tour en realite.
 
 ## Exercice 2 : A quel point la volatilite tue ?
 
-```
-Ton edge = +1% par trade (apres commissions)
+Ton edge $= +1\%$ par trade (apres commissions). Croissance reelle $g = E[r] - \frac{\sigma^2}{2}$ :
 
-Calcule ta croissance reelle pour differentes volatilites :
+| $\sigma$ | $\frac{\sigma^2}{2}$ | $g$ | |
+|---|---|---|---|
+| $5\%$ | $0.125\%$ | $+0.875\%$ | |
+| $10\%$ | $0.5\%$ | $+0.5\%$ | |
+| $15\%$ | $1.125\%$ | $-0.125\%$ | **PERTE !** |
+| $20\%$ | $2\%$ | $-1\%$ | **RUINE !** |
 
-  sigma = 5%  : g = 1% - (5%)^2/2  = 1% - 0.125% = +0.875%
-  sigma = 10% : g = 1% - (10%)^2/2 = 1% - 0.5%   = +0.5%
-  sigma = 15% : g = 1% - (15%)^2/2 = 1% - 1.125% = -0.125%  PERTE !
-  sigma = 20% : g = 1% - (20%)^2/2 = 1% - 2%     = -1%      RUINE !
-
-LECON : avec un edge de 1%, tu ne peux PAS te permettre
-        une volatilite > ~14% par trade.
-
-C'est pour ca que le POSITION SIZING est vital.
-```
+**LECON :** avec un edge de $1\%$, tu ne peux PAS te permettre une volatilite $> \sim 14\%$ par trade. C'est pour ca que le **POSITION SIZING** est vital.
 
 ## Exercice 3 : Kelly pour ton trading
 
-```
-Suppose tes stats reelles :
-  Win rate = 55% (p = 0.55)
-  Avg win = 150$
-  Avg loss = 100$
-  b = 150/100 = 1.5
+Suppose tes stats reelles : $p = 0.55$, avg win $= 150\$$, avg loss $= 100\$$, donc $b = 150/100 = 1.5$
 
-  f* = (0.55 * 1.5 - 0.45) / 1.5
-     = (0.825 - 0.45) / 1.5
-     = 0.375 / 1.5
-     = 0.25 = 25%
+$$f^* = \frac{0.55 \times 1.5 - 0.45}{1.5} = \frac{0.825 - 0.45}{1.5} = \frac{0.375}{1.5} = 0.25 = 25\%$$
 
-  Kelly dit 25%. En pratique utilise demi-Kelly = 12.5%.
+Kelly dit $25\%$. En pratique utilise **demi-Kelly** $= 12.5\%$.
 
-  Si ton compte = 10 000$ :
-  Risque max par trade = 10000 * 0.125 = 1 250$
-```
+Si ton compte $= 10\,000\$$ : risque max par trade $= 10\,000 \times 0.125 = 1\,250\$$
 
 ---
 
@@ -250,34 +226,31 @@ Suppose tes stats reelles :
 # RESUME — Fiche de revision
 # ============================================
 
-```
-ERGODICITY : la moyenne d'ensemble =/= ta realite
+**ERGODICITY :** la moyenne d'ensemble $\neq$ ta realite. Le trading est MULTIPLICATIF = NON-ERGODIQUE. L'EV peut etre positif et tu peux quand meme perdre.
 
-  Le trading est MULTIPLICATIF = NON-ERGODIQUE
-  --> l'EV peut etre positif et tu peux quand meme perdre
+**FORMULE CLE :**
 
-FORMULE CLE :
-  g = E[r] - sigma^2 / 2
+$$\boxed{g = E[r] - \frac{\sigma^2}{2}}$$
 
-  g = croissance geometrique (ce que tu VIS)
-  E[r] = ton edge moyen
-  sigma^2/2 = penalite de volatilite (TOUJOURS negative)
+- $g$ = croissance geometrique (ce que tu VIS)
+- $E[r]$ = ton edge moyen
+- $\frac{\sigma^2}{2}$ = penalite de volatilite (TOUJOURS negative)
 
-CONSEQUENCES :
-  1. La volatilite DETRUIT la richesse
-  2. Un edge positif ne suffit PAS si la variance est trop grande
-  3. La RUINE est irreversible (0 * quoi que ce soit = 0)
-  4. Le sizing est AUSSI important que l'edge
+**CONSEQUENCES :**
+1. La volatilite DETRUIT la richesse
+2. Un edge positif ne suffit PAS si la variance est trop grande
+3. La RUINE est irreversible ($0 \times$ quoi que ce soit $= 0$)
+4. Le sizing est AUSSI important que l'edge
 
-KELLY CRITERION :
-  f* = (p*b - q) / b
-  En pratique : utilise DEMI-KELLY
+**KELLY CRITERION :**
 
-POUR TON TRADING :
-  - Ton edge d'absorption est ton E[r]
-  - Ta volatilite de P&L est ton sigma
-  - Si sigma est trop grand, REDUIS ta taille
-  - Mieux vaut un petit edge avec peu de variance
-    qu'un gros edge avec beaucoup de variance
-  - JAMAIS all-in. La survie d'abord. Les profits ensuite.
-```
+$$f^* = \frac{p \cdot b - q}{b}$$
+
+En pratique : utilise **DEMI-KELLY**
+
+**POUR TON TRADING :**
+- Ton edge d'absorption est ton $E[r]$
+- Ta volatilite de P&L est ton $\sigma$
+- Si $\sigma$ est trop grand, REDUIS ta taille
+- Mieux vaut un petit edge avec peu de variance qu'un gros edge avec beaucoup de variance
+- JAMAIS all-in. La survie d'abord. Les profits ensuite.

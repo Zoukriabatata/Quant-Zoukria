@@ -98,22 +98,13 @@ Prix
 
 ## Le Kalman + OU = combo parfait
 
-```
-1. MODELE OU : "le prix DEVRAIT revenir vers mu"
-   C'est le F (dynamique) du Kalman Filter
+1. **MODELE OU :** "le prix DEVRAIT revenir vers $\mu$" -- c'est le $F$ (dynamique) du Kalman Filter
+2. **OBSERVATION :** "le tick actuel dit prix $= 101.5$" -- c'est le $z$ (mesure)
+3. **KALMAN :** combine les deux. "Mon modele dit $100.3$, le tick dit $101.5$"
 
-2. OBSERVATION : "le tick actuel dit prix = 101.5"
-   C'est le z (mesure)
+$$K = 0.6 \qquad \text{Estimation} = 100.3 + 0.6 \times (101.5 - 100.3) = 101.02$$
 
-3. KALMAN : combine les deux
-   "Mon modele dit 100.3, le tick dit 101.5"
-   K = 0.6
-   Estimation = 100.3 + 0.6 * (101.5 - 100.3) = 101.02
-
-4. CETTE estimation (101.02) = ta "juste valeur" actuelle
-   Prix > 101.02 + bande --> short
-   Prix < 101.02 - bande --> long
-```
+4. Cette estimation ($101.02$) = ta "juste valeur" actuelle. Prix $> 101.02 + \text{bande}$ $\to$ short ; Prix $< 101.02 - \text{bande}$ $\to$ long
 
 ---
 
@@ -125,71 +116,68 @@ Prix
 
 En pratique on travaille en discret (barres) :
 
-```
-X(t+1) = phi * X(t) + (1 - phi) * mu + sigma * epsilon
+$$X_{t+1} = \phi \cdot X_t + (1 - \phi) \cdot \mu + \sigma \cdot \varepsilon_t \quad ,\quad \varepsilon_t \sim \mathcal{N}(0,1)$$
 
-  phi = e^(-theta * dt) = "combien le prix oublie" (entre 0 et 1)
-  mu  = moyenne long-terme
-  sigma = volatilite des residus
-  epsilon ~ Normal(0, 1)
+- $\phi = e^{-\theta \Delta t}$ = "combien le prix oublie" (entre 0 et 1)
+- $\mu$ = moyenne long-terme
+- $\sigma$ = volatilite des residus
 
-Si phi = 0.95 : le prix est FORTEMENT persistant (lent a revenir)
-Si phi = 0.50 : le prix revient VITE vers mu
-```
+| $\phi$ | Comportement |
+|---|---|
+| $0.95$ | FORTEMENT persistant (lent a revenir) |
+| $0.50$ | Revient VITE vers $\mu$ |
 
 ## 2. Calibration AR(1) depuis les donnees
 
-```
-On a N barres de prix : X1, X2, ..., XN
+On a $N$ barres de prix : $X_1, X_2, \ldots, X_N$. Regression lineaire :
 
-Regression lineaire :
-  X(t) = c + phi * X(t-1) + erreur
+$$X_t = c + \phi \cdot X_{t-1} + \varepsilon_t$$
 
-  phi = coefficient de regression
-  c   = constante
-  mu  = c / (1 - phi) = moyenne implicite
-  sigma = ecart-type des residus
+- $\phi$ = coefficient de regression
+- $c$ = constante
+- $\mu = \frac{c}{1 - \phi}$ = moyenne implicite
+- $\sigma = \text{std}(\text{residus})$
 
 Code Python (du notebook #95) :
-  y = closes[1:]
-  x_lag = closes[:-1]
-  X = [ones, x_lag]
-  beta = least_squares(X, y)
-  c, phi = beta[0], beta[1]
-  mu = mean(closes)
-  sigma = std(residus)
+```
+y = closes[1:]
+x_lag = closes[:-1]
+X = [ones, x_lag]
+beta = least_squares(X, y)
+c, phi = beta[0], beta[1]
+mu = mean(closes)
+sigma = std(residus)
 ```
 
 ## 3. Le Kalman Filter pour OU
 
-```
-ETAT : x = le niveau moyen estime (fair value)
+ETAT : $x$ = le niveau moyen estime (fair value)
 
-PREDICTION (etape 1) :
-  x_pred = phi * x_prev + (1 - phi) * mu
-  P_pred = phi^2 * P_prev + Q
+**PREDICTION** (etape 1) :
 
-  Q = sigma^2 * (1 - phi^2) = bruit du processus OU
+$$\hat{x}_{pred} = \phi \cdot x_{prev} + (1 - \phi) \cdot \mu$$
+$$P_{pred} = \phi^2 \cdot P_{prev} + Q \quad \text{ou} \quad Q = \sigma^2(1 - \phi^2)$$
 
-MISE A JOUR (etape 2) :
-  K = P_pred / (P_pred + R)
-  x_new = x_pred + K * (prix_observe - x_pred)
-  P_new = (1 - K) * P_pred
-```
+**MISE A JOUR** (etape 2) :
+
+$$K = \frac{P_{pred}}{P_{pred} + R} \qquad \hat{x}_{new} = \hat{x}_{pred} + K \cdot (z_{obs} - \hat{x}_{pred}) \qquad P_{new} = (1 - K) \cdot P_{pred}$$
 
 ## 4. Le "noise lever" (levier de confiance)
 
-```
-R = observation noise = "combien les prix sont bruitees"
+$R$ = observation noise = "combien les prix sont bruitees"
 
-  R petit  --> K grand --> suit les prix (reactif)
-  R grand  --> K petit --> suit le modele OU (lisse)
+| $R$ | $K$ | Comportement |
+|---|---|---|
+| Petit | Grand | Suit les prix (reactif) |
+| Grand | Petit | Suit le modele OU (lisse) |
 
 Le "noise lever" de l'app kts.py :
-  0%   = Trust Prices (R = 0.1 * sigma^2)
-  50%  = Equilibre    (R = 5 * sigma^2)
-  100% = Trust OU     (R = 10^8, K = 0, ignore les prix)
-```
+
+| Slider | $R$ | Effet |
+|---|---|---|
+| $0\%$ (Trust Prices) | $0.1 \cdot \sigma^2$ | $K$ grand |
+| $50\%$ (Equilibre) | $5 \cdot \sigma^2$ | Balance |
+| $100\%$ (Trust OU) | $10^8$ | $K \approx 0$, ignore les prix |
 
 ## 5. Bandes de trading
 
@@ -212,45 +200,34 @@ avec $k$ entre 0.8 et 1.5 selon l'agressivite.
 
 ## 6. Le forecast OU
 
-```
-Prediction a h barres dans le futur :
+Prediction a $h$ barres dans le futur :
 
-  X_hat(h) = mu + phi^h * (x_current - mu)
+$$\boxed{\hat{X}(h) = \mu + \phi^h \cdot (x_{current} - \mu)}$$
 
-  Le prix converge vers mu de maniere exponentielle.
+Le prix converge vers $\mu$ de maniere exponentielle.
 
-  h = 1 : X_hat = mu + phi * (x - mu)
-  h = 5 : X_hat = mu + phi^5 * (x - mu)
-  h = 20: X_hat = mu + phi^20 * (x - mu) ≈ mu
-
-  Si phi = 0.95 :
-    phi^5  = 0.77  --> encore 77% de l'ecart
-    phi^20 = 0.36  --> plus que 36%
-    phi^50 = 0.08  --> presque revenu a mu
-```
+| $h$ | $\hat{X}(h)$ | Si $\phi = 0.95$ |
+|---|---|---|
+| $1$ | $\mu + \phi(x - \mu)$ | $95\%$ de l'ecart |
+| $5$ | $\mu + \phi^5(x - \mu)$ | $77\%$ de l'ecart |
+| $20$ | $\mu + \phi^{20}(x - \mu)$ | $36\%$ de l'ecart |
+| $50$ | $\mu + \phi^{50}(x - \mu)$ | $8\%$ -- presque revenu a $\mu$ |
 
 ## 7. Le piege : estimation biaisee
 
-```
-PROBLEME CRITIQUE (lecon du notebook #95) :
+**PROBLEME CRITIQUE** (lecon du notebook #95) : si tu estimes $\mu$ avec trop peu de donnees ($N=30$), ton estimation est biaisee.
 
-  Si tu estimes mu avec trop peu de donnees (N=30),
-  ton estimation est biaisee.
+Rappel du CLT :
 
-  Rappel du CLT :
-    SE = sigma / sqrt(N)
-    N = 30, sigma = 4 --> SE = 0.73
-    IC 95% = [mu_hat - 1.46, mu_hat + 1.46]
+$$SE = \frac{\sigma}{\sqrt{N}} \quad \Rightarrow \quad N = 30,\; \sigma = 4 \quad \Rightarrow \quad SE = 0.73$$
+$$IC_{95\%} = [\hat{\mu} - 1.46,\; \hat{\mu} + 1.46]$$
 
-  Si la vraie mu = 100 et ton estimation = 103.5,
-  TOUS tes shorts sont trop haut, TOUS tes longs trop haut.
-  Tu perds systematiquement.
+Si la vraie $\mu = 100$ et ton estimation $= 103.5$, TOUS tes shorts sont trop haut, TOUS tes longs trop haut. Tu perds systematiquement.
 
-SOLUTION :
-  1. Utiliser le Kalman Filter (mu s'adapte)
-  2. Recalibrer regulierement (online_params)
-  3. Avoir assez de donnees (N > 60 minimum)
-```
+**SOLUTION :**
+1. Utiliser le Kalman Filter ($\mu$ s'adapte)
+2. Recalibrer regulierement (online_params)
+3. Avoir assez de donnees ($N > 60$ minimum)
 
 ---
 
@@ -260,87 +237,63 @@ SOLUTION :
 
 ## Exercice 1 : Calibration OU a la main
 
-```
-Donnees (5 barres) : 100, 101, 100.5, 99.8, 100.3
+Donnees (5 barres) : $100, 101, 100.5, 99.8, 100.3$
 
-Regression AR(1) :
-  X_lag = [100, 101, 100.5, 99.8]
-  X_cur = [101, 100.5, 99.8, 100.3]
+Regression AR(1) : $X_{lag} = [100, 101, 100.5, 99.8]$, $X_{cur} = [101, 100.5, 99.8, 100.3]$
 
-  Approximation simple :
-  phi ≈ correlation(X_cur, X_lag)
+Approximation simple : $\phi \approx \text{corr}(X_{cur}, X_{lag})$
 
-  Diff : [+1, -0.5, -0.7, +0.5]
-  Le prix revient vers une moyenne ~100.3
+Diff : $[+1, -0.5, -0.7, +0.5]$ -- le prix revient vers une moyenne $\sim 100.3$
 
-  mu ≈ mean = (100+101+100.5+99.8+100.3)/5 = 100.32
-  sigma ≈ std des residus ≈ 0.7
-```
+$$\mu \approx \bar{X} = \frac{100+101+100.5+99.8+100.3}{5} = 100.32 \qquad \sigma \approx \text{std}(\text{residus}) \approx 0.7$$
 
 ## Exercice 2 : Kalman Filter OU
 
-```
-Parametres : phi=0.95, mu=100, sigma=1.0
-Initial : x=100, P=1.0
-Q = 1.0^2 * (1 - 0.95^2) = 0.0975
-R = 2.0
+Parametres : $\phi=0.95$, $\mu=100$, $\sigma=1.0$, $x_0=100$, $P_0=1.0$
 
-Tick 1 : prix = 102
+$$Q = \sigma^2(1 - \phi^2) = 1.0^2 \times (1 - 0.95^2) = 0.0975 \qquad R = 2.0$$
 
-  Prediction :
-    x_pred = 0.95 * 100 + 0.05 * 100 = 100
-    P_pred = 0.95^2 * 1.0 + 0.0975 = 0.9025 + 0.0975 = 1.0
+**Tick 1 :** prix $= 102$
 
-  Mise a jour :
-    K = 1.0 / (1.0 + 2.0) = 0.333
-    x_new = 100 + 0.333 * (102 - 100) = 100.667
-    P_new = (1 - 0.333) * 1.0 = 0.667
+Prediction : $\hat{x}_{pred} = 0.95 \times 100 + 0.05 \times 100 = 100$, $P_{pred} = 0.95^2 \times 1.0 + 0.0975 = 1.0$
 
-  --> Fair value estimee = 100.667
-  --> Le prix (102) est au-dessus : potentiellement a shorter
-```
+Mise a jour :
+
+$$K = \frac{1.0}{1.0 + 2.0} = 0.333 \qquad \hat{x}_{new} = 100 + 0.333 \times (102 - 100) = 100.667 \qquad P_{new} = 0.667$$
+
+Fair value estimee $= 100.667$. Le prix ($102$) est au-dessus : potentiellement a shorter.
 
 ## Exercice 3 : Decision de trading
 
-```
-x_kalman = 100.667
-sigma_stat = 1.0 / sqrt(2 * 0.05) = 1.0 / 0.316 = 3.16
-bande (k=0.8) = 0.8 * 3.16 = 2.53
+$$\hat{x}_{kalman} = 100.667 \qquad \sigma_{stat} = \frac{1.0}{\sqrt{2 \times 0.05}} = \frac{1.0}{0.316} = 3.16$$
+$$\text{Bande } (k=0.8) = 0.8 \times 3.16 = 2.53$$
+$$\text{Upper} = 100.667 + 2.53 = 103.19 \qquad \text{Lower} = 100.667 - 2.53 = 98.14$$
 
-Upper = 100.667 + 2.53 = 103.19
-Lower = 100.667 - 2.53 = 98.14
+Prix actuel $= 102$ :
 
-Prix actuel = 102
+| Test | Resultat | Action |
+|---|---|---|
+| $102 < 103.19$ | Pas assez haut | PAS de short |
+| $102 > 98.14$ | Pas assez bas | PAS de long |
 
-102 < 103.19 --> PAS de short (pas assez haut)
-102 > 98.14  --> PAS de long (pas assez bas)
+**Decision : NO TRADE** (attendre)
 
-Decision : NO TRADE (attendre)
-
-Si le prix montait a 103.5 :
-  103.5 > 103.19 --> SHORT
-  Target = x_kalman = 100.667 (profit potentiel = ~2.83)
-```
+Si le prix montait a $103.5$ : $103.5 > 103.19$ $\Rightarrow$ **SHORT**, target $= \hat{x}_{kalman} = 100.667$ (profit potentiel $\approx 2.83$)
 
 ## Exercice 4 : Le piege de l'estimation biaisee
 
-```
-Scenario A : mu estimee = 103.5, vraie mu = 100
-  Tu shortes quand prix > 104.5
-  Tu fermes quand prix = 103.5
-  Mais le prix gravite autour de 100, pas 103.5
-  --> Tes shorts sont fermes TROP HAUT
-  --> Tu perds la difference (3.5 points de biais)
+**Scenario A :** $\hat{\mu} = 103.5$, vraie $\mu = 100$
+- Tu shortes quand prix $> 104.5$
+- Tu fermes quand prix $= 103.5$
+- Mais le prix gravite autour de $100$, pas $103.5$
+- Tes shorts sont fermes TROP HAUT, tu perds la difference ($3.5$ points de biais)
 
-Scenario B : Kalman adaptatif
-  Apres 50 barres, le Kalman a ajuste :
-  x_kalman = 100.8 (proche de la realite)
-  Tes bandes sont maintenant correctes
-  --> Tes trades sont BIEN centres
-  --> Tu profites du vrai mean reversion
+**Scenario B :** Kalman adaptatif
+- Apres 50 barres, le Kalman a ajuste : $\hat{x}_{kalman} = 100.8$ (proche de la realite)
+- Tes bandes sont maintenant correctes
+- Tes trades sont BIEN centres, tu profites du vrai mean reversion
 
-LECON : le Kalman te protege contre le biais d'estimation
-```
+**LECON :** le Kalman te protege contre le biais d'estimation.
 
 ---
 
@@ -348,64 +301,52 @@ LECON : le Kalman te protege contre le biais d'estimation
 # RESUME — Fiche de revision
 # ============================================
 
-```
-MEAN REVERSION = le prix revient a une "juste valeur"
+**MEAN REVERSION** = le prix revient a une "juste valeur"
 
-PROCESSUS OU :
-  dX = theta * (mu - X) * dt + sigma * dW
-  Discret : X(t+1) = phi * X(t) + (1-phi) * mu + sigma * epsilon
-  Distribution : X ~ Normal(mu, sigma^2 / (2*theta))
+**PROCESSUS OU :**
 
-CALIBRATION AR(1) :
-  Regression X(t) sur X(t-1) --> phi, c
-  mu = mean(closes) ou c/(1-phi)
-  sigma = std(residus)
+$$dX_t = \theta(\mu - X_t)\,dt + \sigma\,dW_t$$
 
-KALMAN FILTER + OU :
-  Prediction : x_pred = phi * x + (1-phi) * mu
-  Mise a jour : K = P/(P+R), x = x_pred + K*(prix - x_pred)
-  Q = sigma^2 * (1-phi^2)
-  R = confiance dans les prix vs le modele
+Discret : $X_{t+1} = \phi \cdot X_t + (1-\phi) \cdot \mu + \sigma \cdot \varepsilon$
 
-NOISE LEVER :
-  R petit = suit les prix (reactif, bruite)
-  R grand = suit le modele OU (lisse, en retard)
+Distribution : $X \sim \mathcal{N}\!\left(\mu,\; \frac{\sigma^2}{2\theta}\right)$
 
-BANDES DE TRADING :
-  sigma_stat = sigma / sqrt(2*theta)
-  Upper = x_kalman + k * sigma_stat
-  Lower = x_kalman - k * sigma_stat
-  k typique = 0.8 a 1.5
+**CALIBRATION AR(1) :** regression $X_t$ sur $X_{t-1}$ $\to$ $\phi$, $c$, puis $\mu = \frac{c}{1-\phi}$, $\sigma = \text{std}(\text{residus})$
 
-REGLES :
-  Prix > Upper --> SHORT
-  Prix < Lower --> LONG
-  Prix ~ x_kalman --> FERMER
+**KALMAN FILTER + OU :**
 
-FORECAST OU :
-  X_hat(h) = mu + phi^h * (x - mu)
-  Le prix converge vers mu exponentiellement
+$$\hat{x}_{pred} = \phi \cdot x + (1-\phi) \cdot \mu \qquad K = \frac{P}{P+R} \qquad \hat{x}_{new} = \hat{x}_{pred} + K \cdot (z - \hat{x}_{pred})$$
+$$Q = \sigma^2(1-\phi^2) \qquad R = \text{confiance prix vs modele}$$
 
-LE PIEGE :
-  Estimer mu avec trop peu de donnees = BIAIS
-  Biais = perte SYSTEMATIQUE (structural bleed)
-  Solution : Kalman adaptatif + recalibration
+**NOISE LEVER :** $R$ petit = suit les prix (reactif, bruite) ; $R$ grand = suit le modele OU (lisse, en retard)
 
-POUR TON TRADING :
-  1. Calibre OU sur tes donnees MNQ (AR(1) regression)
-  2. Initialise le Kalman avec phi, mu, sigma
-  3. A chaque tick : update le Kalman
-  4. x_kalman = ta fair value en temps reel
-  5. Si absorption detectee (module 06) + prix hors bande :
-     --> signal fort de mean reversion
-  6. Combine avec HMM (module 05) : ne trade QUE en low/med vol
-  7. Combine avec GARCH (module 04) : ajuste la taille selon la vol
+**BANDES DE TRADING :**
 
-APP KTS.PY :
-  - Se connecte a IBKR en live
-  - Calibre OU automatiquement
-  - Kalman Filter temps reel sur chaque tick
-  - Noise lever : slider trust prices vs trust OU
-  - Forecast OU (points violets)
-  - Trading Long/Short/Close
-```
+$$\sigma_{stat} = \frac{\sigma}{\sqrt{2\theta}} \qquad \text{Upper} = \hat{x}_{kalman} + k \cdot \sigma_{stat} \qquad \text{Lower} = \hat{x}_{kalman} - k \cdot \sigma_{stat}$$
+
+$k$ typique $= 0.8$ a $1.5$
+
+| Condition | Action |
+|---|---|
+| Prix $>$ Upper | **SHORT** |
+| Prix $<$ Lower | **LONG** |
+| Prix $\approx \hat{x}_{kalman}$ | **FERMER** |
+
+**FORECAST OU :**
+
+$$\boxed{\hat{X}(h) = \mu + \phi^h \cdot (x - \mu)}$$
+
+Le prix converge vers $\mu$ exponentiellement.
+
+**LE PIEGE :** estimer $\mu$ avec trop peu de donnees $=$ BIAIS $=$ perte SYSTEMATIQUE (structural bleed). Solution : Kalman adaptatif + recalibration.
+
+**POUR TON TRADING :**
+1. Calibre OU sur tes donnees MNQ (AR(1) regression)
+2. Initialise le Kalman avec $\phi$, $\mu$, $\sigma$
+3. A chaque tick : update le Kalman
+4. $\hat{x}_{kalman}$ = ta fair value en temps reel
+5. Si absorption detectee (module 06) + prix hors bande $\to$ signal fort de mean reversion
+6. Combine avec HMM (module 05) : ne trade QUE en low/med vol
+7. Combine avec GARCH (module 04) : ajuste la taille selon la vol
+
+**APP KTS.PY :** IBKR live, calibre OU auto, Kalman temps reel, noise lever slider, forecast OU, trading Long/Short/Close

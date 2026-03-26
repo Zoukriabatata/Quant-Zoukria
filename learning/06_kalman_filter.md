@@ -118,30 +118,21 @@ $$z_t = H \cdot x_t + v_t \quad ,\quad v_t \sim \mathcal{N}(0, R)$$
 
 A CHAQUE nouveau point de donnee, tu fais :
 
-```
-+=============================================+
-|  ETAPE 1 : PREDICTION (le modele parle)     |
-|                                              |
-|  x_pred = F * x_prev + B * u                |
-|  P_pred = F^2 * P_prev + Q                  |
-|                                              |
-|  "Voici ou je PENSE que l'etat est"         |
-|  "Et voici mon INCERTITUDE"                 |
-+=============================================+
-              |
-              v
-+=============================================+
-|  ETAPE 2 : CORRECTION (les donnees parlent) |
-|                                              |
-|  Innovation = z - x_pred                     |
-|  K = P_pred / (P_pred + R)                  |
-|  x_new = x_pred + K * Innovation            |
-|  P_new = (1 - K) * P_pred                   |
-|                                              |
-|  "Je corrige ma prediction avec les donnees" |
-|  "Mon incertitude a DIMINUE"                |
-+=============================================+
-```
+**ETAPE 1 : PREDICTION** (le modele parle)
+
+$$\hat{x}_{pred} = F \cdot x_{prev} + B \cdot u$$
+$$P_{pred} = F^2 \cdot P_{prev} + Q$$
+
+> "Voici ou je PENSE que l'etat est, et voici mon INCERTITUDE"
+
+**ETAPE 2 : CORRECTION** (les donnees parlent)
+
+$$\text{Innovation} = z - \hat{x}_{pred}$$
+$$K = \frac{P_{pred}}{P_{pred} + R}$$
+$$\hat{x}_{new} = \hat{x}_{pred} + K \cdot \text{Innovation}$$
+$$P_{new} = (1 - K) \cdot P_{pred}$$
+
+> "Je corrige ma prediction avec les donnees. Mon incertitude a DIMINUE"
 
 ## Le KALMAN GAIN (K) — la cle de tout
 
@@ -179,41 +170,38 @@ K = 0.5 (equilibre) :
 
 ## Application au VIX (exemple du notebook #92)
 
-```
-MODELE : le VIX suit un processus OU (mean reversion)
-  x(t) = e^(-kappa*dt) * x(t-1) + theta*(1-e^(-kappa*dt))
+**MODELE :** le VIX suit un processus OU (mean reversion)
 
-  En AR(1) : x(t) = phi * x(t-1) + b
+$$x_t = e^{-\kappa \Delta t} \cdot x_{t-1} + \theta(1 - e^{-\kappa \Delta t})$$
 
-  Calibration sur donnees historiques :
-    kappa = 25.4 (vitesse de reversion)
-    theta = 15.5 (moyenne long terme)
-    sigma = 43.1 (volatilite de la vol)
+En AR(1) : $x_t = \phi \cdot x_{t-1} + b$
 
-OBSERVATION : le VIX quote = x_vrai + bruit de mesure
+| Parametre | Valeur | Role |
+|---|---|---|
+| $\kappa$ | $25.4$ | Vitesse de reversion |
+| $\theta$ | $15.5$ | Moyenne long terme |
+| $\sigma$ | $43.1$ | Volatilite de la vol |
 
-KALMAN FILTER :
-  1. PREDICTION : "Mon modele dit que le VIX devrait etre a 18.3"
-  2. OBSERVATION : "Le marche quote 21.5"
-  3. GAIN : K = 0.7
-  4. ESTIMATION : 18.3 + 0.7 * (21.5 - 18.3) = 18.3 + 2.24 = 20.54
-  5. "Mon meilleur guess du VRAI VIX = 20.54"
-```
+**OBSERVATION :** le VIX quote $= x_{vrai} + \text{bruit de mesure}$
+
+**KALMAN FILTER :**
+1. PREDICTION : "Mon modele dit $\hat{x}_{pred} = 18.3$"
+2. OBSERVATION : "Le marche quote $z = 21.5$"
+3. GAIN : $K = 0.7$
+4. ESTIMATION : $18.3 + 0.7 \times (21.5 - 18.3) = 18.3 + 2.24 = 20.54$
+5. "Mon meilleur guess du VRAI VIX $= 20.54$"
 
 ## Dual Filter : detecter les regime changes
 
+**PROBLEME :** si le regime change (ex: crash), le modele predit mal. L'innovation $(z - \hat{x}_{pred})$ devient ENORME.
+
+**SOLUTION** (Adaptive / Dual Kalman) : si $|\text{innovation}| > 3 \sqrt{P_{pred} + R}$ :
+- "Alerte ! Quelque chose a change !"
+- On augmente $P$ (= on ne fait plus confiance au modele)
+- $K$ monte vers 1 (= on suit les donnees)
+- Le filtre s'ADAPTE au nouveau regime
+
 ```
-PROBLEME :
-  Si le regime change (ex: crash), le modele predit mal.
-  L'innovation (z - x_pred) devient ENORME.
-
-SOLUTION (Adaptive / Dual Kalman) :
-  Si |innovation| > 3 * sqrt(P_pred + R) :
-    --> "Alerte ! Quelque chose a change !"
-    --> On augmente P (= on ne fait plus confiance au modele)
-    --> K monte vers 1 (= on suit les donnees)
-    --> Le filtre s'ADAPTE au nouveau regime
-
 SANS adaptation :                AVEC adaptation :
   Regime change ici               Regime change ici
          |                               |
@@ -233,88 +221,61 @@ SANS adaptation :                AVEC adaptation :
 
 ## Exercice 1 : Kalman Filter a la main
 
-```
-Setup :
-  F = 1 (random walk : x(t) = x(t-1) + bruit)
-  Q = 1 (bruit du modele)
-  R = 4 (bruit de mesure : les donnees sont 4x plus bruitees)
-  x(0) = 10 (estimation initiale)
-  P(0) = 1 (incertitude initiale)
+Setup : $F = 1$ (random walk), $Q = 1$, $R = 4$ (donnees $4\times$ plus bruitees), $x_0 = 10$, $P_0 = 1$
 
-TICK 1 : observation z = 12
+**TICK 1 :** observation $z = 12$
 
-  Prediction :
-    x_pred = 1 * 10 = 10
-    P_pred = 1^2 * 1 + 1 = 2
+Prediction : $\hat{x}_{pred} = 1 \times 10 = 10$, $P_{pred} = 1^2 \times 1 + 1 = 2$
 
-  Correction :
-    Innovation = 12 - 10 = 2
-    K = 2 / (2 + 4) = 2/6 = 0.333
-    x_new = 10 + 0.333 * 2 = 10.67
-    P_new = (1 - 0.333) * 2 = 1.333
+Correction :
 
-  --> Le filtre dit 10.67 (pas 12, car R est grand = donnees bruitees)
+$$\text{Innovation} = 12 - 10 = 2 \qquad K = \frac{2}{2 + 4} = 0.333$$
+$$\hat{x}_{new} = 10 + 0.333 \times 2 = 10.67 \qquad P_{new} = (1 - 0.333) \times 2 = 1.333$$
 
-TICK 2 : observation z = 13
+Le filtre dit $10.67$ (pas $12$, car $R$ est grand = donnees bruitees).
 
-  Prediction :
-    x_pred = 10.67
-    P_pred = 1.333 + 1 = 2.333
+**TICK 2 :** observation $z = 13$
 
-  Correction :
-    Innovation = 13 - 10.67 = 2.33
-    K = 2.333 / (2.333 + 4) = 0.368
-    x_new = 10.67 + 0.368 * 2.33 = 11.53
-    P_new = (1 - 0.368) * 2.333 = 1.474
+Prediction : $\hat{x}_{pred} = 10.67$, $P_{pred} = 1.333 + 1 = 2.333$
 
-  --> Monte doucement vers les observations
-```
+Correction :
+
+$$\text{Innovation} = 13 - 10.67 = 2.33 \qquad K = \frac{2.333}{2.333 + 4} = 0.368$$
+$$\hat{x}_{new} = 10.67 + 0.368 \times 2.33 = 11.53 \qquad P_{new} = (1 - 0.368) \times 2.333 = 1.474$$
+
+Monte doucement vers les observations.
 
 ## Exercice 2 : Impact de R
 
-```
-Meme donnees, mais R = 0.5 (donnees precises) :
+Meme donnees, TICK 1 $z = 12$, $P_{pred} = 2$ :
 
-TICK 1 : z = 12
-  K = 2 / (2 + 0.5) = 0.80
-  x_new = 10 + 0.80 * 2 = 11.6   (proche de 12)
+| $R$ | $K = \frac{P_{pred}}{P_{pred}+R}$ | $\hat{x}_{new}$ | Comportement |
+|---|---|---|---|
+| $0.5$ | $0.80$ | $11.6$ | Proche de $z$ |
+| $4$ | $0.333$ | $10.67$ | Proche du modele |
+| $100$ | $0.02$ | $10.04$ | Ignore l'observation |
 
-Vs R = 4 (donnees bruitees) :
-  K = 0.333
-  x_new = 10.67                    (reste proche du modele)
-
-Vs R = 100 (donnees tres bruitees) :
-  K = 2 / (2 + 100) = 0.02
-  x_new = 10 + 0.02 * 2 = 10.04   (ignore presque l'observation)
-
-LECON : R controle "a quel point tu fais confiance aux donnees"
-  - Petit R = suit les donnees (reactif mais bruite)
-  - Grand R = suit le modele (lisse mais en retard)
-  - A toi de trouver le bon R pour ton signal
-```
+**LECON :** $R$ controle "a quel point tu fais confiance aux donnees"
+- Petit $R$ = suit les donnees (reactif mais bruite)
+- Grand $R$ = suit le modele (lisse mais en retard)
+- A toi de trouver le bon $R$ pour ton signal
 
 ## Exercice 3 : Detecter un regime change
 
-```
-Ton filtre tourne tranquillement :
-  x_pred = 100, P_pred = 2, R = 4
+Ton filtre tourne tranquillement : $\hat{x}_{pred} = 100$, $P_{pred} = 2$, $R = 4$
 
-Soudain : z = 85 (crash !)
+Soudain : $z = 85$ (crash !)
 
-  Innovation = 85 - 100 = -15
-  Seuil 3-sigma = 3 * sqrt(2 + 4) = 3 * 2.45 = 7.35
+$$\text{Innovation} = 85 - 100 = -15$$
+$$\text{Seuil } 3\sigma = 3 \sqrt{P_{pred} + R} = 3 \times 2.45 = 7.35$$
 
-  |innovation| = 15 > 7.35 --> ALERTE REGIME CHANGE !
+$|\text{innovation}| = 15 > 7.35$ $\Rightarrow$ **ALERTE REGIME CHANGE !**
 
-  Action : inflate P
-  P_pred = 2 + 150 = 152
-  K = 152 / (152 + 4) = 0.974
+Action : inflate $P$ : $P_{pred} = 2 + 150 = 152$
 
-  x_new = 100 + 0.974 * (-15) = 85.4
+$$K = \frac{152}{152 + 4} = 0.974 \qquad \hat{x}_{new} = 100 + 0.974 \times (-15) = 85.4$$
 
-  --> Le filtre SAUTE vers la nouvelle realite
-      au lieu de trainer pendant 20 ticks
-```
+Le filtre **SAUTE** vers la nouvelle realite au lieu de trainer pendant 20 ticks.
 
 ---
 
@@ -322,43 +283,36 @@ Soudain : z = 85 (crash !)
 # RESUME — Fiche de revision
 # ============================================
 
-```
-KALMAN FILTER : combine MODELE + DONNEES pour estimer l'etat vrai
+**KALMAN FILTER :** combine MODELE + DONNEES pour estimer l'etat vrai.
 
-2 ETAPES (a chaque tick) :
-  1. PREDICTION : x_pred = F * x_prev + B*u
-                  P_pred = F^2 * P_prev + Q
-  2. CORRECTION : K = P_pred / (P_pred + R)
-                  x_new = x_pred + K * (z - x_pred)
-                  P_new = (1-K) * P_pred
+**2 ETAPES** (a chaque tick) :
 
-KALMAN GAIN (K) :
-  K proche de 1 = suit les donnees (modele incertain)
-  K proche de 0 = suit le modele (donnees bruitees)
-  K = P / (P + R)
+1. **PREDICTION :**
 
-PARAMETRES CLES :
-  Q = bruit du modele (processus)
-  R = bruit de mesure (observations)
-  F = dynamique du modele
+$$\hat{x}_{pred} = F \cdot x_{prev} + B \cdot u \qquad P_{pred} = F^2 \cdot P_{prev} + Q$$
 
-  Grand Q = modele instable = K monte = suit les donnees
-  Grand R = mesures bruitees = K baisse = suit le modele
+2. **CORRECTION :**
 
-DUAL FILTER (regime change) :
-  Si |innovation| > 3 * sqrt(P+R) :
-  --> inflate P --> K monte --> s'adapte vite
+$$\boxed{K = \frac{P_{pred}}{P_{pred} + R}} \qquad \hat{x}_{new} = \hat{x}_{pred} + K \cdot (z - \hat{x}_{pred}) \qquad P_{new} = (1-K) \cdot P_{pred}$$
 
-POUR TON TRADING :
-  Signal d'absorption brut --> Kalman --> signal propre
+**KALMAN GAIN** ($K$) :
+- $K \to 1$ = suit les donnees (modele incertain)
+- $K \to 0$ = suit le modele (donnees bruitees)
 
-  R = "combien de bruit dans mes donnees d'orderflow ?"
-  Q = "a quelle vitesse le vrai signal change ?"
+**PARAMETRES CLES :**
 
-  Petit R = reactif (bon pour signaux rapides)
-  Grand R = lisse (bon pour tendances lentes)
+| Parametre | Role | Si grand |
+|---|---|---|
+| $Q$ | Bruit du modele (processus) | $K$ monte, suit les donnees |
+| $R$ | Bruit de mesure (observations) | $K$ baisse, suit le modele |
+| $F$ | Dynamique du modele | |
 
-  COMBINE AVEC :
-  GARCH --> ajuste Q dynamiquement (vol change)
-  HMM   --> detecte le regime pour ajuster R
-```
+**DUAL FILTER** (regime change) : si $|\text{innovation}| > 3\sqrt{P+R}$ $\Rightarrow$ inflate $P$ $\Rightarrow$ $K$ monte $\Rightarrow$ s'adapte vite
+
+**POUR TON TRADING :**
+- Signal d'absorption brut $\to$ Kalman $\to$ signal propre
+- $R$ = "combien de bruit dans mes donnees d'orderflow ?"
+- $Q$ = "a quelle vitesse le vrai signal change ?"
+- Petit $R$ = reactif (bon pour signaux rapides)
+- Grand $R$ = lisse (bon pour tendances lentes)
+- **COMBINE AVEC :** GARCH $\to$ ajuste $Q$ dynamiquement ; HMM $\to$ detecte le regime pour ajuster $R$

@@ -81,14 +81,13 @@ GARCH = ajuster ta vitesse selon la route
 ## Etape 1 : Le modele de base
 
 Le prix suit :
-```
-rendement(t) = mu + erreur(t)
 
-  mu = rendement moyen (souvent ~0 en intraday)
-  erreur(t) = sigma(t) * z(t)
-  z(t) = bruit standard (normal 0,1)
-  sigma(t) = volatilite qui CHANGE dans le temps  <-- c'est ca qu'on cherche
-```
+$$r_t = \mu + \varepsilon_t$$
+
+- $\mu$ = rendement moyen (souvent $\approx 0$ en intraday)
+- $\varepsilon_t = \sigma_t \cdot z_t$
+- $z_t \sim \mathcal{N}(0, 1)$ = bruit standard
+- $\sigma_t$ = volatilite qui CHANGE dans le temps -- c'est ca qu'on cherche
 
 ## Etape 2 : ARCH(1) — Engle 1982
 
@@ -101,27 +100,20 @@ $$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2$$
 
 En francais : la volatilite d'aujourd'hui depend de la **TAILLE** du mouvement d'hier (au carre).
 
-Visuellement :
+**Exemple numerique :** hier le prix a bouge de $+3\%$ (gros choc), $\varepsilon^2 = (0.03)^2 = 0.0009$
 
-```
-  Hier le prix a bouge de +3% (gros choc)
-  erreur^2 = (0.03)^2 = 0.0009
+$$\sigma^2_{aujourd'hui} = 0.00001 + 0.25 \times 0.0009 = 0.00001 + 0.000225 = 0.000235 \quad \Rightarrow \quad \sigma = 1.53\%$$
 
-  sigma^2(aujourd'hui) = 0.00001 + 0.25 * 0.0009
-                        = 0.00001 + 0.000225
-                        = 0.000235
-  sigma = sqrt(0.000235) = 1.53%
+Vs un jour calme ou hier $= +0.5\%$ :
 
-  Vs un jour calme ou hier = +0.5% :
-  sigma^2 = 0.00001 + 0.25 * (0.005)^2
-          = 0.00001 + 0.00000625
-          = 0.00001625
-  sigma = 0.40%
+$$\sigma^2 = 0.00001 + 0.25 \times (0.005)^2 = 0.00001 + 0.00000625 = 0.00001625 \quad \Rightarrow \quad \sigma = 0.40\%$$
 
-  Apres un gros choc : sigma = 1.53%
-  Apres un jour calme : sigma = 0.40%
-  --> la vol s'adapte automatiquement !
-```
+| Contexte | $\sigma$ |
+|---|---|
+| Apres un gros choc | $1.53\%$ |
+| Apres un jour calme | $0.40\%$ |
+
+La vol s'adapte automatiquement !
 
 ## Etape 3 : GARCH(1,1) — Bollerslev 1986
 
@@ -178,23 +170,16 @@ $$\sigma_{LT}^2 = \frac{0.00001}{1 - 0.1 - 0.85} = \frac{0.00001}{0.05} = 0.0002
 
 ## Application : Value at Risk (VaR)
 
-```
-VaR = "Quelle est ma perte maximale avec 95% de confiance ?"
+VaR = "Quelle est ma perte maximale avec $95\%$ de confiance ?"
 
-VaR NAIVE (vol constante) :
-  VaR = sigma_fixe * 1.645
-  --> utilise la meme vol tout le temps
-  --> SOUS-ESTIME le risque en periode de crise
+**VaR NAIVE** (vol constante) : $VaR = \sigma_{fixe} \times 1.645$ -- utilise la meme vol tout le temps, SOUS-ESTIME le risque en periode de crise.
 
-VaR GARCH :
-  VaR(t) = sigma_GARCH(t) * 1.645
-  --> s'adapte au regime de vol actuel
-  --> beaucoup plus fiable
+**VaR GARCH** : $VaR_t = \sigma_{GARCH}(t) \times 1.645$ -- s'adapte au regime de vol actuel, beaucoup plus fiable.
 
-Resultats du notebook (AAPL) :
-  VaR naive : 40.65% d'exceedances (devrait etre 5%)  !!!
-  VaR GARCH : 9.74% d'exceedances (bien meilleur)
-```
+| Methode | Exceedances | Cible |
+|---|---|---|
+| VaR naive | $40.65\%$ | $5\%$ !!! |
+| VaR GARCH | $9.74\%$ | $5\%$ (bien meilleur) |
 
 ---
 
@@ -204,70 +189,50 @@ Resultats du notebook (AAPL) :
 
 ## Exercice 1 : GARCH(1,1) a la main
 
-```
-Parametres : alpha0 = 0.00001, alpha1 = 0.10, beta1 = 0.85
-Jour 0 : sigma^2 = 0.0002, erreur = +2% = 0.02
+Parametres : $\alpha_0 = 0.00001$, $\alpha_1 = 0.10$, $\beta_1 = 0.85$. Jour 0 : $\sigma^2 = 0.0002$, $\varepsilon = +2\% = 0.02$
 
-Jour 1 :
-  sigma^2(1) = 0.00001 + 0.10 * (0.02)^2 + 0.85 * 0.0002
-             = 0.00001 + 0.10 * 0.0004 + 0.85 * 0.0002
-             = 0.00001 + 0.00004 + 0.00017
-             = 0.00022
-  sigma(1) = sqrt(0.00022) = 1.48%
+**Jour 1 :**
 
-Maintenant jour 1 a un mouvement de -4% (gros choc) :
+$$\sigma_1^2 = 0.00001 + 0.10 \times (0.02)^2 + 0.85 \times 0.0002 = 0.00001 + 0.00004 + 0.00017 = 0.00022$$
+$$\sigma_1 = \sqrt{0.00022} = 1.48\%$$
 
-Jour 2 :
-  sigma^2(2) = 0.00001 + 0.10 * (0.04)^2 + 0.85 * 0.00022
-             = 0.00001 + 0.10 * 0.0016 + 0.85 * 0.00022
-             = 0.00001 + 0.00016 + 0.000187
-             = 0.000357
-  sigma(2) = sqrt(0.000357) = 1.89%
+Jour 1 a un mouvement de $-4\%$ (gros choc).
 
-  --> La vol a MONTE de 1.48% a 1.89% apres le choc de -4%.
-```
+**Jour 2 :**
+
+$$\sigma_2^2 = 0.00001 + 0.10 \times (0.04)^2 + 0.85 \times 0.00022 = 0.00001 + 0.00016 + 0.000187 = 0.000357$$
+$$\sigma_2 = \sqrt{0.000357} = 1.89\%$$
+
+La vol a **MONTE** de $1.48\%$ a $1.89\%$ apres le choc de $-4\%$.
 
 ## Exercice 2 : Persistance
 
-```
-Apres le choc, supposons des jours calmes (erreur = 0) :
+Apres le choc, supposons des jours calmes ($\varepsilon = 0$) :
 
-Jour 3 (erreur=0) :
-  sigma^2(3) = 0.00001 + 0.10 * 0 + 0.85 * 0.000357
-             = 0.00001 + 0 + 0.000303 = 0.000313
-  sigma(3) = 1.77%
+**Jour 3** ($\varepsilon=0$) : $\sigma_3^2 = 0.00001 + 0.10 \times 0 + 0.85 \times 0.000357 = 0.000313$ $\Rightarrow$ $\sigma_3 = 1.77\%$
 
-Jour 4 (erreur=0) :
-  sigma^2(4) = 0.00001 + 0 + 0.85 * 0.000313 = 0.000276
-  sigma(4) = 1.66%
+**Jour 4** ($\varepsilon=0$) : $\sigma_4^2 = 0.00001 + 0 + 0.85 \times 0.000313 = 0.000276$ $\Rightarrow$ $\sigma_4 = 1.66\%$
 
-Jour 5 :
-  sigma(5) = 1.57%
+| Jour | $\sigma$ |
+|---|---|
+| Jour 2 (choc) | $1.89\%$ |
+| Jour 3 | $1.77\%$ |
+| Jour 4 | $1.66\%$ |
+| Jour 5 | $1.57\%$ |
+| Jour 10 | $\sim 1.30\%$ |
 
-Jour 10 :
-  sigma(10) = ~1.30%
-
-  --> La vol DESCEND lentement = mean reversion
-  --> Il faut ~15-20 jours pour revenir au niveau normal
-  --> C'est le CLUSTERING capture par beta1
-```
+La vol DESCEND lentement = **mean reversion**. Il faut $\sim 15$-$20$ jours pour revenir au niveau normal. C'est le **CLUSTERING** capture par $\beta_1$.
 
 ## Exercice 3 : Impact sur le sizing
 
-```
-Ton capital = 10 000$
-Tu risques max 1% = 100$ par trade
-Stop loss = 10 points MNQ = 50$
+Capital $= 10\,000\$$, risque max $1\% = 100\$$ par trade, stop loss $= 10$ points MNQ $= 50\$$
 
-En regime LOW vol (sigma GARCH = petit) :
-  Tu peux prendre 2 contrats (100$/50$ = 2)
+| Regime | $\sigma_{GARCH}$ | Contrats | Raison |
+|---|---|---|---|
+| LOW vol | petit | $100\$/50\$ = 2$ | Conditions normales |
+| HIGH vol | double | $1$ | Stop atteint plus souvent, REDUIRE |
 
-En regime HIGH vol (sigma GARCH double) :
-  Le stop de 10 points est atteint PLUS souvent
-  Tu devrais REDUIRE a 1 contrat
-
-GARCH te dit QUAND ajuster ta taille.
-```
+**GARCH te dit QUAND ajuster ta taille.**
 
 ---
 
@@ -275,35 +240,39 @@ GARCH te dit QUAND ajuster ta taille.
 # RESUME — Fiche de revision
 # ============================================
 
-```
-ARCH : sigma^2(t) = alpha0 + alpha1 * erreur^2(t-1)
-  --> la vol depend du choc d'hier
+**ARCH :**
 
-GARCH : sigma^2(t) = alpha0 + alpha1 * erreur^2(t-1) + beta1 * sigma^2(t-1)
-  --> la vol depend du choc d'hier ET de la vol d'hier
-  --> capture le CLUSTERING (la vol persiste)
+$$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2$$
 
-PARAMETRES TYPIQUES :
-  alpha1 = 0.05-0.15 (reaction aux chocs)
-  beta1  = 0.80-0.95 (persistance)
-  alpha1 + beta1 < 1  (stabilite)
+La vol depend du choc d'hier.
 
-CAPTURE 3 PHENOMENES :
-  1. Clustering : gros mouvements --> gros mouvements
-  2. Mean reversion : la vol revient toujours a la moyenne
-  3. Fat tails : plus de valeurs extremes que la normale
+**GARCH :**
 
-VOL LONG TERME :
-  sigma^2_LT = alpha0 / (1 - alpha1 - beta1)
+$$\boxed{\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2 + \beta_1 \cdot \sigma_{t-1}^2}$$
 
-VaR GARCH >> VaR naive :
-  Naive sous-estime massivement le risque (40% exceedances vs 5% cible)
-  GARCH bien meilleur (10% exceedances)
+La vol depend du choc d'hier ET de la vol d'hier. Capture le CLUSTERING (la vol persiste).
 
-POUR TON TRADING :
-  - GARCH te donne la vol ACTUELLE (pas une moyenne fixe)
-  - En high vol : REDUIS ta taille de position
-  - En low vol : tu peux etre plus agressif
-  - Combine avec HMM : GARCH = "quelle vol ?"
-                        HMM = "quel regime ?"
-```
+**PARAMETRES TYPIQUES :**
+
+| Parametre | Valeur | Role |
+|---|---|---|
+| $\alpha_1$ | $0.05$-$0.15$ | Reaction aux chocs |
+| $\beta_1$ | $0.80$-$0.95$ | Persistance |
+| $\alpha_1 + \beta_1$ | $< 1$ | Stabilite |
+
+**CAPTURE 3 PHENOMENES :**
+1. Clustering : gros mouvements $\to$ gros mouvements
+2. Mean reversion : la vol revient toujours a la moyenne
+3. Fat tails : plus de valeurs extremes que la normale
+
+**VOL LONG TERME :**
+
+$$\sigma_{LT}^2 = \frac{\alpha_0}{1 - \alpha_1 - \beta_1}$$
+
+**VaR GARCH >> VaR naive :** naive sous-estime massivement le risque ($40\%$ exceedances vs $5\%$ cible), GARCH bien meilleur ($10\%$ exceedances).
+
+**POUR TON TRADING :**
+- GARCH te donne la vol ACTUELLE (pas une moyenne fixe)
+- En high vol : REDUIS ta taille de position
+- En low vol : tu peux etre plus agressif
+- Combine avec HMM : GARCH = "quelle vol ?", HMM = "quel regime ?"
