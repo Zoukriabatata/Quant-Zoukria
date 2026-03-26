@@ -1,0 +1,1379 @@
+"""
+Interactive Plotly charts for each learning module.
+Called by app_learning.py to inject real visualizations.
+"""
+
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from scipy.stats import norm, gaussian_kde
+
+# ── Shared dark theme ──────────────────────────────────────────────
+DARK = dict(
+    template="plotly_dark",
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(17,17,17,1)",
+    font=dict(color="#e0e0e0", size=13),
+    margin=dict(t=50, b=40, l=50, r=30),
+)
+CYAN = "#00e5ff"
+MAGENTA = "#ff00e5"
+GREEN = "#00ff88"
+RED = "#ff3366"
+YELLOW = "#ffd600"
+ORANGE = "#ff9100"
+WHITE_50 = "rgba(255,255,255,0.5)"
+
+
+# ===================================================================
+# 01 — TIME SERIES
+# ===================================================================
+
+# ===================================================================
+# 00b — RETAIL VS INSTITUTIONAL
+# ===================================================================
+
+def retail_market_making_sim():
+    """Simulate market-maker collecting spread vs price risk."""
+    np.random.seed(42)
+    n = 200
+    mid = 100 + np.cumsum(np.random.normal(0, 0.1, n))
+    spread = 0.20
+    bid, ask = mid - spread / 2, mid + spread / 2
+
+    pos = 0
+    pnl = np.zeros(n)
+    for i in range(n):
+        trade = np.random.choice(["buy", "sell", "none"], p=[0.35, 0.35, 0.30])
+        gain = spread / 2 if trade != "none" else 0
+        if trade == "buy":
+            pos += 1
+        elif trade == "sell":
+            pos -= 1
+        price_impact = -pos * (mid[i] - mid[i - 1]) if i > 0 else 0
+        pnl[i] = gain + price_impact
+
+    cum_pnl = np.cumsum(pnl)
+
+    fig = make_subplots(rows=1, cols=2, subplot_titles=["Bid / Ask / Mid", "P&L du Market-Maker"])
+    fig.add_trace(go.Scatter(y=ask, line=dict(color=RED, width=1), name="Ask"), row=1, col=1)
+    fig.add_trace(go.Scatter(y=mid, line=dict(color=WHITE_50, width=1, dash="dot"), name="Mid"), row=1, col=1)
+    fig.add_trace(go.Scatter(y=bid, line=dict(color=GREEN, width=1), name="Bid"), row=1, col=1)
+    fig.add_trace(go.Bar(y=pnl, marker_color=[GREEN if p > 0 else RED for p in pnl], showlegend=False, opacity=0.4), row=1, col=2)
+    fig.add_trace(go.Scatter(y=cum_pnl, line=dict(color=CYAN, width=3), name="Cum PnL"), row=1, col=2)
+    fig.update_layout(height=380, title="Market-Making : collecter le spread (sell-side)", **DARK)
+    return fig
+
+
+def retail_adverse_selection():
+    """Show informed vs uninformed trader concept."""
+    np.random.seed(42)
+    n = 300
+    # Uninformed: random, net 0
+    uninformed_pnl = np.cumsum(np.random.normal(0, 50, n))
+    # Informed (with edge): positive drift
+    informed_pnl = np.cumsum(np.random.normal(15, 50, n))
+    # MM against informed: negative
+    mm_vs_informed = np.cumsum(np.random.normal(-12, 40, n))
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=uninformed_pnl, line=dict(color=WHITE_50, width=2), name="Trader non-informe (bruit)"))
+    fig.add_trace(go.Scatter(y=informed_pnl, line=dict(color=GREEN, width=3), name="Trader INFORME (toi avec pipeline)"))
+    fig.add_trace(go.Scatter(y=mm_vs_informed, line=dict(color=RED, width=2, dash="dot"), name="MM face au trader informe"))
+    fig.add_hline(y=0, line_dash="dash", line_color=WHITE_50, opacity=0.3)
+    fig.update_layout(height=400, title="Adverse Selection : avec ton pipeline TU es le trader informe",
+                      xaxis_title="Trades", yaxis_title="PnL cumule ($)", **DARK)
+    return fig
+
+
+# ===================================================================
+# 01 — TIME SERIES
+# ===================================================================
+
+def ts_decomposition():
+    """Show trend + seasonality + noise = observed price."""
+    np.random.seed(42)
+    t = np.arange(300)
+    trend = 0.05 * t + 100
+    season = 3 * np.sin(2 * np.pi * t / 30)
+    noise = np.random.normal(0, 1.5, len(t))
+    observed = trend + season + noise
+
+    fig = make_subplots(
+        rows=4, cols=1, shared_xaxes=True,
+        subplot_titles=["📈 Trend", "🔄 Saisonnalite", "🎲 Bruit (Noise)", "👁️ Ce que tu vois (Observed)"],
+        vertical_spacing=0.06,
+    )
+    fig.add_trace(go.Scatter(x=t, y=trend, line=dict(color=CYAN, width=2), name="Trend"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t, y=season, line=dict(color=MAGENTA, width=2), name="Saison"), row=2, col=1)
+    fig.add_trace(go.Scatter(x=t, y=noise, line=dict(color=WHITE_50, width=1), name="Bruit"), row=3, col=1)
+    fig.add_trace(go.Scatter(x=t, y=observed, line=dict(color=GREEN, width=2), name="Observed"), row=4, col=1)
+    fig.update_layout(height=650, showlegend=False, title="Decomposition d'une Time Series", **DARK)
+    return fig
+
+
+def ts_moving_averages():
+    """Compare MA(5), MA(20), EMA(0.1) on noisy price."""
+    np.random.seed(7)
+    n = 200
+    price = 100 + np.cumsum(np.random.normal(0.02, 1, n))
+
+    def ma(arr, w):
+        out = np.full(len(arr), np.nan)
+        for i in range(w - 1, len(arr)):
+            out[i] = arr[i - w + 1: i + 1].mean()
+        return out
+
+    def ema(arr, alpha):
+        out = np.zeros(len(arr))
+        out[0] = arr[0]
+        for i in range(1, len(arr)):
+            out[i] = alpha * arr[i] + (1 - alpha) * out[i - 1]
+        return out
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=price, mode="lines", line=dict(color=WHITE_50, width=1), name="Prix brut"))
+    fig.add_trace(go.Scatter(y=ma(price, 5), mode="lines", line=dict(color=CYAN, width=2), name="MA(5) — reactif"))
+    fig.add_trace(go.Scatter(y=ma(price, 20), mode="lines", line=dict(color=MAGENTA, width=2), name="MA(20) — lisse"))
+    fig.add_trace(go.Scatter(y=ema(price, 0.1), mode="lines", line=dict(color=GREEN, width=2, dash="dot"), name="EMA(α=0.1)"))
+    fig.update_layout(
+        height=400, title="Filtrage : MA vs EMA",
+        xaxis_title="Temps", yaxis_title="Prix", **DARK,
+    )
+    return fig
+
+
+def ts_forecast_cone():
+    """Random walk forecast with expanding uncertainty cone."""
+    np.random.seed(42)
+    n_hist = 100
+    n_fwd = 50
+    price = 100 + np.cumsum(np.random.normal(0, 1, n_hist))
+    last = price[-1]
+    sigma = np.std(np.diff(price))
+
+    t_fwd = np.arange(n_hist, n_hist + n_fwd)
+    forecast = np.full(n_fwd, last)
+    upper_1 = last + sigma * np.sqrt(np.arange(1, n_fwd + 1))
+    lower_1 = last - sigma * np.sqrt(np.arange(1, n_fwd + 1))
+    upper_2 = last + 2 * sigma * np.sqrt(np.arange(1, n_fwd + 1))
+    lower_2 = last - 2 * sigma * np.sqrt(np.arange(1, n_fwd + 1))
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=list(range(n_hist)), y=price, line=dict(color=CYAN, width=2), name="Historique"))
+    # 95% band
+    fig.add_trace(go.Scatter(x=list(t_fwd) + list(t_fwd[::-1]), y=list(upper_2) + list(lower_2[::-1]),
+                             fill="toself", fillcolor="rgba(255,0,229,0.1)", line=dict(width=0), name="95% IC"))
+    # 68% band
+    fig.add_trace(go.Scatter(x=list(t_fwd) + list(t_fwd[::-1]), y=list(upper_1) + list(lower_1[::-1]),
+                             fill="toself", fillcolor="rgba(0,229,255,0.15)", line=dict(width=0), name="68% IC"))
+    fig.add_trace(go.Scatter(x=list(t_fwd), y=forecast, line=dict(color=YELLOW, width=2, dash="dash"), name="Forecast"))
+    fig.add_vline(x=n_hist, line_dash="dot", line_color="white", opacity=0.5)
+    fig.update_layout(height=400, title="Prevision : le cone d'incertitude GRANDIT", xaxis_title="Temps", yaxis_title="Prix", **DARK)
+    return fig
+
+
+# ===================================================================
+# 02 — CENTRAL LIMIT THEOREM
+# ===================================================================
+
+def clt_dice_demo():
+    """Show how averaging N dice rolls converges to a bell curve."""
+    np.random.seed(42)
+    n_sims = 10000
+    fig = make_subplots(rows=2, cols=2, subplot_titles=[
+        "1 de (uniforme)", "2 des (triangle)",
+        "5 des (presque cloche)", "30 des (gaussienne !)"
+    ], vertical_spacing=0.15)
+
+    for idx, n_dice in enumerate([1, 2, 5, 30]):
+        row, col = divmod(idx, 2)
+        means = np.mean(np.random.randint(1, 7, (n_sims, n_dice)), axis=1)
+        fig.add_trace(go.Histogram(
+            x=means, nbinsx=40, histnorm="probability density",
+            marker_color=CYAN, opacity=0.7, name=f"{n_dice} de(s)",
+            showlegend=False,
+        ), row=row + 1, col=col + 1)
+        # Overlay normal fit
+        x_fit = np.linspace(means.min(), means.max(), 200)
+        y_fit = norm.pdf(x_fit, means.mean(), means.std())
+        fig.add_trace(go.Scatter(
+            x=x_fit, y=y_fit, mode="lines", line=dict(color=MAGENTA, width=2),
+            showlegend=False,
+        ), row=row + 1, col=col + 1)
+
+    fig.update_layout(height=550, title="CLT : la moyenne converge vers une gaussienne", **DARK)
+    return fig
+
+
+def clt_trading_confidence():
+    """Show confidence interval shrinking with more trades."""
+    np.random.seed(42)
+    mu_true = 8  # edge = 8$ per trade
+    sigma = 60
+    trade_counts = np.arange(10, 501, 5)
+
+    ci_upper = mu_true + 2 * sigma / np.sqrt(trade_counts)
+    ci_lower = mu_true - 2 * sigma / np.sqrt(trade_counts)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=list(trade_counts) + list(trade_counts[::-1]),
+        y=list(ci_upper) + list(ci_lower[::-1]),
+        fill="toself", fillcolor="rgba(0,229,255,0.2)", line=dict(width=0),
+        name="Intervalle de confiance 95%"
+    ))
+    fig.add_trace(go.Scatter(x=trade_counts, y=np.full_like(trade_counts, mu_true, dtype=float),
+                             line=dict(color=GREEN, width=2), name="Ton edge reel (+8$)"))
+    fig.add_hline(y=0, line_dash="dash", line_color=RED, opacity=0.7, annotation_text="Zero (pas d'edge)")
+    # Mark where CI excludes 0
+    n_signif = int(np.ceil((2 * sigma / mu_true) ** 2))
+    fig.add_vline(x=n_signif, line_dash="dot", line_color=YELLOW,
+                  annotation_text=f"Edge confirme a n={n_signif}", annotation_position="top right")
+    fig.update_layout(
+        height=400, title="Plus de trades = plus de certitude",
+        xaxis_title="Nombre de trades", yaxis_title="Estimation de l'edge ($)", **DARK,
+    )
+    return fig
+
+
+# ===================================================================
+# 02b — ASYMPTOTICS
+# ===================================================================
+
+def asymp_lln_convergence():
+    """Show mean converging to true value as n grows."""
+    np.random.seed(42)
+    mu_true = 8.0
+    sigma = 80.0
+    max_n = 2000
+    trades = np.random.normal(mu_true, sigma, max_n)
+    running_mean = np.cumsum(trades) / np.arange(1, max_n + 1)
+    ns = np.arange(1, max_n + 1)
+    upper = mu_true + 2 * sigma / np.sqrt(ns)
+    lower = mu_true - 2 * sigma / np.sqrt(ns)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=list(ns) + list(ns[::-1]), y=list(upper) + list(lower[::-1]),
+        fill="toself", fillcolor="rgba(0,229,255,0.1)", line=dict(width=0),
+        name="IC 95%",
+    ))
+    fig.add_trace(go.Scatter(x=ns, y=running_mean, mode="lines",
+                             line=dict(color=CYAN, width=2), name="Moyenne empirique"))
+    fig.add_hline(y=mu_true, line_dash="dash", line_color=GREEN, annotation_text=f"mu = {mu_true}$")
+    fig.update_layout(
+        height=420, title="Loi des Grands Nombres : la moyenne converge",
+        xaxis_title="Nombre de trades (n)", yaxis_title="Moyenne ($)", **DARK,
+    )
+    return fig
+
+
+def asymp_convergence_speed():
+    """Show error ~ 1/sqrt(n) curve."""
+    ns = np.arange(10, 5001)
+    sigma = 80.0
+    se = sigma / np.sqrt(ns)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=ns, y=se, mode="lines", line=dict(color=MAGENTA, width=3),
+                             name="Erreur standard = sigma/sqrt(n)"))
+    # Annotations for key points
+    for n_mark, label in [(25, "n=25"), (100, "n=100"), (400, "n=400"), (2500, "n=2500")]:
+        se_val = sigma / np.sqrt(n_mark)
+        fig.add_trace(go.Scatter(x=[n_mark], y=[se_val], mode="markers+text",
+                                 marker=dict(color=YELLOW, size=10),
+                                 text=[f"  {label}: {se_val:.1f}$"], textposition="middle right",
+                                 textfont=dict(color=YELLOW, size=12), showlegend=False))
+
+    fig.add_annotation(x=3000, y=10, text="x4 trades = erreur / 2", font=dict(color=WHITE_50, size=12),
+                       showarrow=False)
+    fig.update_layout(
+        height=400, title="Vitesse de convergence : 1/sqrt(n)",
+        xaxis_title="Nombre de trades", yaxis_title="Erreur standard ($)", **DARK,
+    )
+    return fig
+
+
+def asymp_sharpe_uncertainty():
+    """Show Sharpe ratio confidence interval vs sample size."""
+    sharpe_obs = 1.2
+    ns = np.arange(20, 1001)
+    se_sharpe = np.sqrt((1 + sharpe_obs ** 2 / 2) / ns)
+    upper = sharpe_obs + 2 * se_sharpe
+    lower = sharpe_obs - 2 * se_sharpe
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=list(ns) + list(ns[::-1]), y=list(upper) + list(lower[::-1]),
+        fill="toself", fillcolor="rgba(255,0,229,0.15)", line=dict(width=0),
+        name="IC 95% du Sharpe",
+    ))
+    fig.add_trace(go.Scatter(x=ns, y=np.full_like(ns, sharpe_obs, dtype=float),
+                             line=dict(color=CYAN, width=2), name=f"Sharpe observe = {sharpe_obs}"))
+    fig.add_hline(y=0, line_dash="dash", line_color=RED, annotation_text="Sharpe = 0 (pas d'edge)")
+    fig.add_hline(y=0.5, line_dash="dot", line_color=YELLOW, opacity=0.5, annotation_text="Sharpe = 0.5 (faible)")
+
+    # Mark where lower CI > 0
+    n_signif = ns[lower > 0][0] if any(lower > 0) else ns[-1]
+    fig.add_vline(x=n_signif, line_dash="dot", line_color=GREEN,
+                  annotation_text=f"Sharpe > 0 confirme a n={n_signif}")
+
+    fig.update_layout(
+        height=420, title="Incertitude du Sharpe Ratio selon la taille d'echantillon",
+        xaxis_title="Nombre de trades", yaxis_title="Sharpe Ratio", **DARK,
+    )
+    return fig
+
+
+def asymp_estimator_comparison():
+    """Compare convergence of mean, variance, max drawdown."""
+    np.random.seed(42)
+    mu_true = 5.0
+    sigma_true = 50.0
+    max_n = 1500
+    all_trades = np.random.normal(mu_true, sigma_true, max_n)
+
+    ns = np.arange(20, max_n + 1, 5)
+    means, stds, max_dds = [], [], []
+    for n in ns:
+        subset = all_trades[:n]
+        means.append(subset.mean())
+        stds.append(subset.std())
+        cum = np.cumsum(subset)
+        running_max = np.maximum.accumulate(cum)
+        dd = running_max - cum
+        max_dds.append(dd.max())
+
+    fig = make_subplots(rows=1, cols=3, subplot_titles=[
+        "Moyenne (converge)", "Ecart-type (converge)", "Max Drawdown (ne converge PAS)"
+    ])
+    fig.add_trace(go.Scatter(x=ns, y=means, line=dict(color=CYAN, width=2), showlegend=False), row=1, col=1)
+    fig.add_hline(y=mu_true, line_dash="dash", line_color=GREEN, row=1, col=1)
+
+    fig.add_trace(go.Scatter(x=ns, y=stds, line=dict(color=MAGENTA, width=2), showlegend=False), row=1, col=2)
+    fig.add_hline(y=sigma_true, line_dash="dash", line_color=GREEN, row=1, col=2)
+
+    fig.add_trace(go.Scatter(x=ns, y=max_dds, line=dict(color=RED, width=2), showlegend=False), row=1, col=3)
+    fig.add_annotation(x=max_n * 0.7, y=max(max_dds) * 0.5, text="Grandit toujours !",
+                       font=dict(color=RED, size=13), showarrow=False, row=1, col=3)
+
+    fig.update_layout(height=380, title="Consistance : tous les estimateurs ne convergent pas", **DARK)
+    return fig
+
+
+# ===================================================================
+# 03b — MONTE CARLO
+# ===================================================================
+
+def mc_dice_convergence():
+    """Show mean of dice rolls converging to 3.5."""
+    np.random.seed(42)
+    n = 5000
+    rolls = np.random.randint(1, 7, n)
+    cum_mean = np.cumsum(rolls) / np.arange(1, n + 1)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=cum_mean, mode="lines", line=dict(color=CYAN, width=2), name="Moyenne empirique"))
+    fig.add_hline(y=3.5, line_dash="dash", line_color=GREEN, annotation_text="E[X] = 3.5")
+    fig.update_layout(height=380, title="Monte Carlo : la moyenne du de converge vers 3.5",
+                      xaxis_title="Nombre de lancers", yaxis_title="Moyenne", xaxis_type="log", **DARK)
+    return fig
+
+
+def mc_wealth_paths():
+    """Simulate wealth paths for a casino game."""
+    np.random.seed(42)
+    n_paths, n_steps = 200, 100
+    start = 10000
+    target = 15000
+
+    fig = go.Figure()
+    wins = 0
+    for _ in range(n_paths):
+        w = np.zeros(n_steps + 1)
+        w[0] = start
+        for t in range(n_steps):
+            roll = np.random.randint(1, 7)
+            if roll % 2 == 1:
+                payout = 1000 if np.random.random() < 0.6 else -500
+            else:
+                payout = -500 if np.random.random() < 0.5 else 1000
+            w[t + 1] = w[t] - 325 + payout
+            if w[t + 1] <= 0:
+                w[t + 1:] = 0
+                break
+            if w[t + 1] >= target:
+                w[t + 1:] = w[t + 1]
+                wins += 1
+                break
+        color = GREEN if w[-1] >= target else RED if w[-1] <= 0 else WHITE_50
+        fig.add_trace(go.Scatter(y=w, mode="lines", line=dict(color=color, width=0.8), opacity=0.3, showlegend=False))
+
+    fig.add_hline(y=target, line_dash="dash", line_color=YELLOW, annotation_text=f"Target 15k (atteint {wins}/{n_paths})")
+    fig.add_hline(y=0, line_dash="dash", line_color=RED, opacity=0.5)
+    fig.update_layout(height=420, title=f"Monte Carlo : {n_paths} parcours de richesse",
+                      xaxis_title="Nombre de parties", yaxis_title="Capital ($)", **DARK)
+    return fig
+
+
+def mc_precision():
+    """Show how precision improves with sqrt(n)."""
+    np.random.seed(42)
+    true_ev = 325
+    ns = [10, 50, 100, 500, 1000, 5000]
+    n_trials = 200
+
+    fig = go.Figure()
+    for i, n in enumerate(ns):
+        estimates = []
+        for _ in range(n_trials):
+            results = []
+            for _ in range(n):
+                roll = np.random.randint(1, 7)
+                if roll % 2 == 1:
+                    payout = 1000 if np.random.random() < 0.6 else -500
+                else:
+                    payout = -500 if np.random.random() < 0.5 else 1000
+                results.append(payout)
+            estimates.append(np.mean(results))
+        fig.add_trace(go.Box(y=estimates, name=f"n={n}", marker_color=CYAN, line_color=CYAN, boxmean=True))
+
+    fig.add_hline(y=true_ev, line_dash="dash", line_color=GREEN, annotation_text=f"Vraie EV = {true_ev}$")
+    fig.update_layout(height=420, title="Plus de simulations = estimation plus precise",
+                      yaxis_title="EV estimee ($)", **DARK)
+    return fig
+
+
+# ===================================================================
+# 03 — ERGODICITY
+# ===================================================================
+
+def ergo_multiplicative_vs_additive():
+    """Show how multiplicative process diverges from EV."""
+    np.random.seed(42)
+    n_steps = 200
+    n_paths = 50
+
+    fig = make_subplots(rows=1, cols=2, subplot_titles=[
+        "Additif (ergodique) : +50 / -40",
+        "Multiplicatif (NON ergodique) : +50% / -40%"
+    ])
+
+    for path in range(n_paths):
+        flips = np.random.choice([1, -1], n_steps)
+        # Additive
+        add_gains = np.where(flips == 1, 50, -40)
+        add_path = 1000 + np.cumsum(add_gains)
+        fig.add_trace(go.Scatter(y=add_path, mode="lines", line=dict(width=0.5, color=CYAN), opacity=0.3,
+                                 showlegend=False), row=1, col=1)
+        # Multiplicative
+        mult_gains = np.where(flips == 1, 1.5, 0.6)
+        mult_path = 1000 * np.cumprod(mult_gains)
+        fig.add_trace(go.Scatter(y=mult_path, mode="lines", line=dict(width=0.5, color=MAGENTA), opacity=0.3,
+                                 showlegend=False), row=1, col=2)
+
+    # Expected value line (additive)
+    ev_add = 1000 + np.arange(n_steps) * 5  # E = 0.5*50 + 0.5*(-40) = 5 per step
+    fig.add_trace(go.Scatter(y=ev_add, mode="lines", line=dict(color=YELLOW, width=3, dash="dash"),
+                             name="E[V] = +5$/tour"), row=1, col=1)
+    # Expected value line (multiplicative) - geometric growth
+    ev_mult = 1000 * (0.95 ** np.arange(n_steps))  # geometric mean = sqrt(1.5*0.6) - 1 ≈ -5%
+    fig.add_trace(go.Scatter(y=ev_mult, mode="lines", line=dict(color=RED, width=3, dash="dash"),
+                             name="Croissance reelle = -5%/tour"), row=1, col=2)
+
+    fig.update_yaxes(title="Capital ($)", row=1, col=1)
+    fig.update_yaxes(title="Capital ($)", type="log", row=1, col=2)
+    fig.update_layout(height=450, title="Le trading est multiplicatif : l'EV ment", **DARK)
+    return fig
+
+
+def ergo_kelly_sizing():
+    """Show growth rate vs bet fraction (Kelly curve)."""
+    p = 0.55
+    b = 1.5
+    f = np.linspace(0, 1, 200)
+    # g(f) = p * log(1 + b*f) + (1-p) * log(1 - f)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        g = p * np.log(1 + b * f) + (1 - p) * np.log(1 - f)
+        g[f >= 1] = np.nan
+
+    f_kelly = (p * b - (1 - p)) / b
+    g_kelly = p * np.log(1 + b * f_kelly) + (1 - p) * np.log(1 - f_kelly)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=f, y=g, mode="lines", line=dict(color=CYAN, width=3), name="Taux de croissance"))
+    fig.add_hline(y=0, line_dash="dash", line_color=RED, opacity=0.5)
+    fig.add_trace(go.Scatter(x=[f_kelly], y=[g_kelly], mode="markers+text",
+                             marker=dict(color=GREEN, size=14, symbol="star"),
+                             text=[f"  Kelly = {f_kelly:.0%}"], textposition="middle right",
+                             textfont=dict(color=GREEN, size=14), name="Kelly optimal"))
+    fig.add_trace(go.Scatter(x=[f_kelly / 2], y=[p * np.log(1 + b * f_kelly / 2) + (1 - p) * np.log(1 - f_kelly / 2)],
+                             mode="markers+text", marker=dict(color=YELLOW, size=12),
+                             text=[f"  Demi-Kelly = {f_kelly / 2:.0%}"], textposition="middle right",
+                             textfont=dict(color=YELLOW, size=14), name="Demi-Kelly"))
+    # Ruin zone
+    f_ruin = f[g < 0]
+    if len(f_ruin) > 0:
+        fig.add_vrect(x0=f_ruin[0], x1=1, fillcolor="rgba(255,51,102,0.1)", line_width=0,
+                      annotation_text="ZONE DE RUINE", annotation_position="top")
+
+    fig.update_layout(
+        height=420, title="Kelly Criterion : croissance vs taille de position",
+        xaxis_title="Fraction du capital risquee (f)", yaxis_title="Taux de croissance g(f)", **DARK,
+    )
+    return fig
+
+
+def ergo_variance_drag():
+    """Show g = E[r] - sigma²/2 visually."""
+    edge = np.linspace(0, 0.10, 100)  # 0 to 10%
+    sigmas = [0.05, 0.10, 0.15, 0.20, 0.30]
+    colors = [GREEN, CYAN, YELLOW, ORANGE, RED]
+
+    fig = go.Figure()
+    for sigma, color in zip(sigmas, colors):
+        g = edge - sigma ** 2 / 2
+        fig.add_trace(go.Scatter(
+            x=edge * 100, y=g * 100, mode="lines",
+            line=dict(color=color, width=2),
+            name=f"σ = {sigma:.0%}",
+        ))
+    fig.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.3)
+    fig.update_layout(
+        height=400, title="g = E[r] − σ²/2 : la volatilite mange ton edge",
+        xaxis_title="Edge E[r] (%)", yaxis_title="Croissance reelle g (%)", **DARK,
+    )
+    return fig
+
+
+# ===================================================================
+# 04 — GARCH
+# ===================================================================
+
+def garch_volatility_clustering():
+    """Simulate GARCH(1,1) and show volatility clustering."""
+    np.random.seed(42)
+    n = 500
+    alpha0, alpha1, beta1 = 0.00001, 0.12, 0.85
+    sigma2 = np.zeros(n)
+    returns = np.zeros(n)
+    sigma2[0] = alpha0 / (1 - alpha1 - beta1)
+
+    for t in range(1, n):
+        sigma2[t] = alpha0 + alpha1 * returns[t - 1] ** 2 + beta1 * sigma2[t - 1]
+        returns[t] = np.sqrt(sigma2[t]) * np.random.normal()
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        subplot_titles=["Rendements simules (GARCH)", "Volatilite σ(t)"],
+                        vertical_spacing=0.08)
+    fig.add_trace(go.Scatter(y=returns * 100, mode="lines", line=dict(color=CYAN, width=1), name="Returns %"), row=1, col=1)
+    fig.add_trace(go.Scatter(y=np.sqrt(sigma2) * 100, mode="lines", line=dict(color=MAGENTA, width=2), name="σ GARCH"), row=2, col=1)
+    fig.add_hline(y=np.sqrt(alpha0 / (1 - alpha1 - beta1)) * 100, line_dash="dash", line_color=YELLOW,
+                  row=2, col=1, annotation_text="σ long terme")
+    fig.update_yaxes(title="Return (%)", row=1, col=1)
+    fig.update_yaxes(title="σ (%)", row=2, col=1)
+    fig.update_layout(height=500, title="GARCH(1,1) : le clustering de volatilite", showlegend=False, **DARK)
+    return fig
+
+
+def garch_var_comparison():
+    """Naive VaR vs GARCH VaR."""
+    np.random.seed(42)
+    n = 500
+    alpha0, alpha1, beta1 = 0.00001, 0.12, 0.85
+    sigma2 = np.zeros(n)
+    returns = np.zeros(n)
+    sigma2[0] = alpha0 / (1 - alpha1 - beta1)
+    for t in range(1, n):
+        sigma2[t] = alpha0 + alpha1 * returns[t - 1] ** 2 + beta1 * sigma2[t - 1]
+        returns[t] = np.sqrt(sigma2[t]) * np.random.normal()
+
+    naive_var = -np.std(returns) * 1.645 * 100
+    garch_var = -np.sqrt(sigma2) * 1.645 * 100
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=returns * 100, mode="lines", line=dict(color=WHITE_50, width=1), name="Returns %"))
+    fig.add_hline(y=naive_var, line_dash="dash", line_color=RED, annotation_text="VaR Naive (fixe)")
+    fig.add_trace(go.Scatter(y=garch_var, mode="lines", line=dict(color=GREEN, width=2), name="VaR GARCH (dynamique)"))
+
+    # Count breaches
+    naive_breach = np.sum(returns * 100 < naive_var) / n * 100
+    garch_breach = np.sum(returns * 100 < garch_var) / n * 100
+
+    fig.update_layout(
+        height=400,
+        title=f"VaR 95% : Naive = {naive_breach:.1f}% breaches vs GARCH = {garch_breach:.1f}% breaches (cible = 5%)",
+        xaxis_title="Temps", yaxis_title="Return (%)", **DARK,
+    )
+    return fig
+
+
+def garch_step_by_step():
+    """Interactive GARCH step-by-step: user sees how a shock propagates."""
+    alpha0, alpha1, beta1 = 0.00001, 0.10, 0.85
+    sigma2_lt = alpha0 / (1 - alpha1 - beta1)
+
+    # Day 0: normal, Day 1: shock of -4%, then calm days
+    days = 30
+    shocks = np.zeros(days)
+    shocks[0] = 0.005  # small move
+    shocks[5] = -0.04  # big shock at day 5
+    # rest = 0
+
+    sigma2 = np.zeros(days)
+    sigma2[0] = sigma2_lt
+    for t in range(1, days):
+        sigma2[t] = alpha0 + alpha1 * shocks[t - 1] ** 2 + beta1 * sigma2[t - 1]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=list(range(days)), y=shocks * 100, marker_color=[RED if s < -0.01 else CYAN for s in shocks],
+                         name="Choc (%)", opacity=0.5))
+    fig.add_trace(go.Scatter(x=list(range(days)), y=np.sqrt(sigma2) * 100, mode="lines+markers",
+                             line=dict(color=MAGENTA, width=3), name="σ GARCH (%)"))
+    fig.add_hline(y=np.sqrt(sigma2_lt) * 100, line_dash="dot", line_color=YELLOW, annotation_text="σ long-terme")
+    fig.add_annotation(x=5, y=abs(shocks[5]) * 100, text="CHOC -4% !", font=dict(color=RED, size=14), showarrow=True,
+                       arrowhead=2, arrowcolor=RED)
+    fig.update_layout(height=420, title="Un choc se propage puis s'efface (mean reversion)",
+                      xaxis_title="Jour", yaxis_title="%", **DARK)
+    return fig
+
+
+# ===================================================================
+# 04b — TRADING METRICS
+# ===================================================================
+
+def metrics_winrate_trap():
+    """Show 3 strategies: 100% WR (flat), 99% WR (blowup), 40% WR (profitable)."""
+    np.random.seed(42)
+    n = 300
+
+    # A: 100% WR, tiny gains
+    a = 100000 + np.cumsum(np.random.uniform(0.5, 1.5, n))
+    # B: 99% WR, one blowup
+    b_gains = np.random.uniform(5, 15, n)
+    b_gains[200] = -3000
+    b = 100000 + np.cumsum(b_gains)
+    # C: 40% WR, profitable
+    c_trades = np.where(np.random.random(n) < 0.4, np.random.uniform(100, 300, n), np.random.uniform(-50, -20, n))
+    c = 100000 + np.cumsum(c_trades)
+
+    fig = make_subplots(rows=1, cols=3, subplot_titles=[
+        "100% WR (+0.003%)", "99% WR (blowup)", "40% WR (profitable)"
+    ])
+    fig.add_trace(go.Scatter(y=a, line=dict(color=GREEN, width=2), showlegend=False), row=1, col=1)
+    fig.add_trace(go.Scatter(y=b, line=dict(color=MAGENTA, width=2), showlegend=False), row=1, col=2)
+    fig.add_trace(go.Scatter(y=c, line=dict(color=CYAN, width=2), showlegend=False), row=1, col=3)
+    fig.update_layout(height=350, title="Le winrate MENT : 40% WR peut battre 100% WR", **DARK)
+    return fig
+
+
+def metrics_stability_test():
+    """Show stable vs unstable strategy: backtest vs live."""
+    np.random.seed(42)
+    n_bt, n_live = 400, 200
+
+    # Stable
+    r1_bt = np.random.normal(0.001, 0.01, n_bt)
+    r1_live = np.random.normal(0.0008, 0.011, n_live)
+    eq1 = np.concatenate([100000 * np.exp(np.cumsum(r1_bt)), 100000 * np.exp(np.cumsum(r1_bt))[-1] * np.exp(np.cumsum(r1_live))])
+
+    # Unstable
+    r2_bt = np.random.normal(0.001, 0.01, n_bt)
+    r2_live = np.random.normal(-0.0005, 0.02, n_live)
+    eq2_bt = 100000 * np.exp(np.cumsum(r2_bt))
+    eq2_live = eq2_bt[-1] * np.exp(np.cumsum(r2_live))
+    eq2 = np.concatenate([eq2_bt, eq2_live])
+
+    fig = make_subplots(rows=1, cols=2, subplot_titles=["STABLE (edge reel)", "INSTABLE (overfitting)"])
+    x = list(range(len(eq1)))
+    fig.add_trace(go.Scatter(x=x[:n_bt], y=eq1[:n_bt], line=dict(color=CYAN, width=2), name="Backtest"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=x[n_bt:], y=eq1[n_bt:], line=dict(color=GREEN, width=2), name="Live"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=x[:n_bt], y=eq2[:n_bt], line=dict(color=CYAN, width=2), showlegend=False), row=1, col=2)
+    fig.add_trace(go.Scatter(x=x[n_bt:], y=eq2[n_bt:], line=dict(color=RED, width=2), name="Live (effondrement)"), row=1, col=2)
+    fig.add_vline(x=n_bt, line_dash="dot", line_color="white", opacity=0.5)
+    fig.update_layout(height=380, title="STABILITE = la seule metrique qui compte", **DARK)
+    return fig
+
+
+def metrics_random_walk_best():
+    """Show best of 1000 random walks has great metrics but is pure luck."""
+    np.random.seed(42)
+    n_paths, n_steps = 500, 300
+    paths = np.zeros((n_paths, n_steps))
+    paths[:, 0] = 100
+
+    for i in range(n_paths):
+        r = np.random.normal(0, 0.02, n_steps - 1)
+        paths[i, 1:] = 100 * np.exp(np.cumsum(r))
+
+    finals = paths[:, -1]
+    best = np.argmax(finals)
+
+    fig = go.Figure()
+    for i in range(n_paths):
+        fig.add_trace(go.Scatter(y=paths[i], mode="lines", line=dict(color=CYAN, width=0.3), opacity=0.08, showlegend=False))
+    fig.add_trace(go.Scatter(y=paths[best], mode="lines", line=dict(color=YELLOW, width=3), name=f"Meilleur : +{(finals[best]/100-1)*100:.0f}%"))
+    fig.add_hline(y=100, line_dash="dash", line_color=WHITE_50)
+    fig.add_annotation(x=n_steps * 0.6, y=paths[best].max() * 0.9,
+                       text="EV = 0 pour TOUS<br>Le 'meilleur' = pure chance",
+                       font=dict(color=RED, size=14), showarrow=False)
+    fig.update_layout(height=420, title="500 random walks (EV=0) : le meilleur a l'air genial... mais c'est du hasard",
+                      xaxis_title="Jours", yaxis_title="Valeur", **DARK)
+    return fig
+
+
+# ===================================================================
+# 05 — HMM
+# ===================================================================
+
+def hmm_regime_distributions():
+    """Show 3 regime distributions with different mean/std."""
+    x = np.linspace(-0.08, 0.08, 500)
+    regimes = [
+        ("Bull (Low Vol)", 0.001, 0.015, GREEN, "rgba(0,255,136,0.15)"),
+        ("Sideways (Med Vol)", 0.0, 0.025, YELLOW, "rgba(255,214,0,0.15)"),
+        ("Bear (High Vol)", -0.005, 0.045, RED, "rgba(255,51,102,0.15)"),
+    ]
+
+    fig = go.Figure()
+    for name, mu, sigma, color, fill in regimes:
+        y = norm.pdf(x, mu, sigma)
+        fig.add_trace(go.Scatter(x=x * 100, y=y, mode="lines", fill="tozeroy",
+                                 line=dict(color=color, width=2),
+                                 fillcolor=fill, name=name))
+    fig.update_layout(height=400, title="Distributions de rendement par regime",
+                      xaxis_title="Rendement (%)", yaxis_title="Densite", **DARK)
+    return fig
+
+
+def hmm_regime_price_colored():
+    """Simulate price colored by hidden regime."""
+    np.random.seed(42)
+    n = 500
+    # Transition matrix
+    A = np.array([[0.97, 0.02, 0.01],
+                  [0.03, 0.94, 0.03],
+                  [0.02, 0.03, 0.95]])
+    mus = [0.001, 0.0, -0.003]
+    sigmas = [0.008, 0.015, 0.03]
+    colors_map = [GREEN, YELLOW, RED]
+    regime_names = ["Bull", "Sideways", "Bear"]
+
+    state = 0
+    states = [state]
+    returns = []
+    for _ in range(n - 1):
+        state = np.random.choice(3, p=A[state])
+        states.append(state)
+        returns.append(np.random.normal(mus[state], sigmas[state]))
+
+    price = 100 * np.exp(np.cumsum([0] + returns))
+    states = np.array(states)
+
+    fig = go.Figure()
+    for s in range(3):
+        mask = states == s
+        y_masked = np.where(mask, price, np.nan)
+        fig.add_trace(go.Scatter(
+            y=y_masked, mode="lines", line=dict(color=colors_map[s], width=2),
+            name=regime_names[s], connectgaps=False,
+        ))
+
+    fig.update_layout(height=400, title="Prix colore par regime cache (HMM)",
+                      xaxis_title="Temps", yaxis_title="Prix", **DARK)
+    return fig
+
+
+def hmm_transition_heatmap():
+    """Visualize a transition matrix as a heatmap."""
+    A = np.array([[0.96, 0.03, 0.01],
+                  [0.04, 0.91, 0.05],
+                  [0.01, 0.07, 0.92]])
+    labels = ["Low Vol", "Med Vol", "High Vol"]
+
+    fig = go.Figure(go.Heatmap(
+        z=A, x=labels, y=labels,
+        colorscale=[[0, "rgba(17,17,17,1)"], [0.5, CYAN], [1, MAGENTA]],
+        text=np.round(A * 100, 1).astype(str),
+        texttemplate="%{text}%",
+        textfont=dict(size=16, color="white"),
+        showscale=False,
+    ))
+    fig.update_layout(
+        height=380, title="Matrice de Transition (% de chance de passer d'un etat a l'autre)",
+        xaxis_title="Vers →", yaxis_title="Depuis ↓", yaxis=dict(autorange="reversed"), **DARK,
+    )
+    return fig
+
+
+# ===================================================================
+# 05b — REGIME SWITCHING
+# ===================================================================
+
+def regime_bayesian_filtering():
+    """Simulate Bayesian regime filtering on live bars."""
+    np.random.seed(42)
+    n = 200
+    # Simulate vol regimes
+    A = np.array([[0.95, 0.04, 0.01], [0.05, 0.90, 0.05], [0.01, 0.04, 0.95]])
+    mus_r = [0.005, 0.015, 0.035]
+    sigs_r = [0.002, 0.005, 0.010]
+    state = 0
+    states, vols, posteriors = [], [], []
+    post = np.array([0.8, 0.15, 0.05])
+
+    for t in range(n):
+        state = np.random.choice(3, p=A[state])
+        states.append(state)
+        vol = max(0.001, np.random.normal(mus_r[state], sigs_r[state]))
+        vols.append(vol)
+        # Bayesian filter
+        prior = A.T @ post
+        lik = np.array([norm.pdf(vol, mus_r[r], sigs_r[r]) for r in range(3)])
+        post = prior * lik
+        post /= post.sum()
+        posteriors.append(post.copy())
+
+    posteriors = np.array(posteriors)
+    states = np.array(states)
+    colors_map = {0: GREEN, 1: YELLOW, 2: RED}
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        subplot_titles=["Volatilite par barre (colore par regime)", "Probabilite posterieure"],
+                        vertical_spacing=0.08)
+    for s, name in [(0, "LOW"), (1, "MED"), (2, "HIGH")]:
+        mask = states == s
+        y = np.where(mask, vols, np.nan)
+        fig.add_trace(go.Scatter(y=y, mode="markers", marker=dict(color=colors_map[s], size=4),
+                                 name=name, connectgaps=False), row=1, col=1)
+
+    fig.add_trace(go.Scatter(y=posteriors[:, 0], line=dict(color=GREEN, width=2), name="P(LOW)"), row=2, col=1)
+    fig.add_trace(go.Scatter(y=posteriors[:, 1], line=dict(color=YELLOW, width=2), name="P(MED)"), row=2, col=1)
+    fig.add_trace(go.Scatter(y=posteriors[:, 2], line=dict(color=RED, width=2), name="P(HIGH)"), row=2, col=1)
+    fig.update_yaxes(title="Vol", row=1, col=1)
+    fig.update_yaxes(title="Proba", range=[0, 1], row=2, col=1)
+    fig.update_layout(height=500, title="Filtrage bayesien en temps reel : regime switching", **DARK)
+    return fig
+
+
+# ===================================================================
+# 05c — HAWKES
+# ===================================================================
+
+def hawkes_intensity():
+    """Simulate Hawkes process intensity with clustering."""
+    np.random.seed(42)
+    n = 200
+    mu_base, alpha, beta_h = 0.2, 0.4, 0.8
+    dt = 1.0
+
+    lam = np.zeros(n + 1)
+    N_count = np.zeros(n + 1)
+    lam[0] = mu_base
+
+    for t in range(1, n + 1):
+        dN = np.random.poisson(lam[t - 1] * dt)
+        N_count[t] = N_count[t - 1] + dN
+        lam[t] = mu_base + (lam[t - 1] - mu_base) * np.exp(-beta_h * dt) + alpha * dN
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        subplot_titles=["Intensite lambda(t) — self-exciting", "Events cumules N(t)"],
+                        vertical_spacing=0.08)
+    fig.add_trace(go.Scatter(y=lam, line=dict(color=MAGENTA, width=2), name="lambda(t)"), row=1, col=1)
+    fig.add_hline(y=mu_base, line_dash="dash", line_color=WHITE_50, row=1, col=1, annotation_text=f"mu={mu_base}")
+    fig.add_trace(go.Scatter(y=N_count, line=dict(color=CYAN, width=2), name="N(t)"), row=2, col=1)
+    fig.update_yaxes(title="lambda", row=1, col=1)
+    fig.update_yaxes(title="N(t)", row=2, col=1)
+    fig.update_layout(height=500, title="Hawkes Process : les events provoquent d'autres events", **DARK)
+    return fig
+
+
+def hawkes_vs_poisson():
+    """Compare Poisson (no clustering) vs Hawkes (clustering) returns."""
+    np.random.seed(42)
+    n = 300
+    sigma_diff, sigma_J = 0.01, 0.04
+    lam_fixed = 0.15
+    mu_base, alpha, beta_h = 0.06, 0.3, 0.5
+
+    dW = np.random.normal(0, sigma_diff, n)
+    R_std, R_hwk = np.zeros(n), np.zeros(n)
+    lam_h = mu_base
+
+    for t in range(n):
+        dN_std = np.random.poisson(lam_fixed)
+        j_std = np.sum(np.random.normal(0, sigma_J, dN_std)) if dN_std > 0 else 0
+        R_std[t] = dW[t] + j_std
+
+        dN_hwk = np.random.poisson(lam_h)
+        j_hwk = np.sum(np.random.normal(0, sigma_J, dN_hwk)) if dN_hwk > 0 else 0
+        R_hwk[t] = dW[t] + j_hwk
+        lam_h = mu_base + (lam_h - mu_base) * np.exp(-0.5) + alpha * dN_hwk
+
+    fig = make_subplots(rows=1, cols=2, subplot_titles=["Poisson (pas de clustering)", "Hawkes (clustering)"])
+    fig.add_trace(go.Scatter(y=R_std * 100, mode="lines", line=dict(color=CYAN, width=1), showlegend=False), row=1, col=1)
+    fig.add_trace(go.Scatter(y=R_hwk * 100, mode="lines", line=dict(color=MAGENTA, width=1), showlegend=False), row=1, col=2)
+
+    from scipy.stats import kurtosis as kurt_fn
+    k_std = kurt_fn(R_std)
+    k_hwk = kurt_fn(R_hwk)
+    fig.add_annotation(x=150, y=max(R_std) * 80, text=f"Kurtosis = {k_std:.1f}", font=dict(color=CYAN, size=13), showarrow=False, row=1, col=1)
+    fig.add_annotation(x=150, y=max(R_hwk) * 80, text=f"Kurtosis = {k_hwk:.1f}", font=dict(color=MAGENTA, size=13), showarrow=False, row=1, col=2)
+    fig.update_layout(height=380, title="Poisson vs Hawkes : les clusters changent tout", **DARK)
+    return fig
+
+
+# ===================================================================
+# 06 — KALMAN FILTER
+# ===================================================================
+
+def kalman_filter_demo():
+    """Full Kalman filter on noisy VIX-like signal."""
+    np.random.seed(42)
+    n = 200
+    # True signal: mean-reverting OU process
+    true_val = np.zeros(n)
+    true_val[0] = 18
+    kappa, theta, sigma_ou = 0.1, 18, 1.5
+    for t in range(1, n):
+        true_val[t] = true_val[t - 1] + kappa * (theta - true_val[t - 1]) + sigma_ou * np.random.normal()
+
+    # Inject regime change
+    true_val[120:] += 8
+
+    # Noisy observations
+    R_noise = 4.0
+    obs = true_val + np.random.normal(0, np.sqrt(R_noise), n)
+
+    # Kalman Filter
+    F = 0.95  # AR(1) decay
+    B = (1 - F) * theta
+    Q = 2.0
+    R = R_noise
+
+    x_est = np.zeros(n)
+    P_est = np.zeros(n)
+    K_hist = np.zeros(n)
+    x_est[0] = obs[0]
+    P_est[0] = 5.0
+
+    for t in range(1, n):
+        # Predict
+        x_pred = F * x_est[t - 1] + B
+        P_pred = F ** 2 * P_est[t - 1] + Q
+        # Innovation
+        innov = obs[t] - x_pred
+        # Adaptive: inflate P on shock
+        if innov ** 2 > 9 * (P_pred + R):
+            P_pred += 50
+        # Update
+        K = P_pred / (P_pred + R)
+        x_est[t] = x_pred + K * innov
+        P_est[t] = (1 - K) * P_pred
+        K_hist[t] = K
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        subplot_titles=["Signal : vrai vs observe vs filtre Kalman", "Kalman Gain K(t)"],
+                        row_heights=[0.7, 0.3], vertical_spacing=0.08)
+
+    # Confidence band
+    upper = x_est + 2 * np.sqrt(P_est)
+    lower = x_est - 2 * np.sqrt(P_est)
+    t_arr = list(range(n))
+    fig.add_trace(go.Scatter(x=t_arr + t_arr[::-1], y=list(upper) + list(lower[::-1]),
+                             fill="toself", fillcolor="rgba(0,229,255,0.12)", line=dict(width=0),
+                             name="IC 95%", showlegend=True), row=1, col=1)
+
+    fig.add_trace(go.Scatter(y=obs, mode="markers", marker=dict(color=WHITE_50, size=3), name="Observations (bruitees)"), row=1, col=1)
+    fig.add_trace(go.Scatter(y=true_val, mode="lines", line=dict(color=YELLOW, width=1, dash="dot"), name="Vrai signal (cache)"), row=1, col=1)
+    fig.add_trace(go.Scatter(y=x_est, mode="lines", line=dict(color=CYAN, width=3), name="Estimation Kalman"), row=1, col=1)
+
+    fig.add_trace(go.Scatter(y=K_hist, mode="lines", line=dict(color=ORANGE, width=2), name="Gain K"), row=2, col=1)
+    fig.add_vline(x=120, line_dash="dot", line_color=RED, annotation_text="Regime change", row=1, col=1)
+    fig.add_vline(x=120, line_dash="dot", line_color=RED, row=2, col=1)
+
+    fig.update_yaxes(title="Valeur", row=1, col=1)
+    fig.update_yaxes(title="K", range=[0, 1], row=2, col=1)
+    fig.update_layout(height=550, title="Kalman Filter adaptatif avec regime change", **DARK)
+    return fig
+
+
+def kalman_gain_explained():
+    """Show how K changes with R."""
+    P = 2.0
+    R_range = np.linspace(0.1, 20, 200)
+    K = P / (P + R_range)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=R_range, y=K, mode="lines", line=dict(color=CYAN, width=3), name="K = P/(P+R)"))
+    fig.add_hline(y=0.5, line_dash="dot", line_color=WHITE_50)
+    fig.add_annotation(x=1, y=0.85, text="R petit → suit les donnees", font=dict(color=GREEN, size=13), showarrow=False)
+    fig.add_annotation(x=15, y=0.15, text="R grand → suit le modele", font=dict(color=RED, size=13), showarrow=False)
+
+    fig.update_layout(height=380, title="Le Kalman Gain : a qui faire confiance ?",
+                      xaxis_title="R (bruit de mesure)", yaxis_title="Gain K", **DARK)
+    return fig
+
+
+def kalman_R_comparison():
+    """Same data, different R values."""
+    np.random.seed(42)
+    n = 150
+    true_sig = np.zeros(n)
+    true_sig[0] = 50
+    for t in range(1, n):
+        true_sig[t] = true_sig[t - 1] + 0.3 * np.random.normal()
+
+    obs = true_sig + np.random.normal(0, 5, n)
+
+    def run_kf(obs, R, Q=0.5):
+        x_est = np.zeros(len(obs))
+        x_est[0] = obs[0]
+        P = 1.0
+        for t in range(1, len(obs)):
+            P_pred = P + Q
+            K = P_pred / (P_pred + R)
+            x_est[t] = x_est[t - 1] + K * (obs[t] - x_est[t - 1])
+            P = (1 - K) * P_pred
+        return x_est
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=obs, mode="markers", marker=dict(color=WHITE_50, size=3), name="Observations"))
+    fig.add_trace(go.Scatter(y=true_sig, mode="lines", line=dict(color=YELLOW, width=1, dash="dot"), name="Vrai signal"))
+
+    for R, color, label in [(0.5, GREEN, "R=0.5 (reactif)"), (5, CYAN, "R=5 (equilibre)"), (50, RED, "R=50 (lisse)")]:
+        fig.add_trace(go.Scatter(y=run_kf(obs, R), mode="lines", line=dict(color=color, width=2), name=label))
+
+    fig.update_layout(height=420, title="Impact de R : reactif vs lisse",
+                      xaxis_title="Temps", yaxis_title="Signal", **DARK)
+    return fig
+
+
+# ===================================================================
+# 07 — PIPELINE
+# ===================================================================
+
+def pipeline_decision_matrix():
+    """Visual decision matrix."""
+    regimes = ["Low Vol", "Med Vol", "High Vol"]
+    signals = ["Signal Faible", "Signal Fort"]
+
+    z = np.array([[0, 100], [0, 50], [0, 0]])
+    colors = [[RED, GREEN], [RED, YELLOW], [RED, RED]]
+    text = [["NO TRADE", "TRADE 100%"], ["NO TRADE", "TRADE 50%"], ["NO TRADE", "NO TRADE"]]
+
+    fig = go.Figure(go.Heatmap(
+        z=z, x=signals, y=regimes,
+        colorscale=[[0, "rgba(255,51,102,0.6)"], [0.5, YELLOW], [1, GREEN]],
+        text=text, texttemplate="%{text}",
+        textfont=dict(size=18, color="white"),
+        showscale=False,
+    ))
+    fig.update_layout(height=350, title="Matrice de Decision : Regime x Signal",
+                      yaxis=dict(autorange="reversed"), **DARK)
+    return fig
+
+
+def pipeline_full_simulation():
+    """Full pipeline: GARCH + HMM + Kalman → decision."""
+    np.random.seed(42)
+    n = 300
+
+    # Simulate regimes
+    A = np.array([[0.97, 0.02, 0.01], [0.03, 0.94, 0.03], [0.02, 0.03, 0.95]])
+    state = 0
+    states = [state]
+    for _ in range(n - 1):
+        state = np.random.choice(3, p=A[state])
+        states.append(state)
+    states = np.array(states)
+
+    # Simulate returns per regime
+    mus = [0.001, 0.0, -0.002]
+    sigmas_regime = [0.008, 0.015, 0.035]
+    returns = np.array([np.random.normal(mus[s], sigmas_regime[s]) for s in states])
+
+    # GARCH sigma
+    alpha0, alpha1, beta1 = 0.00001, 0.12, 0.85
+    garch_sig2 = np.zeros(n)
+    garch_sig2[0] = 0.0002
+    for t in range(1, n):
+        garch_sig2[t] = alpha0 + alpha1 * returns[t - 1] ** 2 + beta1 * garch_sig2[t - 1]
+
+    # Fake absorption signal
+    absorption_raw = np.random.normal(0.5, 0.3, n)
+    absorption_raw[states == 0] += 0.3  # stronger in bull
+    absorption_raw = np.clip(absorption_raw, 0, 1)
+
+    # Kalman on absorption
+    x_est = np.zeros(n)
+    x_est[0] = 0.5
+    P = 0.1
+    for t in range(1, n):
+        Q = 0.01 + 0.1 * np.sqrt(garch_sig2[t])
+        R = 0.3 if states[t] == 2 else 0.1 if states[t] == 0 else 0.2
+        P_pred = P + Q
+        K = P_pred / (P_pred + R)
+        x_est[t] = x_est[t - 1] + K * (absorption_raw[t] - x_est[t - 1])
+        P = (1 - K) * P_pred
+
+    # Decisions
+    threshold = 0.6
+    decisions = np.zeros(n)
+    for t in range(n):
+        if x_est[t] > threshold and states[t] == 0:
+            decisions[t] = 1.0
+        elif x_est[t] > threshold and states[t] == 1:
+            decisions[t] = 0.5
+        else:
+            decisions[t] = 0.0
+
+    price = 100 * np.exp(np.cumsum(returns))
+
+    fig = make_subplots(rows=4, cols=1, shared_xaxes=True,
+                        subplot_titles=[
+                            "Prix + Regime (couleur)",
+                            "σ GARCH",
+                            "Signal Absorption (brut vs Kalman)",
+                            "Decision de Trading (taille)",
+                        ], vertical_spacing=0.06, row_heights=[0.3, 0.2, 0.3, 0.2])
+
+    colors_map = {0: GREEN, 1: YELLOW, 2: RED}
+    for s, name in [(0, "Bull"), (1, "Side"), (2, "Bear")]:
+        mask = states == s
+        y_m = np.where(mask, price, np.nan)
+        fig.add_trace(go.Scatter(y=y_m, mode="lines", line=dict(color=colors_map[s], width=2),
+                                 name=name, connectgaps=False, showlegend=True), row=1, col=1)
+
+    fig.add_trace(go.Scatter(y=np.sqrt(garch_sig2) * 100, line=dict(color=MAGENTA, width=2),
+                             name="σ GARCH", showlegend=False), row=2, col=1)
+
+    fig.add_trace(go.Scatter(y=absorption_raw, mode="markers", marker=dict(color=WHITE_50, size=2),
+                             name="Absorption brut", showlegend=False), row=3, col=1)
+    fig.add_trace(go.Scatter(y=x_est, line=dict(color=CYAN, width=3),
+                             name="Absorption Kalman", showlegend=False), row=3, col=1)
+    fig.add_hline(y=threshold, line_dash="dash", line_color=YELLOW, row=3, col=1)
+
+    fig.add_trace(go.Bar(y=decisions * 100,
+                         marker_color=[GREEN if d == 1 else YELLOW if d == 0.5 else "rgba(50,50,50,0.3)" for d in decisions],
+                         name="Taille (%)", showlegend=False), row=4, col=1)
+
+    fig.update_yaxes(title="Prix", row=1, col=1)
+    fig.update_yaxes(title="σ %", row=2, col=1)
+    fig.update_yaxes(title="Signal", row=3, col=1)
+    fig.update_yaxes(title="Taille %", row=4, col=1)
+    fig.update_layout(height=800, title="Pipeline complet : GARCH + HMM + Kalman → Decision", **DARK)
+    return fig
+
+
+# ===================================================================
+# 06b — KALMAN MEAN REVERSION
+# ===================================================================
+
+def ou_mean_reversion_sim():
+    """Simulate OU process and show mean reversion + bands."""
+    np.random.seed(42)
+    n = 400
+    mu, theta, sigma = 100.0, 0.05, 1.2
+    dt = 1.0
+    X = np.zeros(n)
+    X[0] = 106.0
+    for t in range(1, n):
+        X[t] = X[t-1] + theta * (mu - X[t-1]) * dt + sigma * np.random.randn() * np.sqrt(dt)
+
+    stat_dev = sigma / np.sqrt(2 * theta)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=X, mode="lines", line=dict(color=CYAN, width=2), name="Prix (OU)"))
+    fig.add_hline(y=mu, line_dash="dash", line_color=GREEN, annotation_text="mu = 100 (vraie moyenne)")
+    fig.add_hline(y=mu + stat_dev, line_dash="dot", line_color=RED, opacity=0.5, annotation_text="mu + sigma_stat")
+    fig.add_hline(y=mu - stat_dev, line_dash="dot", line_color=GREEN, opacity=0.5)
+    fig.add_annotation(x=50, y=106, text="Depart haut (106)", font=dict(color=YELLOW, size=12), showarrow=True, arrowcolor=YELLOW)
+    fig.update_layout(height=420, title="Processus OU : le prix est tire vers mu comme un elastique",
+                      xaxis_title="Temps", yaxis_title="Prix", **DARK)
+    return fig
+
+
+def kalman_vs_fixed_mean():
+    """Compare Kalman adaptive mean vs fixed sample mean for trading."""
+    np.random.seed(42)
+    n = 300
+    mu_true = 100.0
+    theta, sigma = 0.05, 1.2
+    dt = 1.0
+
+    X = np.zeros(n)
+    X[0] = 105.0
+    for t in range(1, n):
+        X[t] = X[t-1] + theta * (mu_true - X[t-1]) * dt + sigma * np.random.randn() * np.sqrt(dt)
+
+    # Fixed mean from first 30 bars (biased)
+    fixed_mean = np.mean(X[:30])
+
+    # Kalman filter
+    phi = np.exp(-theta * dt)
+    Q = sigma**2 * (1 - phi**2)
+    R = 2.0
+    x_kf = np.zeros(n)
+    x_kf[0] = X[0]
+    P = 1.0
+    for t in range(1, n):
+        x_pred = phi * x_kf[t-1] + (1 - phi) * mu_true
+        P_pred = phi**2 * P + Q
+        K = P_pred / (P_pred + R)
+        x_kf[t] = x_pred + K * (X[t] - x_pred)
+        P = (1 - K) * P_pred
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=X, mode="lines", line=dict(color=WHITE_50, width=1), name="Prix"))
+    fig.add_hline(y=fixed_mean, line_dash="dash", line_color=RED,
+                  annotation_text=f"Moyenne fixe (30 bars) = {fixed_mean:.1f} -- BIAISEE")
+    fig.add_trace(go.Scatter(y=x_kf, mode="lines", line=dict(color=CYAN, width=3), name="Kalman (adaptatif)"))
+    fig.add_hline(y=mu_true, line_dash="dot", line_color=GREEN, opacity=0.5, annotation_text=f"Vraie mu = {mu_true}")
+
+    fig.update_layout(height=420, title="Moyenne fixe (biaisee) vs Kalman adaptatif",
+                      xaxis_title="Temps", yaxis_title="Prix", **DARK)
+    return fig
+
+
+def mean_reversion_trap():
+    """Show equity curve bleeding from biased mean vs Kalman-based."""
+    np.random.seed(42)
+    n_est, n_trade = 30, 300
+    n_total = n_est + n_trade
+    mu_true, theta, sigma = 100.0, 0.05, 1.2
+    dt = 1.0
+
+    X = np.zeros(n_total)
+    X[0] = 106.0
+    for t in range(1, n_total):
+        X[t] = X[t-1] + theta * (mu_true - X[t-1]) * dt + sigma * np.random.randn() * np.sqrt(dt)
+
+    est_mu = np.mean(X[:n_est])
+    stat_dev = sigma / np.sqrt(2 * theta)
+    band = 0.8 * stat_dev
+    upper_bad = est_mu + band
+    lower_bad = est_mu - band
+
+    # Kalman
+    phi = np.exp(-theta * dt)
+    Q = sigma**2 * (1 - phi**2)
+    R = 2.0
+    x_kf = X[0]
+    P = 1.0
+    kf_means = []
+    for t in range(n_total):
+        x_pred = phi * x_kf + (1 - phi) * mu_true
+        P_pred = phi**2 * P + Q
+        K = P_pred / (P_pred + R)
+        x_kf = x_pred + K * (X[t] - x_pred)
+        P = (1 - K) * P_pred
+        kf_means.append(x_kf)
+
+    # Trading sim: biased vs kalman
+    def trade_sim(prices, means, band_w):
+        pos = 0
+        pnl = []
+        cum = 0
+        for i in range(1, len(prices)):
+            m = means[i] if hasattr(means, '__getitem__') and len(means) > 1 else means
+            m_val = m if isinstance(m, (int, float)) else float(m)
+            profit = pos * (prices[i] - prices[i-1])
+            cum += profit
+            pnl.append(cum)
+            if pos == 0:
+                if prices[i] > m_val + band_w:
+                    pos = -1
+                elif prices[i] < m_val - band_w:
+                    pos = 1
+            elif pos == 1 and prices[i] >= m_val:
+                pos = 0
+            elif pos == -1 and prices[i] <= m_val:
+                pos = 0
+        return pnl
+
+    prices_trade = X[n_est:]
+    pnl_bad = trade_sim(prices_trade, [est_mu]*len(prices_trade), band)
+    kf_trade = kf_means[n_est:]
+    pnl_kf = trade_sim(prices_trade, kf_trade, band)
+
+    fig = make_subplots(rows=1, cols=2, subplot_titles=[
+        f"Equity : moyenne fixe ({est_mu:.1f}, biaisee)", "Equity : Kalman adaptatif"
+    ])
+    fig.add_trace(go.Scatter(y=pnl_bad, mode="lines", line=dict(color=RED, width=2), name="Biased"), row=1, col=1)
+    fig.add_hline(y=0, line_dash="dash", line_color=WHITE_50, row=1, col=1)
+    fig.add_trace(go.Scatter(y=pnl_kf, mode="lines", line=dict(color=GREEN, width=2), name="Kalman"), row=1, col=2)
+    fig.add_hline(y=0, line_dash="dash", line_color=WHITE_50, row=1, col=2)
+    fig.update_layout(height=380, title="Le piege : estimation biaisee = PnL qui descend", showlegend=False, **DARK)
+    return fig
+
+
+# ── Chart registry ──────────────────────────────────────────────────
+CHARTS = {
+    "00b_retail_vs_institutional.md": [
+        ("Market-Making sim", retail_market_making_sim),
+        ("Adverse Selection", retail_adverse_selection),
+    ],
+    "01_time_series.md": [
+        ("Decomposition", ts_decomposition),
+        ("Moving Averages vs EMA", ts_moving_averages),
+        ("Cone de prevision", ts_forecast_cone),
+    ],
+    "02_central_limit_theorem.md": [
+        ("Des vers Gaussienne (CLT)", clt_dice_demo),
+        ("Confiance vs Nb de trades", clt_trading_confidence),
+    ],
+    "02b_asymptotics.md": [
+        ("LGN : convergence de la moyenne", asymp_lln_convergence),
+        ("Vitesse 1/sqrt(n)", asymp_convergence_speed),
+        ("Incertitude du Sharpe", asymp_sharpe_uncertainty),
+        ("Consistance des estimateurs", asymp_estimator_comparison),
+    ],
+    "03b_monte_carlo.md": [
+        ("Convergence du de", mc_dice_convergence),
+        ("Parcours de richesse", mc_wealth_paths),
+        ("Precision vs n", mc_precision),
+    ],
+    "03_ergodicity.md": [
+        ("Additif vs Multiplicatif", ergo_multiplicative_vs_additive),
+        ("g = E[r] - sigma2/2", ergo_variance_drag),
+        ("Kelly Criterion", ergo_kelly_sizing),
+    ],
+    "04_garch.md": [
+        ("Clustering de volatilite", garch_volatility_clustering),
+        ("Propagation d un choc", garch_step_by_step),
+        ("VaR Naive vs GARCH", garch_var_comparison),
+    ],
+    "04b_trading_metrics.md": [
+        ("Piege du winrate", metrics_winrate_trap),
+        ("Test de stabilite", metrics_stability_test),
+        ("Random walks : le hasard a l air bon", metrics_random_walk_best),
+    ],
+    "05_hidden_markov_models.md": [
+        ("Distributions par regime", hmm_regime_distributions),
+        ("Prix colore par regime", hmm_regime_price_colored),
+        ("Matrice de transition", hmm_transition_heatmap),
+    ],
+    "05b_regime_switching.md": [
+        ("Filtrage bayesien live", regime_bayesian_filtering),
+    ],
+    "05c_hawkes.md": [
+        ("Hawkes : intensite self-exciting", hawkes_intensity),
+        ("Poisson vs Hawkes", hawkes_vs_poisson),
+    ],
+    "06_kalman_filter.md": [
+        ("Kalman Filter complet", kalman_filter_demo),
+        ("Le Gain K explique", kalman_gain_explained),
+        ("Impact de R", kalman_R_comparison),
+    ],
+    "06b_kalman_mean_reversion.md": [
+        ("OU Process : mean reversion", ou_mean_reversion_sim),
+        ("Kalman vs Fixed Mean", kalman_vs_fixed_mean),
+        ("Le piege du biais", mean_reversion_trap),
+    ],
+    "07_pipeline_integration.md": [
+        ("Matrice de decision", pipeline_decision_matrix),
+        ("Pipeline complet", pipeline_full_simulation),
+    ],
+}
