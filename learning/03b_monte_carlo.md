@@ -85,9 +85,9 @@ REGLES :
 
 $$EV = P(\text{impair})\cdot[0.6 \times 1000 + 0.4 \times (-500)] + P(\text{pair})\cdot[0.5 \times (-500) + 0.5 \times 1000]$$
 
-$$EV = 0.5 \times [600 - 200] + 0.5 \times [-250 + 500] = 0.5 \times 400 + 0.5 \times 250 = \boxed{325\$}$$
+$$EV = 0.5 \times [600 - 200] + 0.5 \times [-250 + 500] = 0.5 \times 400 + 0.5 \times 250 = \boxed{325}$$
 
-**MONTE CARLO** (10 000 parties) : Moyenne simulee $\to 324.8\$$ (tres proche de 325$).
+**MONTE CARLO** (10 000 parties) : Moyenne simulee $\to 324.8$ (tres proche de 325 dollars).
 
 ## 4. Estimer des probabilites
 
@@ -157,21 +157,21 @@ Avec 10 000 lancers, l'erreur serait $\sim 0.003$.
 
 ## Exercice 2 : Ton edge par Monte Carlo
 
-Tes stats (suppose) : winrate = 55%, gain moyen = +150$, perte = -100$.
+Tes stats (suppose) : winrate = 55%, gain moyen = +150 dollars, perte = -100 dollars.
 
 Simule 1 trade : tire un nombre aleatoire entre 0 et 1 — si < 0.55 : P&L = +150, sinon : P&L = -100.
 
 Simule 10 000 trades, calcule la moyenne :
 
-$$EV = 0.55 \times 150 + 0.45 \times (-100) = 82.5 - 45 = +37.5\$ \text{ par trade}$$
+$$EV = 0.55 \times 150 + 0.45 \times (-100) = 82.5 - 45 = +37.5 \text{ par trade}$$
 
-Monte Carlo confirmera $\sim 37.5\$$ avec assez de simulations.
+Monte Carlo confirmera $\sim 37.5$ avec assez de simulations.
 
 ## Exercice 3 : Proba de ruine
 
-Capital = 10 000$, risque 200$ par trade, edge = 37.5$/trade.
+Capital = 10 000 dollars, risque 200 dollars par trade, edge = 37.5 dollars/trade.
 
-Question : quelle proba de toucher 0$ avant 20 000$ ?
+Question : quelle proba de toucher 0 dollars avant 20 000 dollars ?
 
 ```
 Monte Carlo :
@@ -233,7 +233,7 @@ Si ta courbe REELLE ressemble au 3e cas :
 | 100 | $\sim \sigma / 10$ |
 | 10 000 | $\sim \sigma / 100$ |
 
-$4\times$ plus de sims = erreur $/2$.
+$4\times$ plus de sims = erreur $\div 2$.
 
 **DEFI EN FINANCE :** La distribution CHANGE dans le temps. Monte Carlo suppose une distribution FIXE. Solution : recalibrer, HMM, GARCH, stress tests.
 

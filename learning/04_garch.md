@@ -225,11 +225,11 @@ La vol DESCEND lentement = **mean reversion**. Il faut $\sim 15$-$20$ jours pour
 
 ## Exercice 3 : Impact sur le sizing
 
-Capital $= 10\,000\$$, risque max $1\% = 100\$$ par trade, stop loss $= 10$ points MNQ $= 50\$$
+Capital $= 10\,000$, risque max $1\% = 100$ par trade, stop loss $= 10$ points MNQ $= 50$
 
 | Regime | $\sigma_{GARCH}$ | Contrats | Raison |
 |---|---|---|---|
-| LOW vol | petit | $100\$/50\$ = 2$ | Conditions normales |
+| LOW vol | petit | $100/50 = 2$ | Conditions normales |
 | HIGH vol | double | $1$ | Stop atteint plus souvent, REDUIRE |
 
 **GARCH te dit QUAND ajuster ta taille.**

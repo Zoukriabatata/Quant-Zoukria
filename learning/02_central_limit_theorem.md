@@ -95,11 +95,11 @@ $$\bar{X} \sim \mathcal{N}\left(\mu,\; \frac{\sigma}{\sqrt{n}}\right)$$
 
 $$SE = \frac{\sigma}{\sqrt{n}}$$
 
-| $n$ (trades) | $SE$ (si $\sigma = 100\$$) |
+| $n$ (trades) | $SE$ (si $\sigma = 100$) |
 |---|---|
-| 25 | $100/\sqrt{25} = 20\$$ |
-| 100 | $100/\sqrt{100} = 10\$$ |
-| 400 | $100/\sqrt{400} = 5\$$ |
+| 25 | $100/\sqrt{25} = 20$ |
+| 100 | $100/\sqrt{100} = 10$ |
+| 400 | $100/\sqrt{400} = 5$ |
 
 Plus tu as de trades, plus ta moyenne est PRECISE.
 
@@ -140,21 +140,21 @@ Pour une distribution normale :
 
 ## Application : "Est-ce que j'ai un edge ?"
 
-Tes 100 derniers trades : $\bar{X} = +15\$$ , $\sigma = 80\$$
+Tes 100 derniers trades : $\bar{X} = +15$ , $\sigma = 80$
 
-$$SE = \frac{\sigma}{\sqrt{n}} = \frac{80}{\sqrt{100}} = 8\$$
+$$SE = \frac{\sigma}{\sqrt{n}} = \frac{80}{\sqrt{100}} = 8$$
 
 Intervalle de confiance a 95% :
 
-$$IC = [\bar{X} - 2 \cdot SE,\; \bar{X} + 2 \cdot SE] = [15 - 16,\; 15 + 16] = [-1\$,\; +31\$]$$
+$$IC = [\bar{X} - 2 \cdot SE,\; \bar{X} + 2 \cdot SE] = [15 - 16,\; 15 + 16] = [-1,\; +31]$$
 
-$0\$$ est **DANS** l'intervalle → pas assez de preuves. 100 trades ne suffisent pas.
+$0$ est **DANS** l'intervalle → pas assez de preuves. 100 trades ne suffisent pas.
 
-Apres 400 trades (si la moyenne reste a $+15\$$) :
+Apres 400 trades (si la moyenne reste a $+15$) :
 
-$$SE = \frac{80}{\sqrt{400}} = 4\$ \quad \Rightarrow \quad IC = [+7\$,\; +23\$]$$
+$$SE = \frac{80}{\sqrt{400}} = 4 \quad \Rightarrow \quad IC = [+7,\; +23]$$
 
-$0\$$ est **EN DEHORS** → ton edge est REEL (95% confiance)
+$0$ est **EN DEHORS** → ton edge est REEL (95% confiance)
 
 ---
 

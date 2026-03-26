@@ -49,11 +49,11 @@ Ce qui compte c'est la croissance geometrique :
 
 | Tour | Resultat | Solde |
 |---|---|---|
-| Depart | | $1000\$$ |
-| Tour 1 | $+50\%$ | $1500\$$ |
-| Tour 2 | $-40\%$ | $900\$$ -- tu as PERDU $100\$$ ! |
-| Tour 3 | $+50\%$ | $1350\$$ |
-| Tour 4 | $-40\%$ | $810\$$ -- encore moins ! |
+| Depart | | $1000$ |
+| Tour 1 | $+50\%$ | $1500$ |
+| Tour 2 | $-40\%$ | $900$ -- tu as PERDU $100$ ! |
+| Tour 3 | $+50\%$ | $1350$ |
+| Tour 4 | $-40\%$ | $810$ -- encore moins ! |
 
 Le taux de croissance geometrique :
 
@@ -212,13 +212,13 @@ Ton edge $= +1\%$ par trade (apres commissions). Croissance reelle $g = E[r] - \
 
 ## Exercice 3 : Kelly pour ton trading
 
-Suppose tes stats reelles : $p = 0.55$, avg win $= 150\$$, avg loss $= 100\$$, donc $b = 150/100 = 1.5$
+Suppose tes stats reelles : $p = 0.55$, avg win $= 150$, avg loss $= 100$, donc $b = 150/100 = 1.5$
 
 $$f^* = \frac{0.55 \times 1.5 - 0.45}{1.5} = \frac{0.825 - 0.45}{1.5} = \frac{0.375}{1.5} = 0.25 = 25\%$$
 
 Kelly dit $25\%$. En pratique utilise **demi-Kelly** $= 12.5\%$.
 
-Si ton compte $= 10\,000\$$ : risque max par trade $= 10\,000 \times 0.125 = 1\,250\$$
+Si ton compte $= 10\,000$ : risque max par trade $= 10\,000 \times 0.125 = 1\,250$
 
 ---
 

@@ -9,7 +9,7 @@
 
 ## Le probleme
 
-Tu as 50 trades. Ta moyenne est +12$/trade.
+Tu as 50 trades. Ta moyenne est +12 dollars/trade.
 Mais est-ce que cette moyenne est FIABLE ?
 
 Avec 500 trades, ta moyenne serait-elle la meme ?
@@ -134,12 +134,12 @@ $$\text{Moyenne empirique} = \frac{\sum P\&L}{n}$$
 
 LGN dit : quand $n$ grandit, ta moyenne empirique $\to \mu$
 
-| $n$ | Moyenne observee | Ecart a $\mu = 8\$$ |
+| $n$ | Moyenne observee | Ecart a $\mu = 8$ |
 |-----|-----------------|---------------------|
-| 10 | +25$ | 17$ |
-| 100 | +11$ | 3$ |
-| 1000 | +8.3$ | 0.3$ |
-| $\infty$ | +8$ | 0$ |
+| 10 | +25 | 17 |
+| 100 | +11 | 3 |
+| 1000 | +8.3 | 0.3 |
+| $\infty$ | +8 | 0 |
 
 **Condition importante : i.i.d.** (independant et identiquement distribue)
 
@@ -281,16 +281,16 @@ Mais c'est consistant : avec assez de trades, ca converge.
 
 ## Exercice 1 : Convergence de la moyenne
 
-Tu trades avec un edge reel de $\mu = +5\$$ et $\sigma = 80\$$.
+Tu trades avec un edge reel de $\mu = +5$ et $\sigma = 80$.
 
 Calcule l'erreur standard pour differents $n$ :
 
 | $n$ | $SE = \sigma / \sqrt{n}$ | IC 95% pour la moyenne |
 |-----|-------------------------|----------------------|
-| 25 | $80/5 = 16\$$ | $[-27\$,\; +37\$]$ |
-| 100 | $80/10 = 8\$$ | $[-11\$,\; +21\$]$ |
-| 400 | $80/20 = 4\$$ | $[-3\$,\; +13\$]$ |
-| 2500 | $80/50 = 1.6\$$ | $[+1.8\$,\; +8.2\$]$ |
+| 25 | $80/5 = 16$ | $[-27,\; +37]$ |
+| 100 | $80/10 = 8$ | $[-11,\; +21]$ |
+| 400 | $80/20 = 4$ | $[-3,\; +13]$ |
+| 2500 | $80/50 = 1.6$ | $[+1.8,\; +8.2]$ |
 
 ## Exercice 2 : Combien de trades pour confirmer un Sharpe ?
 
@@ -324,9 +324,9 @@ Pourquoi le max drawdown est un MAUVAIS estimateur :
 
 | Duree | Max DD |
 |-------|--------|
-| 100 jours | -500$ |
-| 200 jours | -700$ (probablement pire) |
-| 1000 jours | -1200$ (encore pire) |
+| 100 jours | -500 |
+| 200 jours | -700 (probablement pire) |
+| 1000 jours | -1200 (encore pire) |
 
 Le max drawdown GRANDIT avec le nombre de trades.
 Il ne converge pas vers une valeur fixe.

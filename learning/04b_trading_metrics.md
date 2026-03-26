@@ -13,7 +13,7 @@
 
 Tu as un Sharpe de 2.5 sur ton backtest.
 Tu as un winrate de 65%.
-Tu fais +3000$/mois.
+Tu fais +3000 dollars/mois.
 
 EST-CE QUE CA VEUT DIRE QUE TA STRATEGIE MARCHE ?
 

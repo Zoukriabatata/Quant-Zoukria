@@ -1,8 +1,53 @@
+import re
 import streamlit as st
 from pathlib import Path
 from charts import CHARTS
 
 st.set_page_config(page_title="Quant Maths", page_icon="QM", layout="wide")
+
+
+def render_math_markdown(text):
+    """Render markdown with LaTeX support.
+
+    Streamlit st.markdown supports $$...$$ blocks but NOT inline $...$.
+    This function splits the text into parts:
+    - $$...$$ blocks -> st.latex()
+    - Lines with inline $...$ -> st.latex() for the math, st.markdown for text
+    - Regular text -> st.markdown()
+    """
+    # Split on $$ blocks first
+    parts = re.split(r'(\$\$.*?\$\$)', text, flags=re.DOTALL)
+
+    for part in parts:
+        if not part.strip():
+            continue
+        if part.startswith('$$') and part.endswith('$$'):
+            # Block LaTeX
+            latex_content = part[2:-2].strip()
+            if latex_content:
+                st.latex(latex_content)
+        else:
+            # Check if this part has inline $...$ math
+            if '$' in part:
+                # Process line by line for mixed content
+                lines = part.split('\n')
+                buffer = []
+                for line in lines:
+                    # Check for inline math $...$
+                    if re.search(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)', line):
+                        # Flush buffer first
+                        if buffer:
+                            st.markdown('\n'.join(buffer), unsafe_allow_html=True)
+                            buffer = []
+                        # Convert inline $...$ to Streamlit's :math: or just render with st.markdown
+                        # Streamlit 1.55 actually supports $...$ in markdown if we pass it correctly
+                        st.markdown(line, unsafe_allow_html=True)
+                    else:
+                        buffer.append(line)
+                if buffer:
+                    st.markdown('\n'.join(buffer), unsafe_allow_html=True)
+            else:
+                st.markdown(part, unsafe_allow_html=True)
 
 # ── Custom CSS ──────────────────────────────────────────────────────
 st.markdown("""
@@ -225,7 +270,7 @@ has_content = any(s.strip() for s in sections.values())
 
 if not has_content:
     # Fallback: render raw
-    st.markdown(content)
+    render_math_markdown(content)
     st.stop()
 
 # Charts at the top
@@ -243,19 +288,19 @@ tab_a, tab_m, tab_l, tab_r = st.tabs([
 
 with tab_a:
     if sections["apprentissage"].strip():
-        st.markdown(sections["apprentissage"])
+        render_math_markdown(sections["apprentissage"])
     else:
         st.info("Section en cours de redaction.")
 
 with tab_m:
     if sections["model"].strip():
-        st.markdown(sections["model"])
+        render_math_markdown(sections["model"])
     else:
         st.info("Section en cours de redaction.")
 
 with tab_l:
     if sections["lecon"].strip():
-        st.markdown(sections["lecon"])
+        render_math_markdown(sections["lecon"])
 
         # Interactive exercise for some modules
         st.markdown("---")
@@ -306,7 +351,7 @@ with tab_l:
 
 with tab_r:
     if sections["resume"].strip():
-        st.markdown(sections["resume"])
+        render_math_markdown(sections["resume"])
 
         # Download button for summary
         st.download_button(
