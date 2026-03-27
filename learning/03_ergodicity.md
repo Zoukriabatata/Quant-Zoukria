@@ -154,26 +154,9 @@ En pratique on utilise **demi-Kelly** ($20\%$) car :
 
 ## Visualisation de l'impact du sizing
 
-```
-SOUS-KELLY (safe) :
-  Croissance lente mais SURE
-  ----____-----_____------______------  --> monte doucement
-
-KELLY OPTIMAL :
-  Croissance maximale mais VIOLENTE
-  --__----____--______---___________--- --> monte plus vite
-  (drawdowns importants mais tu survis)
-
-SUR-KELLY (danger) :
-  Perte CERTAINE a long terme
-  ----____    ____
-            \/    \___        --> 0 (ruine)
-                      \____
-
-IMPORTANT : la RUINE est irreversible.
-  0 * n'importe quoi = 0
-  Si tu perds tout, aucun edge ne te sauve.
-```
+> Voir le graphique interactif **"Impact du sizing"** dans les visualisations.
+>
+> **IMPORTANT :** la RUINE est irreversible. $0 \times$ n'importe quoi $= 0$. Si tu perds tout, aucun edge ne te sauve.
 
 ---
 

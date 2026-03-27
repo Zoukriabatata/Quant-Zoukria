@@ -525,6 +525,56 @@ def ergo_kelly_sizing():
     return fig
 
 
+def ergo_kelly_impact_sim():
+    """Simulate equity curves for sub-Kelly, Kelly, and over-Kelly sizing."""
+    np.random.seed(7)
+    n_steps = 500
+    n_paths = 30
+    p, b = 0.55, 1.5
+    f_kelly = (p * b - (1 - p)) / b  # ~0.25
+
+    fractions = {
+        f"Demi-Kelly ({f_kelly/2:.0%})": (f_kelly / 2, GREEN),
+        f"Kelly ({f_kelly:.0%})": (f_kelly, CYAN),
+        f"Sur-Kelly ({min(f_kelly*2.5, 0.95):.0%})": (min(f_kelly * 2.5, 0.95), RED),
+    }
+
+    fig = make_subplots(rows=1, cols=3, subplot_titles=list(fractions.keys()),
+                        horizontal_spacing=0.06)
+
+    for col_idx, (label, (f, color)) in enumerate(fractions.items(), 1):
+        for _ in range(n_paths):
+            wins = np.random.random(n_steps) < p
+            gains = np.where(wins, 1 + b * f, 1 - f)
+            equity = 1000 * np.cumprod(gains)
+            fig.add_trace(go.Scatter(
+                y=equity, mode="lines",
+                line=dict(width=0.8, color=color), opacity=0.4,
+                showlegend=False,
+            ), row=1, col=col_idx)
+        # Median path
+        all_paths = []
+        for _ in range(200):
+            wins = np.random.random(n_steps) < p
+            gains = np.where(wins, 1 + b * f, 1 - f)
+            all_paths.append(1000 * np.cumprod(gains))
+        median_path = np.median(all_paths, axis=0)
+        fig.add_trace(go.Scatter(
+            y=median_path, mode="lines",
+            line=dict(width=3, color=color, dash="dash"),
+            name=f"Mediane {label}", showlegend=True,
+        ), row=1, col=col_idx)
+        fig.update_yaxes(type="log", title="Capital ($)" if col_idx == 1 else "", row=1, col=col_idx)
+
+    fig.add_hline(y=1000, line_dash="dot", line_color=WHITE_50, opacity=0.3)
+    fig.update_layout(
+        height=450,
+        title="Impact du sizing : sous-Kelly monte lent, Kelly monte fort, sur-Kelly = ruine",
+        **DARK,
+    )
+    return fig
+
+
 def ergo_variance_drag():
     """Show g = E[r] - sigma²/2 visually."""
     edge = np.linspace(0, 0.10, 100)  # 0 to 10%
@@ -1339,6 +1389,7 @@ CHARTS = {
         ("Additif vs Multiplicatif", ergo_multiplicative_vs_additive),
         ("g = E[r] - sigma2/2", ergo_variance_drag),
         ("Kelly Criterion", ergo_kelly_sizing),
+        ("Impact du sizing", ergo_kelly_impact_sim),
     ],
     "04_garch.md": [
         ("Clustering de volatilite", garch_volatility_clustering),
