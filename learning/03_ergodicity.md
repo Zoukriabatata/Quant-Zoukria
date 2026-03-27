@@ -28,19 +28,9 @@ EV positif ! Super deal non ?
 Le probleme : la valeur attendue calcule la moyenne
 sur TOUS les univers paralleles. Pas sur TON parcours.
 
-```
-MOYENNE D'ENSEMBLE (ce que dit l'EV) :
+<!-- CHART:ergo_ensemble_illusion -->
 
-  Univers 1 : +50% +50% +50% = RICHE
-  Univers 2 : +50% -40% +50% = ok
-  Univers 3 : -40% +50% -40% = pauvre
-  Univers 4 : -40% -40% +50% = tres pauvre
-  Univers 5 : -40% -40% -40% = ruine
-
-  Moyenne des 5 = positive (grace a l'univers 1)
-
-  MAIS : la PLUPART des univers perdent de l'argent !
-```
+La ligne jaune (EV) monte, mais la majorite des parcours individuels (en rouge) perdent de l'argent !
 
 ## Le vrai calcul : la MOYENNE TEMPORELLE
 
@@ -85,23 +75,10 @@ ERGODICITE = quand la moyenne d'ensemble = la moyenne temporelle
 
 ## L'intuition visuelle
 
-```
-ADDITIF (ergodique) :
-  +10, -10, +10, -10 ...
+<!-- CHART:ergo_multiplicative_vs_additive -->
 
-  Solde : 1000, 1010, 1000, 1010, 1000
-  --> oscille autour de 1000, stable
-
-MULTIPLICATIF (NON ergodique) :
-  +50%, -40%, +50%, -40% ...
-
-  Solde : 1000, 1500, 900, 1350, 810, 1215, 729 ...
-  --> DESCEND malgre l'EV positif !
-
-  1000$ ----___    ___
-               \__/   \___     ___
-                          \___/   \___   --> 0
-```
+- **Gauche (additif)** : les parcours oscillent autour de la moyenne, stable
+- **Droite (multiplicatif)** : malgre le meme EV, les parcours s'effondrent vers 0
 
 **Le trading est MULTIPLICATIF = NON-ERGODIQUE**
 

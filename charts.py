@@ -449,6 +449,52 @@ def mc_precision():
 # 03 — ERGODICITY
 # ===================================================================
 
+def ergo_ensemble_illusion():
+    """Show ensemble average vs individual paths — most lose despite positive EV."""
+    np.random.seed(123)
+    n_steps = 50
+    n_paths = 100
+
+    fig = go.Figure()
+    final_values = []
+    for i in range(n_paths):
+        flips = np.random.choice([1.5, 0.6], n_steps)
+        path = 1000 * np.cumprod(flips)
+        final_values.append(path[-1])
+        color = GREEN if path[-1] > 1000 else RED
+        fig.add_trace(go.Scatter(
+            y=np.concatenate([[1000], path]), mode="lines",
+            line=dict(width=0.7, color=color), opacity=0.35,
+            showlegend=False,
+        ))
+
+    # Ensemble average (EV line)
+    ev_line = 1000 * (1.05 ** np.arange(n_steps + 1))
+    fig.add_trace(go.Scatter(
+        y=ev_line, mode="lines", line=dict(color=YELLOW, width=3, dash="dash"),
+        name=f"Moyenne d'ensemble (EV = +5%/tour)",
+    ))
+    fig.add_hline(y=1000, line_dash="dot", line_color=WHITE_50, opacity=0.4)
+
+    n_losers = sum(1 for v in final_values if v < 1000)
+    pct_losers = n_losers / n_paths * 100
+
+    fig.update_layout(
+        height=500,
+        title=f"L'illusion de l'EV : {pct_losers:.0f}% des parcours PERDENT malgre EV = +5%",
+        yaxis_title="Capital ($)", yaxis_type="log",
+        xaxis_title="Tours",
+        annotations=[dict(
+            x=n_steps * 0.7, y=np.log10(ev_line[-1]) * 0.5,
+            text=f"<b>{pct_losers:.0f}% en rouge = perdants</b><br>L'EV jaune monte,<br>mais TOI tu es probablement en rouge",
+            showarrow=False, font=dict(color="white", size=13),
+            bgcolor="rgba(255,51,102,0.3)", bordercolor=RED,
+        )],
+        **DARK,
+    )
+    return fig
+
+
 def ergo_multiplicative_vs_additive():
     """Show how multiplicative process diverges from EV."""
     np.random.seed(42)
@@ -484,7 +530,9 @@ def ergo_multiplicative_vs_additive():
 
     fig.update_yaxes(title="Capital ($)", row=1, col=1)
     fig.update_yaxes(title="Capital ($)", type="log", row=1, col=2)
-    fig.update_layout(height=450, title="Le trading est multiplicatif : l'EV ment", **DARK)
+    fig.update_xaxes(title="Tours", row=1, col=1)
+    fig.update_xaxes(title="Tours", row=1, col=2)
+    fig.update_layout(height=500, title="Additif = stable | Multiplicatif = ruine (meme EV !)", **DARK)
     return fig
 
 
@@ -1386,7 +1434,6 @@ CHARTS = {
         ("Precision vs n", mc_precision),
     ],
     "03_ergodicity.md": [
-        ("Additif vs Multiplicatif", ergo_multiplicative_vs_additive),
         ("g = E[r] - sigma2/2", ergo_variance_drag),
         ("Kelly Criterion", ergo_kelly_sizing),
     ],
@@ -1430,5 +1477,7 @@ CHARTS = {
 
 # Inline charts: injected directly in markdown content via <!-- CHART:name --> markers
 INLINE_CHARTS = {
+    "ergo_ensemble_illusion": ergo_ensemble_illusion,
+    "ergo_multiplicative_vs_additive": ergo_multiplicative_vs_additive,
     "ergo_kelly_impact_sim": ergo_kelly_impact_sim,
 }
