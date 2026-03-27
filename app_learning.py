@@ -33,14 +33,13 @@ def render_math_markdown(text):
                 lines = part.split('\n')
                 buffer = []
                 for line in lines:
-                    # Check for inline math $...$
-                    if re.search(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)', line):
+                    is_table_row = line.strip().startswith('|')
+                    has_inline_math = re.search(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)', line)
+                    if has_inline_math and not is_table_row:
                         # Flush buffer first
                         if buffer:
                             st.markdown('\n'.join(buffer), unsafe_allow_html=True)
                             buffer = []
-                        # Convert inline $...$ to Streamlit's :math: or just render with st.markdown
-                        # Streamlit 1.55 actually supports $...$ in markdown if we pass it correctly
                         st.markdown(line, unsafe_allow_html=True)
                     else:
                         buffer.append(line)
