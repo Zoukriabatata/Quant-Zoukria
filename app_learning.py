@@ -203,19 +203,8 @@ def render_charts(selected_file, placement="main"):
         return
 
     st.markdown("### -- Visualisations interactives")
-    if len(chart_list) <= 2:
-        cols = st.columns(len(chart_list))
-        for col, (title, chart_fn) in zip(cols, chart_list):
-            with col:
-                st.plotly_chart(chart_fn(), use_container_width=True, key=f"chart_{title}")
-    else:
-        # First chart full width, rest in columns
-        st.plotly_chart(chart_list[0][1](), use_container_width=True, key=f"chart_{chart_list[0][0]}")
-        if len(chart_list) > 1:
-            cols = st.columns(2)
-            for i, (title, chart_fn) in enumerate(chart_list[1:]):
-                with cols[i % 2]:
-                    st.plotly_chart(chart_fn(), use_container_width=True, key=f"chart_{title}")
+    for title, chart_fn in chart_list:
+        st.plotly_chart(chart_fn(), use_container_width=True, key=f"chart_{title}")
 
 
 # ── Main Content ────────────────────────────────────────────────────
