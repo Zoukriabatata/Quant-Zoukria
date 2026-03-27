@@ -1,7 +1,7 @@
 import re
 import streamlit as st
 from pathlib import Path
-from charts import CHARTS
+from charts import CHARTS, INLINE_CHARTS
 
 st.set_page_config(page_title="Quant Maths", page_icon="QM", layout="wide")
 
@@ -27,26 +27,32 @@ def render_math_markdown(text):
             if latex_content:
                 st.latex(latex_content)
         else:
-            # Check if this part has inline $...$ math
-            if '$' in part:
-                # Process line by line for mixed content
-                lines = part.split('\n')
-                buffer = []
-                for line in lines:
-                    is_table_row = line.strip().startswith('|')
-                    has_inline_math = re.search(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)', line)
-                    if has_inline_math and not is_table_row:
-                        # Flush buffer first
-                        if buffer:
-                            st.markdown('\n'.join(buffer), unsafe_allow_html=True)
-                            buffer = []
-                        st.markdown(line, unsafe_allow_html=True)
-                    else:
-                        buffer.append(line)
-                if buffer:
-                    st.markdown('\n'.join(buffer), unsafe_allow_html=True)
-            else:
-                st.markdown(part, unsafe_allow_html=True)
+            # Process line by line to handle inline math and inline charts
+            lines = part.split('\n')
+            buffer = []
+            for line in lines:
+                # Inline chart marker: <!-- CHART:function_name -->
+                chart_match = re.match(r'^\s*<!--\s*CHART:(\w+)\s*-->\s*$', line)
+                if chart_match:
+                    if buffer:
+                        st.markdown('\n'.join(buffer), unsafe_allow_html=True)
+                        buffer = []
+                    chart_fn = INLINE_CHARTS.get(chart_match.group(1))
+                    if chart_fn:
+                        st.plotly_chart(chart_fn(), use_container_width=True,
+                                        key=f"inline_{chart_match.group(1)}")
+                    continue
+                is_table_row = line.strip().startswith('|')
+                has_inline_math = re.search(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)', line)
+                if has_inline_math and not is_table_row:
+                    if buffer:
+                        st.markdown('\n'.join(buffer), unsafe_allow_html=True)
+                        buffer = []
+                    st.markdown(line, unsafe_allow_html=True)
+                else:
+                    buffer.append(line)
+            if buffer:
+                st.markdown('\n'.join(buffer), unsafe_allow_html=True)
 
 # ── Custom CSS ──────────────────────────────────────────────────────
 st.markdown("""

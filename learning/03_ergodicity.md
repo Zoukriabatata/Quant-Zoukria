@@ -154,9 +154,9 @@ En pratique on utilise **demi-Kelly** ($20\%$) car :
 
 ## Visualisation de l'impact du sizing
 
-> Voir le graphique interactif **"Impact du sizing"** dans les visualisations.
->
-> **IMPORTANT :** la RUINE est irreversible. $0 \times$ n'importe quoi $= 0$. Si tu perds tout, aucun edge ne te sauve.
+<!-- CHART:ergo_kelly_impact_sim -->
+
+**IMPORTANT :** la RUINE est irreversible. $0 \times$ n'importe quoi $= 0$. Si tu perds tout, aucun edge ne te sauve.
 
 ---
 

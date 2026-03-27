@@ -568,7 +568,7 @@ def ergo_kelly_impact_sim():
 
     fig.add_hline(y=1000, line_dash="dot", line_color=WHITE_50, opacity=0.3)
     fig.update_layout(
-        height=450,
+        height=550,
         title="Impact du sizing : sous-Kelly monte lent, Kelly monte fort, sur-Kelly = ruine",
         **DARK,
     )
@@ -1389,7 +1389,6 @@ CHARTS = {
         ("Additif vs Multiplicatif", ergo_multiplicative_vs_additive),
         ("g = E[r] - sigma2/2", ergo_variance_drag),
         ("Kelly Criterion", ergo_kelly_sizing),
-        ("Impact du sizing", ergo_kelly_impact_sim),
     ],
     "04_garch.md": [
         ("Clustering de volatilite", garch_volatility_clustering),
@@ -1427,4 +1426,9 @@ CHARTS = {
         ("Matrice de decision", pipeline_decision_matrix),
         ("Pipeline complet", pipeline_full_simulation),
     ],
+}
+
+# Inline charts: injected directly in markdown content via <!-- CHART:name --> markers
+INLINE_CHARTS = {
+    "ergo_kelly_impact_sim": ergo_kelly_impact_sim,
 }
