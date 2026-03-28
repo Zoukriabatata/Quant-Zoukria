@@ -5,6 +5,71 @@ from charts import CHARTS, INLINE_CHARTS
 
 st.set_page_config(page_title="Quant Maths", page_icon="QM", layout="wide")
 
+# ── Navigation ──────────────────────────────────────────────────────
+page = st.sidebar.radio("Navigation", ["Etude", "Backtest Kalman", "Live Kalman"],
+                         index=0)
+
+if page == "Backtest Kalman":
+    st.title("Backtest Kalman OU — MNQ")
+    st.markdown("""
+    ### Resultats du backtest (3 mois, Databento)
+
+    | Metrique | Valeur |
+    |---|---|
+    | **Winrate** | 46.8% |
+    | **Esperance** | +20.5 pts/trade |
+    | **Profit Factor** | 3.48 |
+    | **Return** | +10.2% (3 mois) |
+    | **Max Drawdown** | -0.6% |
+    | **Kelly** | 33.3% |
+
+    ### Signal
+    - **Entree** : Prix sort de la bande Kalman OU (k=1.0 sigma)
+    - **TP** : Retour au fair value Kalman
+    - **SL** : ATR x 1.5 (dynamique, max 15 pts)
+    - **Filtre** : GARCH regime (skip HIGH vol)
+    - **Sizing** : Apex-safe (max 2 contracts)
+
+    ---
+    **Pour lancer le backtest complet en local :**
+    ```
+    streamlit run backtest_kalman.py
+    ```
+    """)
+    st.stop()
+
+elif page == "Live Kalman":
+    st.title("Live Kalman OU — MNQ")
+    st.markdown("""
+    ### Comment trader
+
+    1. Ouvrir **TWS** (IBKR, port 7497)
+    2. Lancer `streamlit run live_kalman.py`
+    3. Cliquer **Demarrer**
+    4. Attendre le signal : **LONG** ou **SHORT**
+    5. Executer sur **Apex** avec les niveaux affiches
+    6. **1 trade max par session**
+
+    ### Logique du signal
+
+    | Composant | Methode |
+    |---|---|
+    | **Signal** | Prix sort de la bande Kalman OU (k=1.0 sigma) |
+    | **TP** | Retour au fair value Kalman |
+    | **SL** | ATR x 1.5 (dynamique) |
+    | **Filtre** | GARCH regime (skip HIGH vol) |
+    | **Data** | IBKR TWS (CME L1, $1.55/mois) |
+
+    ---
+    **Pour lancer le live en local :**
+    ```
+    streamlit run live_kalman.py
+    ```
+    """)
+    st.stop()
+
+# ── Page Etude (code original ci-dessous) ────────────────────────────
+
 
 def render_math_markdown(text):
     """Render markdown with LaTeX support.
