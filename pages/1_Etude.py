@@ -107,6 +107,7 @@ LEARNING_DIR = Path(__file__).parent.parent / "learning"
 MODULES = {
     "00_ROADMAP.md": ("//", "Roadmap", "Plan de route", 0),
     "00b_retail_vs_institutional.md": ("00b", "Retail vs Instit", "Comprendre le jeu", 0),
+    "00c_maths_notation.md": ("00c", "Notation Maths", "Symboles et lettres grecques", 0),
     "01_time_series.md": ("01", "Time Series", "Comprendre les donnees", 1),
     "02_central_limit_theorem.md": ("02", "CLT", "Pourquoi les stats marchent", 1),
     "02b_asymptotics.md": ("02b", "Asymptotics", "Quand n devient grand", 1),
