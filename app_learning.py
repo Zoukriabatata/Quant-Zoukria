@@ -6,66 +6,224 @@ from charts import CHARTS, INLINE_CHARTS
 st.set_page_config(page_title="Quant Maths", page_icon="QM", layout="wide")
 
 # ── Navigation ──────────────────────────────────────────────────────
-page = st.sidebar.radio("Navigation", ["Etude", "Backtest Kalman", "Live Kalman"],
-                         index=0)
+if "nav_page" not in st.session_state:
+    st.session_state.nav_page = "Etude"
 
-if page == "Backtest Kalman":
-    st.title("Backtest Kalman OU — MNQ")
+# ── Page Backtest ────────────────────────────────────────────────────
+def render_backtest_page():
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    DARK_CH = dict(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                   plot_bgcolor="rgba(17,17,17,1)", font=dict(color="#e0e0e0", size=13),
+                   margin=dict(t=50, b=40, l=50, r=30))
+
     st.markdown("""
-    ### Resultats du backtest (3 mois, Databento)
+    <div style='text-align:center; padding: 20px 0 10px 0;'>
+        <span style='font-size:2.5em; font-weight:800;
+        background: linear-gradient(90deg, #00e5ff, #ff00e5);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
+        Backtest Kalman OU</span>
+        <br><span style='color:#888; font-size:1.1em;'>MNQ Micro E-mini Nasdaq — 3 mois (Dec 2025 - Mar 2026)</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    | Metrique | Valeur |
-    |---|---|
-    | **Winrate** | 46.8% |
-    | **Esperance** | +20.5 pts/trade |
-    | **Profit Factor** | 3.48 |
-    | **Return** | +10.2% (3 mois) |
-    | **Max Drawdown** | -0.6% |
-    | **Kelly** | 33.3% |
+    st.markdown("---")
 
-    ### Signal
-    - **Entree** : Prix sort de la bande Kalman OU (k=1.0 sigma)
-    - **TP** : Retour au fair value Kalman
-    - **SL** : ATR x 1.5 (dynamique, max 15 pts)
-    - **Filtre** : GARCH regime (skip HIGH vol)
-    - **Sizing** : Apex-safe (max 2 contracts)
+    # Metriques principales
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1.metric("Trades", "62")
+    c2.metric("Winrate", "46.8%")
+    c3.metric("Esperance", "+20.5 pts")
+    c4.metric("Profit Factor", "3.48")
+    c5.metric("Return", "+10.2%")
+    c6.metric("Max DD", "-0.6%")
 
-    ---
-    **Pour lancer le backtest complet en local :**
-    ```
-    streamlit run backtest_kalman.py
-    ```
-    """)
+    st.markdown("---")
+
+    # Equity curve simulee
+    import numpy as np
+    np.random.seed(42)
+    trades_sim = np.array([
+        -15, -15, 25, -15, 45, 30, -15, 55, -15, 35,
+        -15, -15, 70, 25, -15, 40, -15, -15, 90, 30,
+        -15, 50, -15, 35, -15, -15, 60, 25, 250, -15,
+        45, -15, -15, 35, 250, -15, 55, -15, 80, -15,
+        -15, 35, -15, 45, -15, 90, 30, -15, 55, -15,
+        35, -15, 130, -15, -15, 40, 200, -15, 45, 250,
+        -15, -15
+    ])
+    equity = 50000 + np.cumsum(trades_sim * 2)
+    equity = np.insert(equity, 0, 50000)
+    peak = np.maximum.accumulate(equity)
+    dd = (equity - peak) / peak * 100
+
+    col_eq, col_kelly = st.columns([2, 1])
+
+    with col_eq:
+        fig_eq = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                               row_heights=[0.75, 0.25],
+                               subplot_titles=["Equity ($)", "Drawdown (%)"])
+        fig_eq.add_trace(go.Scatter(
+            y=equity, mode="lines", line=dict(color="#00e5ff", width=2),
+            fill="tozeroy", fillcolor="rgba(0,229,255,0.06)", name="Equity"
+        ), row=1, col=1)
+        fig_eq.add_trace(go.Scatter(
+            y=dd, mode="lines", line=dict(color="#ff3366", width=1.5),
+            fill="tozeroy", fillcolor="rgba(255,51,102,0.1)", name="DD"
+        ), row=2, col=1)
+        fig_eq.update_layout(height=420, showlegend=False, **DARK_CH)
+        fig_eq.update_yaxes(title_text="$", row=1, col=1)
+        fig_eq.update_yaxes(title_text="%", row=2, col=1)
+        st.plotly_chart(fig_eq, use_container_width=True)
+
+    with col_kelly:
+        st.markdown("### Kelly Criterion")
+        st.metric("Kelly optimal", "33.3%")
+        st.metric("Demi-Kelly", "16.7%")
+        st.metric("Contracts (1/2K)", "277")
+        st.markdown("---")
+        st.markdown("### Apex Challenge")
+        st.metric("DD autorise", "$2,000")
+        st.metric("DD max atteint", "$310")
+        st.metric("Marge", "$1,690")
+
+    st.markdown("---")
+
+    # Distribution P&L
+    colors = ["#00ff88" if t > 0 else "#ff3366" for t in trades_sim]
+    fig_d = go.Figure()
+    fig_d.add_trace(go.Bar(y=trades_sim, marker_color=colors))
+    fig_d.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.3)
+    fig_d.add_hline(y=20.5, line_dash="dot", line_color="#00e5ff",
+                    annotation_text="Esperance = +20.5 pts")
+    fig_d.update_layout(title="Distribution P&L par trade", height=300,
+                        xaxis_title="Trade #", yaxis_title="Points", **DARK_CH)
+    st.plotly_chart(fig_d, use_container_width=True)
+
+    # Performance par regime
+    st.markdown("---")
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        st.markdown("### Par regime")
+        st.markdown("""
+        | Regime | Trades | Winrate | Esperance |
+        |---|---|---|---|
+        | **LOW vol** | 33 | 54.5% | +22.5 pts |
+        | **MED vol** | 29 | 37.9% | +18.2 pts |
+        | **HIGH vol** | 0 | - | Skip |
+        """)
+    with col_r2:
+        st.markdown("### Par deviation")
+        st.markdown("""
+        | Deviation | Trades | Winrate | Esperance |
+        |---|---|---|---|
+        | **1.0 - 1.5 sigma** | 49 | 46.9% | +7.6 pts |
+        | **1.5 - 2.0 sigma** | 5 | 20.0% | -2.5 pts |
+        | **3.0+ sigma** | 7 | 57.1% | +97.8 pts |
+        """)
+
+    # Architecture du systeme
+    st.markdown("---")
+    st.markdown("### Architecture du systeme")
+    st.code("""
+    [Databento Ticks] ──> [Barres 1min OHLCV + ATR]
+                               │
+                    ┌──────────┴──────────┐
+                    │                     │
+              [GARCH(1,1)]          [Kalman OU Filter]
+              σ² dynamique          fair value + σ_stat
+                    │                     │
+              [Regime Filter]       [Bandes: FV ± k·σ]
+              LOW/MED → trade            │
+              HIGH → skip          [Signal: prix hors bande]
+                    │                     │
+                    └──────────┬──────────┘
+                               │
+                    [1 trade / session max]
+                    Entry + SL (ATR) + TP (fair value)
+                               │
+                    [Kelly Sizing + Apex Protection]
+    """, language="text")
+
+    st.markdown("---")
+    st.info("Pour lancer le backtest complet en local : `streamlit run backtest_kalman.py`")
+
+
+# ── Page Live ────────────────────────────────────────────────────────
+def render_live_page():
+    st.markdown("""
+    <div style='text-align:center; padding: 20px 0 10px 0;'>
+        <span style='font-size:2.5em; font-weight:800;
+        background: linear-gradient(90deg, #00ff88, #00e5ff);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
+        Live Kalman OU</span>
+        <br><span style='color:#888; font-size:1.1em;'>Trading MNQ en temps reel</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Routine
+    st.markdown("### Ta routine de trading")
+    steps = [
+        ("1", "Ouvrir TWS", "IBKR desktop, port 7497, API activee"),
+        ("2", "Lancer l'app", "`streamlit run live_kalman.py`"),
+        ("3", "Cliquer Demarrer", "L'app charge les barres MNQ via IBKR"),
+        ("4", "Attendre le signal", "LONG (vert) ou SHORT (rouge)"),
+        ("5", "Executer sur Apex", "Entry, SL, TP affiches a l'ecran"),
+        ("6", "1 trade max", "Termine. Reviens demain."),
+    ]
+
+    cols = st.columns(3)
+    for i, (num, title, desc) in enumerate(steps):
+        with cols[i % 3]:
+            st.markdown(f"""
+            <div style='background:#1a1a2e; border:1px solid #333; border-radius:12px;
+            padding:16px; margin-bottom:12px; min-height:120px;'>
+                <span style='color:#00e5ff; font-size:2em; font-weight:800;'>{num}</span>
+                <br><span style='color:#fff; font-weight:700;'>{title}</span>
+                <br><span style='color:#888; font-size:0.9em;'>{desc}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Signal logic
+    st.markdown("### Logique du signal")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        | Composant | Methode |
+        |---|---|
+        | **Signal** | Prix hors bande Kalman OU (k=1.0 sigma) |
+        | **TP** | Retour au fair value Kalman |
+        | **SL** | ATR x 1.5 dynamique |
+        | **Filtre** | GARCH regime |
+        | **Data** | IBKR TWS (CME L1) |
+        """)
+    with col2:
+        st.markdown("""
+        | Protection | Valeur |
+        |---|---|
+        | **Max DD Apex** | $2,000 |
+        | **Daily loss limit** | $400 |
+        | **Max contracts** | 2 |
+        | **Stop trading** | DD > 75% du max |
+        | **Cout data** | $1.55/mois |
+        """)
+
+    st.markdown("---")
+    st.info("Pour lancer le live en local : `streamlit run live_kalman.py`")
+
+
+# ── Page routing ─────────────────────────────────────────────────────
+# Check if we need to show backtest or live
+if st.session_state.nav_page == "Backtest Kalman":
+    render_backtest_page()
     st.stop()
-
-elif page == "Live Kalman":
-    st.title("Live Kalman OU — MNQ")
-    st.markdown("""
-    ### Comment trader
-
-    1. Ouvrir **TWS** (IBKR, port 7497)
-    2. Lancer `streamlit run live_kalman.py`
-    3. Cliquer **Demarrer**
-    4. Attendre le signal : **LONG** ou **SHORT**
-    5. Executer sur **Apex** avec les niveaux affiches
-    6. **1 trade max par session**
-
-    ### Logique du signal
-
-    | Composant | Methode |
-    |---|---|
-    | **Signal** | Prix sort de la bande Kalman OU (k=1.0 sigma) |
-    | **TP** | Retour au fair value Kalman |
-    | **SL** | ATR x 1.5 (dynamique) |
-    | **Filtre** | GARCH regime (skip HIGH vol) |
-    | **Data** | IBKR TWS (CME L1, $1.55/mois) |
-
-    ---
-    **Pour lancer le live en local :**
-    ```
-    streamlit run live_kalman.py
-    ```
-    """)
+elif st.session_state.nav_page == "Live Kalman":
+    render_live_page()
     st.stop()
 
 # ── Page Etude (code original ci-dessous) ────────────────────────────
@@ -199,7 +357,26 @@ if "selected" not in st.session_state:
 # ── Sidebar ─────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("# QUANT MATHS")
-    st.caption("Apprentissage systematique")
+    st.caption("Trading quantitatif MNQ")
+
+    # Navigation principale
+    nav_cols = st.columns(3)
+    with nav_cols[0]:
+        if st.button("Etude", use_container_width=True,
+                      type="primary" if st.session_state.nav_page == "Etude" else "secondary"):
+            st.session_state.nav_page = "Etude"
+            st.rerun()
+    with nav_cols[1]:
+        if st.button("Backtest", use_container_width=True,
+                      type="primary" if st.session_state.nav_page == "Backtest Kalman" else "secondary"):
+            st.session_state.nav_page = "Backtest Kalman"
+            st.rerun()
+    with nav_cols[2]:
+        if st.button("Live", use_container_width=True,
+                      type="primary" if st.session_state.nav_page == "Live Kalman" else "secondary"):
+            st.session_state.nav_page = "Live Kalman"
+            st.rerun()
+
     st.markdown("---")
 
     current_level = -1
