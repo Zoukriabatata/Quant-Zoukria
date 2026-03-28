@@ -1,7 +1,22 @@
 import re
+import json
 import streamlit as st
 from pathlib import Path
 from charts import CHARTS, INLINE_CHARTS
+
+PROGRESS_FILE = Path(__file__).parent.parent / ".progress.json"
+
+def load_progress():
+    try:
+        return set(json.loads(PROGRESS_FILE.read_text()))
+    except Exception:
+        return set()
+
+def save_progress(completed: set):
+    try:
+        PROGRESS_FILE.write_text(json.dumps(list(completed)))
+    except Exception:
+        pass
 
 st.set_page_config(page_title="Quant Maths", page_icon="QM", layout="wide")
 
@@ -127,7 +142,7 @@ VIDEO_LINKS = {
 
 # ── State ───────────────────────────────────────────────────────────
 if "completed" not in st.session_state:
-    st.session_state.completed = set()
+    st.session_state.completed = load_progress()
 if "selected" not in st.session_state:
     st.session_state.selected = "00_ROADMAP.md"
 
@@ -364,6 +379,7 @@ with col1:
     if selected not in st.session_state.completed:
         if st.button("Marquer comme termine", type="primary"):
             st.session_state.completed.add(selected)
+            save_progress(st.session_state.completed)
             st.rerun()
     else:
         st.success("Module termine !")
@@ -371,6 +387,7 @@ with col2:
     if selected in st.session_state.completed:
         if st.button("Recommencer"):
             st.session_state.completed.discard(selected)
+            save_progress(st.session_state.completed)
             st.rerun()
 with col3:
     # Navigation
