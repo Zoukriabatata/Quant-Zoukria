@@ -543,6 +543,9 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     profit_factor = gross_profit / gross_loss
     kelly_full, kelly_half = kelly_fraction(results)
 
+    daily_returns = pnl / capital_initial
+    sharpe = (daily_returns.mean() / daily_returns.std() * np.sqrt(252)) if daily_returns.std() > 0 else 0
+
     equity = capital_initial + np.cumsum(pnl)
     equity = np.insert(equity, 0, capital_initial)
     peak = np.maximum.accumulate(equity)
@@ -561,6 +564,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     c4.metric("Perte moy.", f"{avg_loss:.1f} pts")
     c5.metric("Max Drawdown", f"{max_dd:.1f}%")
     c5.metric("P&L total", f"${pnl.sum():,.0f}")
+    c5.metric("Sharpe Ratio", f"{sharpe:.2f}")
 
     # Kelly
     st.markdown("---")
