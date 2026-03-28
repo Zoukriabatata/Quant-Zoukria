@@ -1,7 +1,7 @@
 """
-Backtest Absorption MNQ — Databento tick data
-Charge les trades Databento, detecte absorption/CVD/VP automatiquement,
-backteste les entries/exits, calcule winrate, esperance, drawdown, Kelly.
+Backtest Absorption MNQ — Quant Pipeline
+Databento tick data → Regime filter → Absorption detection → CVD confirmation
+→ Dynamic SL (ATR) → Dynamic TP (VP levels) → Kelly sizing → 1 trade/session max
 """
 
 import glob
@@ -23,13 +23,13 @@ DARK = dict(
 CYAN, MAGENTA, GREEN, RED = "#00e5ff", "#ff00e5", "#00ff88", "#ff3366"
 YELLOW, ORANGE = "#ffd600", "#ff9100"
 
-st.set_page_config(page_title="Backtest Absorption", page_icon="BA", layout="wide")
-st.title("Backtest Absorption MNQ")
+st.set_page_config(page_title="Backtest Absorption Quant", page_icon="BA", layout="wide")
+st.title("Backtest Absorption MNQ — Pipeline Quant")
 
 # ── Sidebar ──────────────────────────────────────────────────────────
-st.sidebar.header("Donnees Databento")
+st.sidebar.header("Donnees")
 data_dir = st.sidebar.text_input(
-    "Dossier des CSV Databento",
+    "Dossier CSV Databento",
     value=r"C:\Users\ryadb\Downloads\GLBX-20260327-P8LBCQVG8R"
 )
 
@@ -41,69 +41,62 @@ abs_min_volume = st.sidebar.number_input("Minimum Volume", value=80, min_value=5
 bar_seconds = st.sidebar.selectbox("Barre (secondes)", [30, 60, 120, 300], index=1)
 
 st.sidebar.markdown("---")
-st.sidebar.header("Trade Management")
-sl_pts = st.sidebar.number_input("Stop Loss (pts)", value=10.0, min_value=0.25, step=0.25)
-tp_mode = st.sidebar.selectbox("Take Profit", ["Fixe (pts)", "R:R ratio", "Trailing"])
-if tp_mode == "Fixe (pts)":
-    tp_pts = st.sidebar.number_input("TP (pts)", value=15.0, min_value=0.25, step=0.25)
-elif tp_mode == "R:R ratio":
-    rr_ratio = st.sidebar.number_input("R:R", value=2.0, min_value=0.5, step=0.5)
-    tp_pts = sl_pts * rr_ratio
-else:
-    trail_pts = st.sidebar.number_input("Trail distance (pts)", value=10.0, min_value=0.25, step=0.25)
-    tp_pts = None
-
-capital_initial = st.sidebar.number_input("Capital initial ($)", value=50000, step=1000)
-risk_pct = st.sidebar.number_input("Risque par trade (%)", value=1.0, min_value=0.1, step=0.1)
-tick_value = 0.50  # MNQ
-tick_size = 0.25   # MNQ
+st.sidebar.header("Regime & Risk (Quant)")
+garch_alpha1 = st.sidebar.number_input("GARCH alpha1", value=0.12, step=0.01, format="%.2f")
+garch_beta1 = st.sidebar.number_input("GARCH beta1", value=0.85, step=0.01, format="%.2f")
+atr_multiplier_sl = st.sidebar.number_input("SL = ATR x", value=1.5, step=0.1)
+max_sl_pts = st.sidebar.number_input("SL max (pts)", value=15.0, step=1.0)
+min_sl_pts = st.sidebar.number_input("SL min (pts)", value=5.0, step=0.5)
 
 st.sidebar.markdown("---")
-st.sidebar.header("Filtres")
-use_cvd_filter = st.sidebar.checkbox("Filtre CVD divergence", value=True)
-use_vp_filter = st.sidebar.checkbox("Filtre Volume Profile (POC/VAH/VAL)", value=False)
-vp_tolerance = st.sidebar.number_input("VP tolerance (pts)", value=5.0, step=0.25)
-session_start_h = st.sidebar.number_input("Session debut (heure UTC)", value=14, min_value=0, max_value=23)
-session_start_m = st.sidebar.number_input("Session debut (min)", value=30, min_value=0, max_value=59)
-session_end_h = st.sidebar.number_input("Session fin (heure UTC)", value=21, min_value=0, max_value=23)
-session_end_m = st.sidebar.number_input("Session fin (min)", value=0, min_value=0, max_value=59)
+st.sidebar.header("Realisme")
+slippage_ticks = st.sidebar.number_input("Slippage (ticks)", value=2, min_value=0, step=1,
+                                          help="1-2 ticks = realiste pour MNQ")
+trailing_active = st.sidebar.checkbox("Trailing stop (laisser courir)", value=False)
+trail_atr_mult = st.sidebar.number_input("Trail = ATR x", value=3.0, step=0.1,
+                                          help="Distance du trailing stop en ATR")
+
+st.sidebar.markdown("---")
+st.sidebar.header("Session")
+session_start_h = st.sidebar.number_input("Debut (h UTC)", value=14, min_value=0, max_value=23)
+session_start_m = st.sidebar.number_input("Debut (min)", value=30, min_value=0, max_value=59)
+session_end_h = st.sidebar.number_input("Fin (h UTC)", value=21, min_value=0, max_value=23)
+session_end_m = st.sidebar.number_input("Fin (min)", value=0, min_value=0, max_value=59)
+
+st.sidebar.markdown("---")
+st.sidebar.header("Challenge Apex")
+capital_initial = st.sidebar.number_input("Capital ($)", value=50000, step=1000)
+max_drawdown_dollars = st.sidebar.number_input("Max Drawdown Apex ($)", value=2000, step=100)
+daily_loss_limit = st.sidebar.number_input("Perte max/jour ($)", value=400, step=50)
+max_contracts = st.sidebar.number_input("Contracts max", value=2, min_value=1, step=1)
+risk_pct = st.sidebar.number_input("Risque/trade (%)", value=0.5, min_value=0.1, step=0.1)
+dd_safety_pct = st.sidebar.number_input("Stop trading a X% du DD max", value=75, min_value=50, step=5,
+                                         help="Arrete de trader quand le DD atteint ce % du max autorise")
+
+TICK_VALUE = 0.50
+TICK_SIZE = 0.25
+DOLLAR_PER_PT = TICK_VALUE / TICK_SIZE  # $2/pt MNQ
+DD_SAFETY_LIMIT = max_drawdown_dollars * (dd_safety_pct / 100)  # $1500 par defaut
 
 
 # ══════════════════════════════════════════════════════════════════════
 # ENGINE
 # ══════════════════════════════════════════════════════════════════════
 
-@st.cache_data(show_spinner="Chargement des ticks Databento...")
-def load_databento(folder):
-    """Charge tous les CSV trades Databento d'un dossier."""
-    pattern = os.path.join(folder, "*.trades.csv")
-    files = sorted(glob.glob(pattern))
-    if not files:
-        return None
-    chunks = []
-    for f in files:
-        df = pd.read_csv(f, usecols=["ts_event", "side", "price", "size"])
-        chunks.append(df)
-    all_trades = pd.concat(chunks, ignore_index=True)
-    all_trades["ts"] = pd.to_datetime(all_trades["ts_event"], utc=True)
-    all_trades["price"] = all_trades["price"].astype(float)
-    all_trades["size"] = all_trades["size"].astype(int)
-    all_trades = all_trades.sort_values("ts").reset_index(drop=True)
-    return all_trades
-
-
-def filter_session(df, start_h, start_m, end_h, end_m):
-    """Filtre les trades pour garder uniquement la session US."""
-    t = df["ts"].dt
-    start_minutes = start_h * 60 + start_m
-    end_minutes = end_h * 60 + end_m
-    trade_minutes = t.hour * 60 + t.minute
-    mask = (trade_minutes >= start_minutes) & (trade_minutes < end_minutes)
-    return df[mask].copy()
+def load_single_day(filepath, start_h, start_m, end_h, end_m):
+    """Charge un fichier, filtre session, retourne ticks."""
+    df = pd.read_csv(filepath, usecols=["ts_event", "side", "price", "size"])
+    df["ts"] = pd.to_datetime(df["ts_event"], utc=True)
+    df["price"] = df["price"].astype(float)
+    df["size"] = df["size"].astype(int)
+    df.drop(columns=["ts_event"], inplace=True)
+    t_min = df["ts"].dt.hour * 60 + df["ts"].dt.minute
+    mask = (t_min >= start_h * 60 + start_m) & (t_min < end_h * 60 + end_m)
+    return df[mask].sort_values("ts").reset_index(drop=True)
 
 
 def build_bars(df, freq_seconds):
-    """Agrege les ticks en barres OHLCV + delta."""
+    """Ticks → barres OHLCV + delta + ATR."""
     df = df.copy()
     df["bar"] = df["ts"].dt.floor(f"{freq_seconds}s")
     df["buy_vol"] = np.where(df["side"] == "B", df["size"], 0)
@@ -117,41 +110,83 @@ def build_bars(df, freq_seconds):
         volume=("size", "sum"),
         buy_volume=("buy_vol", "sum"),
         sell_volume=("sell_vol", "sum"),
-        n_trades=("size", "count"),
     ).reset_index()
+
     bars["delta"] = bars["buy_volume"] - bars["sell_volume"]
     bars["cvd"] = bars["delta"].cumsum()
+    bars["tr"] = np.maximum(
+        bars["high"] - bars["low"],
+        np.maximum(
+            abs(bars["high"] - bars["close"].shift(1)),
+            abs(bars["low"] - bars["close"].shift(1))
+        )
+    )
+    bars["atr_14"] = bars["tr"].rolling(14, min_periods=1).mean()
     bars["date"] = bars["bar"].dt.date
+    bars["returns"] = bars["close"].pct_change().fillna(0)
     return bars
 
 
-def detect_absorption(df_ticks, bars, ratio, stacked, min_volume, freq_seconds):
+def compute_garch_vol(returns, alpha0=0.00001, alpha1=0.12, beta1=0.85):
+    """GARCH(1,1) volatility series."""
+    n = len(returns)
+    sigma2 = np.zeros(n)
+    sigma2[0] = alpha0 / max(1 - alpha1 - beta1, 0.01)
+    for t in range(1, n):
+        sigma2[t] = alpha0 + alpha1 * returns[t - 1] ** 2 + beta1 * sigma2[t - 1]
+    return np.sqrt(sigma2)
+
+
+def classify_regime(garch_vol, window=60):
     """
-    Detecte les absorptions : un niveau de prix ou les ordres passifs
-    absorbent les ordres agressifs sans que le prix bouge.
-
-    Absorption ASK (resistance) : gros volume ask (side=A) a un prix,
-    mais le prix ne descend pas -> vendeurs passifs absorbent les acheteurs
-    agressifs... Non, c'est l'inverse:
-
-    Absorption BID (support) = gros volume d'achat agressif (side=B)
-    absorbe par des vendeurs passifs au ask, prix ne monte pas.
-    -> En fait: absorption = gros volume echange a un prix sans mouvement.
-
-    Implementation ATAS-like:
-    - Pour chaque barre, on regarde le volume par prix
-    - Si a un prix donne, le volume total est >= min_volume
-      ET le ratio dominant_side/minority_side >= ratio threshold
-      ET il y a >= stacked niveaux consecutifs
-    -> C'est une absorption.
+    Regime bayesien simplifie: LOW / MED / HIGH vol.
+    Basé sur les percentiles glissants de la vol GARCH.
     """
-    df_ticks = df_ticks.copy()
-    df_ticks["bar"] = df_ticks["ts"].dt.floor(f"{freq_seconds}s")
+    regimes = np.full(len(garch_vol), 1)  # default MED
+    for i in range(window, len(garch_vol)):
+        history = garch_vol[max(0, i - window):i]
+        p33 = np.percentile(history, 33)
+        p67 = np.percentile(history, 67)
+        if garch_vol[i] < p33:
+            regimes[i] = 0  # LOW
+        elif garch_vol[i] > p67:
+            regimes[i] = 2  # HIGH
+        else:
+            regimes[i] = 1  # MED
+    return regimes
 
+
+def compute_session_vp(bars):
+    """Volume Profile par session → POC, VAH, VAL."""
+    vp = {}
+    for date, grp in bars.groupby("date"):
+        # Volume par prix arrondi au tick
+        prices = (grp["close"] / TICK_SIZE).round() * TICK_SIZE
+        price_vol = grp.groupby(prices)["volume"].sum()
+        if len(price_vol) == 0:
+            continue
+        poc = price_vol.idxmax()
+        total_vol = price_vol.sum()
+        target = total_vol * 0.70
+        sorted_pv = price_vol.sort_values(ascending=False)
+        cumvol = 0
+        va_prices = []
+        for p, v in sorted_pv.items():
+            cumvol += v
+            va_prices.append(p)
+            if cumvol >= target:
+                break
+        vp[date] = {"POC": poc, "VAH": max(va_prices), "VAL": min(va_prices)}
+    return vp
+
+
+def detect_absorption(ticks, ratio, stacked, min_volume, freq_seconds):
+    """Detecte les niveaux d'absorption (ATAS-like)."""
+    ticks = ticks.copy()
+    ticks["bar"] = ticks["ts"].dt.floor(f"{freq_seconds}s")
     absorptions = []
 
-    for bar_ts, group in df_ticks.groupby("bar"):
-        # Volume par prix et par side
+    for bar_ts, group in ticks.groupby("bar"):
         pv = group.groupby(["price", "side"])["size"].sum().unstack(fill_value=0)
         if "A" not in pv.columns:
             pv["A"] = 0
@@ -159,39 +194,20 @@ def detect_absorption(df_ticks, bars, ratio, stacked, min_volume, freq_seconds):
             pv["B"] = 0
         pv["total"] = pv["A"] + pv["B"]
         pv = pv[pv["total"] >= min_volume].sort_index()
-
         if len(pv) == 0:
             continue
 
-        # Detecter le ratio et le type
         for price_level, row in pv.iterrows():
-            ask_vol = row["A"]
-            bid_vol = row["B"]
-            total = row["total"]
-
-            if total < min_volume:
-                continue
-
-            # Absorption ASK: gros volume sell (A) mais prix tient = support casse pas
-            # -> les vendeurs agressifs sont absorbes par des acheteurs passifs
-            # Le prix devrait descendre mais ne descend pas
-            if bid_vol > 0 and ask_vol > 0:
-                if ask_vol >= bid_vol * ratio / 100:
-                    # Gros ask volume absorbe -> absorption bearish (resistance)
-                    absorptions.append({
-                        "bar": bar_ts, "price": price_level,
-                        "type": "ask", "volume": total,
-                        "ask_vol": ask_vol, "bid_vol": bid_vol,
-                        "ratio_actual": ask_vol / max(bid_vol, 1)
-                    })
-                elif bid_vol >= ask_vol * ratio / 100:
-                    # Gros bid volume absorbe -> absorption bullish (support)
-                    absorptions.append({
-                        "bar": bar_ts, "price": price_level,
-                        "type": "bid", "volume": total,
-                        "ask_vol": ask_vol, "bid_vol": bid_vol,
-                        "ratio_actual": bid_vol / max(ask_vol, 1)
-                    })
+            a, b_vol, total = row["A"], row["B"], row["total"]
+            if a > 0 and b_vol > 0:
+                if a >= b_vol * ratio / 100:
+                    absorptions.append({"bar": bar_ts, "price": price_level,
+                                        "type": "ask", "volume": total,
+                                        "ask_vol": a, "bid_vol": b_vol})
+                elif b_vol >= a * ratio / 100:
+                    absorptions.append({"bar": bar_ts, "price": price_level,
+                                        "type": "bid", "volume": total,
+                                        "ask_vol": a, "bid_vol": b_vol})
 
     if not absorptions:
         return pd.DataFrame()
@@ -199,7 +215,7 @@ def detect_absorption(df_ticks, bars, ratio, stacked, min_volume, freq_seconds):
     abs_df = pd.DataFrame(absorptions)
     abs_df["bar"] = pd.to_datetime(abs_df["bar"], utc=True)
 
-    # Filtre stacked: garder seulement si >= N niveaux consecutifs dans la meme barre
+    # Filtre stacked
     if stacked > 1:
         filtered = []
         for bar_ts, grp in abs_df.groupby("bar"):
@@ -207,16 +223,13 @@ def detect_absorption(df_ticks, bars, ratio, stacked, min_volume, freq_seconds):
                 sub = grp[grp["type"] == abs_type].sort_values("price")
                 if len(sub) < stacked:
                     continue
-                # Chercher des sequences consecutives (tick_size = 0.25)
                 prices = sub["price"].values
                 diffs = np.diff(prices)
                 consecutive = 1
-                best_start = 0
                 for i, d in enumerate(diffs):
-                    if abs(d - tick_size) < 0.01:
+                    if abs(d - TICK_SIZE) < 0.01:
                         consecutive += 1
                         if consecutive >= stacked:
-                            # Garder tout le groupe stacked
                             start_idx = i + 2 - consecutive
                             for j in range(start_idx, i + 2):
                                 filtered.append(sub.iloc[j].to_dict())
@@ -227,21 +240,20 @@ def detect_absorption(df_ticks, bars, ratio, stacked, min_volume, freq_seconds):
         else:
             return pd.DataFrame()
 
-    # Agreger par niveau: un niveau = prix moyen du groupe stacked
-    levels = []
+    # Cluster les niveaux proches
     abs_df["date"] = pd.to_datetime(abs_df["bar"]).dt.date
+    levels = []
     for (date, abs_type), grp in abs_df.groupby(["date", "type"]):
-        # Cluster les prix proches (dans 2 pts)
         prices_sorted = grp.sort_values("price")["price"].values
         clusters = []
-        current_cluster = [prices_sorted[0]]
+        current = [prices_sorted[0]]
         for p in prices_sorted[1:]:
-            if p - current_cluster[-1] <= 2.0:
-                current_cluster.append(p)
+            if p - current[-1] <= 2.0:
+                current.append(p)
             else:
-                clusters.append(current_cluster)
-                current_cluster = [p]
-        clusters.append(current_cluster)
+                clusters.append(current)
+                current = [p]
+        clusters.append(current)
 
         for cluster in clusters:
             cluster_rows = grp[grp["price"].isin(cluster)]
@@ -257,105 +269,250 @@ def detect_absorption(df_ticks, bars, ratio, stacked, min_volume, freq_seconds):
     return pd.DataFrame(levels)
 
 
-def compute_session_vp(bars):
-    """Calcule le Volume Profile par session (date) -> POC, VAH, VAL."""
-    vp_levels = {}
-    for date, grp in bars.groupby("date"):
-        # Volume par prix (utilise close comme approximation)
-        price_vol = grp.groupby(grp["close"].round(2))["volume"].sum()
-        poc = price_vol.idxmax()
-
-        # Value Area (70% du volume)
-        total_vol = price_vol.sum()
-        target = total_vol * 0.70
-        sorted_pv = price_vol.sort_values(ascending=False)
-        cumvol = 0
-        va_prices = []
-        for p, v in sorted_pv.items():
-            cumvol += v
-            va_prices.append(p)
-            if cumvol >= target:
-                break
-        vah = max(va_prices)
-        val = min(va_prices)
-        vp_levels[date] = {"POC": poc, "VAH": vah, "VAL": val}
-    return vp_levels
-
-
 def check_cvd_divergence(bars, bar_idx, lookback=5):
-    """
-    Verifie la divergence CVD:
-    - Prix monte mais CVD descend = divergence bearish
-    - Prix descend mais CVD monte = divergence bullish
-    """
+    """CVD divergence: prix vs delta cumulatif."""
     if bar_idx < lookback:
         return False, None
     recent = bars.iloc[bar_idx - lookback:bar_idx + 1]
-    price_change = recent["close"].iloc[-1] - recent["close"].iloc[0]
-    cvd_change = recent["cvd"].iloc[-1] - recent["cvd"].iloc[0]
-
-    if price_change > 0 and cvd_change < 0:
-        return True, "bearish"  # prix monte, CVD descend
-    elif price_change < 0 and cvd_change > 0:
-        return True, "bullish"  # prix descend, CVD monte
+    price_chg = recent["close"].iloc[-1] - recent["close"].iloc[0]
+    cvd_chg = recent["cvd"].iloc[-1] - recent["cvd"].iloc[0]
+    if price_chg > 0 and cvd_chg < 0:
+        return True, "bearish"
+    elif price_chg < 0 and cvd_chg > 0:
+        return True, "bullish"
     return False, None
 
 
-def simulate_trade(bars, entry_bar_idx, entry_price, direction, sl_pts, tp_pts_val,
-                   tp_mode_str, trail_pts_val=None):
+def score_absorption(abso, bar_idx, bars, vp_levels, regime):
     """
-    Simule un trade tick par tick (barre par barre) apres l'entree.
-    direction: 'long' ou 'short'
-    Retourne le resultat en points.
+    Score un signal d'absorption (0-100). Plus le score est haut, meilleur le signal.
+    Criteres:
+      - Volume (plus = mieux)                    0-25 pts
+      - CVD divergence confirme                   0-25 pts
+      - Sur niveau VP (POC/VAH/VAL)              0-25 pts
+      - Regime favorable (LOW > MED > HIGH)      0-25 pts
     """
+    score = 0
+
+    # 1. Volume relatif (normalise sur la session)
+    session_bars = bars[bars["date"] == abso["date"]]
+    if len(session_bars) > 0:
+        avg_vol = session_bars["volume"].mean()
+        vol_ratio = abso["volume"] / max(avg_vol, 1)
+        score += min(25, vol_ratio * 10)
+
+    # 2. CVD divergence
+    has_cvd, cvd_dir = check_cvd_divergence(bars, bar_idx)
+    cvd_confirms = False
+    if has_cvd:
+        if abso["type"] == "ask" and cvd_dir == "bearish":
+            cvd_confirms = True
+        elif abso["type"] == "bid" and cvd_dir == "bullish":
+            cvd_confirms = True
+    if cvd_confirms:
+        score += 25
+
+    # 3. Proximite VP
+    abs_date = abso["date"]
+    on_vp = False
+    vp_name = None
+    if abs_date in vp_levels:
+        vp = vp_levels[abs_date]
+        for name in ["POC", "VAH", "VAL"]:
+            if abs(abso["price"] - vp[name]) <= 5.0:
+                on_vp = True
+                vp_name = name
+                break
+    if on_vp:
+        score += 25
+
+    # 4. Regime
+    if regime == 0:  # LOW vol
+        score += 25
+    elif regime == 1:  # MED vol
+        score += 12
+    # HIGH vol = 0 pts
+
+    return score, cvd_confirms, on_vp, vp_name
+
+
+def kalman_fair_value(bars, bar_idx, lookback=60):
+    """
+    Kalman Filter pour estimer le fair value en temps réel.
+    Basé sur un modèle OU (Ornstein-Uhlenbeck) AR(1).
+
+    Ref: Quant Guild #92 + #95 (Kalman Filter + Mean Reversion)
+    Ref: app learning module 06b (kalman_mean_reversion)
+
+    Retourne: (fair_value, sigma_stat, kalman_gain)
+    - fair_value = prix estime par le Kalman
+    - sigma_stat = deviation stationnaire (bandes de mean reversion)
+    - kalman_gain = confiance du filtre (0 = suit le modele, 1 = suit le prix)
+    """
+    end = min(bar_idx + 1, len(bars))
+    start = max(0, end - lookback)
+    prices = bars.iloc[start:end]["close"].values
+
+    if len(prices) < 10:
+        return prices[-1], 5.0, 0.5
+
+    # Calibration AR(1): X_t = phi * X_{t-1} + (1-phi) * mu + eps
+    x_prev = prices[:-1]
+    x_curr = prices[1:]
+    if np.std(x_prev) < 1e-10:
+        return prices[-1], 5.0, 0.5
+
+    # Regression lineaire pour phi et mu
+    n = len(x_prev)
+    sx = np.sum(x_prev)
+    sy = np.sum(x_curr)
+    sxx = np.sum(x_prev ** 2)
+    sxy = np.sum(x_prev * x_curr)
+
+    denom = n * sxx - sx * sx
+    if abs(denom) < 1e-10:
+        return prices[-1], 5.0, 0.5
+
+    phi = (n * sxy - sx * sy) / denom
+    c = (sy - phi * sx) / n
+
+    # Contraindre phi pour stabilite
+    phi = np.clip(phi, 0.5, 0.999)
+
+    # Mean implicite et sigma
+    mu = c / (1 - phi) if abs(1 - phi) > 1e-6 else prices.mean()
+    residuals = x_curr - (phi * x_prev + c)
+    sigma = np.std(residuals)
+
+    # Sigma stationnaire (bande de mean reversion)
+    sigma_stat = sigma / np.sqrt(max(2 * (1 - phi), 0.001))
+
+    # Kalman filter
+    Q = sigma ** 2 * (1 - phi ** 2)  # process noise
+    R = sigma ** 2 * 5.0  # observation noise (trust model more than data)
+
+    x_est = prices[0]
+    P = sigma_stat ** 2
+
+    for obs in prices:
+        # Predict
+        x_pred = phi * x_est + (1 - phi) * mu
+        P_pred = phi ** 2 * P + Q
+
+        # Update
+        K = P_pred / (P_pred + R)
+        x_est = x_pred + K * (obs - x_pred)
+        P = (1 - K) * P_pred
+
+    return x_est, sigma_stat, K
+
+
+def find_kalman_tp(entry_price, direction, bars, bar_idx, sl_pts):
+    """
+    TP = distance entre le prix d'entree et le fair value Kalman.
+    L'absorption repousse le prix → le prix revient vers la moyenne Kalman.
+
+    Logique:
+    - Long  (absorption bid) : TP = fair_value (prix sous le fair value, va remonter)
+    - Short (absorption ask) : TP = fair_value (prix au-dessus du fair value, va redescendre)
+
+    Si le fair value est trop proche, utilise sigma_stat comme TP minimum.
+    """
+    fair_value, sigma_stat, K = kalman_fair_value(bars, bar_idx)
+
     if direction == "long":
-        sl_price = entry_price - sl_pts
-        tp_price = entry_price + tp_pts_val if tp_pts_val else None
+        tp_pts = fair_value - entry_price
     else:
-        sl_price = entry_price + sl_pts
-        tp_price = entry_price - tp_pts_val if tp_pts_val else None
+        tp_pts = entry_price - fair_value
 
-    trailing_stop = sl_price if tp_mode_str == "Trailing" else None
-    best_price = entry_price
+    # Si le TP est negatif ou trop petit (prix deja au fair value),
+    # utilise la bande de reversion (sigma_stat)
+    if tp_pts < sl_pts * 1.0:
+        tp_pts = sigma_stat * 0.8  # 80% de la bande stationnaire
 
-    for i in range(entry_bar_idx + 1, min(entry_bar_idx + 120, len(bars))):
+    # TP minimum = 1.5x SL pour un R:R minimum
+    tp_pts = max(tp_pts, sl_pts * 1.5)
+
+    return tp_pts, fair_value, sigma_stat, K
+
+
+def simulate_trade(bars, entry_idx, entry_price, direction, sl_pts, tp_pts,
+                    use_trailing=False, trail_distance=10.0, slip_pts=0.5):
+    """
+    Simule un trade barre par barre avec:
+    - Slippage a l'entree et sortie
+    - Trailing stop optionnel
+    - Max 120 barres (~2h)
+    """
+    # Slippage a l'entree (execution pire que prevu)
+    if direction == "long":
+        real_entry = entry_price + slip_pts
+        sl_price = real_entry - sl_pts
+        tp_price = real_entry + tp_pts
+    else:
+        real_entry = entry_price - slip_pts
+        sl_price = real_entry + sl_pts
+        tp_price = real_entry - tp_pts
+
+    best_price = real_entry
+    trailing_stop = sl_price
+
+    for i in range(entry_idx + 1, min(entry_idx + 120, len(bars))):
         bar = bars.iloc[i]
 
         if direction == "long":
-            # Trailing stop update
-            if tp_mode_str == "Trailing" and bar["high"] > best_price:
+            # Mise a jour du trailing stop
+            if use_trailing and bar["high"] > best_price:
                 best_price = bar["high"]
-                trailing_stop = best_price - trail_pts_val
+                new_trail = best_price - trail_distance
+                trailing_stop = max(trailing_stop, new_trail)
 
-            stop = trailing_stop if tp_mode_str == "Trailing" else sl_price
+            stop = trailing_stop if use_trailing else sl_price
 
-            # Check SL
+            # Check SL / trailing (avec slippage a la sortie)
             if bar["low"] <= stop:
-                return stop - entry_price
+                exit_price = stop - slip_pts
+                return exit_price - real_entry
 
-            # Check TP
-            if tp_price and bar["high"] >= tp_price:
-                return tp_price - entry_price
+            # Check TP (avec slippage a la sortie)
+            if bar["high"] >= tp_price:
+                exit_price = tp_price - slip_pts
+                return exit_price - real_entry
 
         else:  # short
-            if tp_mode_str == "Trailing" and bar["low"] < best_price:
+            if use_trailing and bar["low"] < best_price:
                 best_price = bar["low"]
-                trailing_stop = best_price + trail_pts_val
+                new_trail = best_price + trail_distance
+                trailing_stop = min(trailing_stop, new_trail)
 
-            stop = trailing_stop if tp_mode_str == "Trailing" else sl_price
+            stop = trailing_stop if use_trailing else sl_price
 
             if bar["high"] >= stop:
-                return entry_price - stop
+                exit_price = stop + slip_pts
+                return real_entry - exit_price
 
-            if tp_price and bar["low"] <= tp_price:
-                return entry_price - tp_price
+            if bar["low"] <= tp_price:
+                exit_price = tp_price + slip_pts
+                return real_entry - exit_price
 
-    # Timeout: fermer au close de la derniere barre
-    last_close = bars.iloc[min(entry_bar_idx + 119, len(bars) - 1)]["close"]
+    # Timeout → close at market (avec slippage)
+    last = bars.iloc[min(entry_idx + 119, len(bars) - 1)]["close"]
     if direction == "long":
-        return last_close - entry_price
+        return (last - slip_pts) - real_entry
     else:
-        return entry_price - last_close
+        return real_entry - (last + slip_pts)
+
+
+def kelly_fraction(results):
+    """Calcule Kelly et demi-Kelly a partir des resultats."""
+    wins = results[results > 0]
+    losses = results[results < 0]
+    if len(wins) == 0 or len(losses) == 0:
+        return 0, 0
+    p = len(wins) / len(results)
+    b = wins.mean() / abs(losses.mean())
+    k = (p * b - (1 - p)) / b
+    return max(0, k), max(0, k / 2)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -363,300 +520,419 @@ def simulate_trade(bars, entry_bar_idx, entry_price, direction, sl_pts, tp_pts_v
 # ══════════════════════════════════════════════════════════════════════
 
 if st.sidebar.button("Lancer le Backtest", type="primary"):
-    # 1. Charger les donnees
-    ticks = load_databento(data_dir)
-    if ticks is None or len(ticks) == 0:
-        st.error("Aucun fichier .trades.csv trouve dans le dossier.")
+    files = sorted(glob.glob(os.path.join(data_dir, "*.trades.csv")))
+    if not files:
+        st.error("Aucun fichier .trades.csv trouve.")
         st.stop()
 
-    st.success(f"{len(ticks):,} ticks charges ({ticks['ts'].dt.date.nunique()} jours)")
+    st.info(f"{len(files)} fichiers. Pipeline: Regime → Absorption → Score → Kalman TP → 1 trade/session")
+    progress = st.progress(0)
 
-    # 2. Filtrer session US
-    ticks_session = filter_session(ticks, session_start_h, session_start_m,
-                                   session_end_h, session_end_m)
-    st.info(f"{len(ticks_session):,} ticks en session ({session_start_h}:{session_start_m:02d}-{session_end_h}:{session_end_m:02d} UTC)")
+    all_trades = []
+    all_daily_stats = []
+    skipped_high_vol = 0
+    skipped_no_signal = 0
+    skipped_low_score = 0
+    skipped_dd_protection = 0
+    running_equity = capital_initial
+    running_peak = capital_initial
+    challenge_busted = False
 
-    # 3. Construire les barres
-    with st.spinner("Construction des barres..."):
-        bars = build_bars(ticks_session, bar_seconds)
-    st.info(f"{len(bars):,} barres de {bar_seconds}s construites")
+    for file_idx, filepath in enumerate(files):
+        progress.progress((file_idx + 1) / len(files),
+                          text=f"Jour {file_idx + 1}/{len(files)}")
 
-    # 4. Detecter les absorptions
-    with st.spinner("Detection des absorptions..."):
-        abs_levels = detect_absorption(ticks_session, bars, abs_ratio,
-                                       abs_stacked, abs_min_volume, bar_seconds)
+        # ── 0. Protection DD Apex ────────────────────────────────────
+        running_dd = running_peak - running_equity
+        if running_dd >= max_drawdown_dollars:
+            challenge_busted = True
+            all_daily_stats.append({
+                "date": "BUST",
+                "regime": "-",
+                "action": "BUST",
+                "reason": f"DD ${running_dd:.0f} >= ${max_drawdown_dollars}",
+                "n_absorptions": 0,
+                "result_pts": 0,
+            })
+            break
 
-    if len(abs_levels) == 0:
-        st.warning("Aucune absorption detectee. Baisse le Ratio ou le Minimum Volume.")
-        st.stop()
+        if running_dd >= DD_SAFETY_LIMIT:
+            skipped_dd_protection += 1
+            all_daily_stats.append({
+                "date": os.path.basename(filepath).split(".")[0][-8:],
+                "regime": "-",
+                "action": "SKIP",
+                "reason": f"Protection DD: ${running_dd:.0f} / ${max_drawdown_dollars}",
+                "n_absorptions": 0,
+                "result_pts": 0,
+            })
+            continue
 
-    n_days = ticks_session["ts"].dt.date.nunique()
-    avg_per_day = len(abs_levels) / n_days if n_days > 0 else 0
-    st.success(f"{len(abs_levels)} absorptions detectees sur {n_days} jours "
-               f"(moyenne: {avg_per_day:.1f}/session)")
+        # ── 1. Charger le jour ───────────────────────────────────────
+        ticks = load_single_day(filepath, session_start_h, session_start_m,
+                                session_end_h, session_end_m)
+        if len(ticks) < 100:
+            skipped_no_signal += 1
+            continue
 
-    # 5. Volume Profile par session
-    vp_levels = compute_session_vp(bars)
+        # ── 2. Barres + ATR ──────────────────────────────────────────
+        bars = build_bars(ticks, bar_seconds)
+        if len(bars) < 20:
+            skipped_no_signal += 1
+            continue
 
-    # 6. Backtester chaque absorption
-    with st.spinner("Simulation des trades..."):
-        trades = []
+        # ── 3. GARCH regime ──────────────────────────────────────────
+        garch_vol = compute_garch_vol(bars["returns"].values,
+                                       alpha1=garch_alpha1, beta1=garch_beta1)
+        regimes = classify_regime(garch_vol)
+
+        # Regime dominant de la session
+        regime_counts = np.bincount(regimes, minlength=3)
+        dominant_regime = regime_counts.argmax()
+
+        # Si majorite HIGH vol → pas de trade (SURVIE > PROFIT)
+        if dominant_regime == 2:
+            skipped_high_vol += 1
+            all_daily_stats.append({
+                "date": bars.iloc[0]["date"],
+                "regime": "HIGH",
+                "action": "SKIP",
+                "reason": "Regime HIGH vol",
+                "n_absorptions": 0,
+                "result_pts": 0,
+            })
+            continue
+
+        # ── 4. Volume Profile ────────────────────────────────────────
+        vp_levels = compute_session_vp(bars)
+
+        # ── 5. Detecter absorptions ──────────────────────────────────
+        abs_levels = detect_absorption(ticks, abs_ratio,
+                                        abs_stacked, abs_min_volume, bar_seconds)
+        del ticks  # liberer memoire
+
+        if len(abs_levels) == 0:
+            skipped_no_signal += 1
+            all_daily_stats.append({
+                "date": bars.iloc[0]["date"],
+                "regime": ["LOW", "MED", "HIGH"][dominant_regime],
+                "action": "SKIP",
+                "reason": "Aucune absorption",
+                "n_absorptions": 0,
+                "result_pts": 0,
+            })
+            continue
+
+        # ── 6. Scorer chaque absorption ──────────────────────────────
+        scored = []
         for _, abso in abs_levels.iterrows():
-            abs_date = abso["date"]
-            abs_price = abso["price"]
-            abs_type = abso["type"]
-            abs_bar = abso["bar"]
-
-            # Trouver la barre correspondante
-            bar_mask = bars["bar"] == abs_bar
+            bar_mask = bars["bar"] == abso["bar"]
             if not bar_mask.any():
-                # Chercher la barre la plus proche
-                time_diffs = (bars["bar"] - abs_bar).abs()
-                bar_idx = time_diffs.idxmin()
+                bar_idx = (bars["bar"] - abso["bar"]).abs().idxmin()
             else:
                 bar_idx = bars[bar_mask].index[0]
 
-            # Direction du trade
-            if abs_type == "ask":
-                direction = "short"  # resistance, on short
-            else:
-                direction = "long"   # support, on long
+            # Regime local de la barre
+            local_regime = regimes[min(bar_idx, len(regimes) - 1)]
 
-            # Filtre CVD divergence
-            has_cvd_div, cvd_dir = check_cvd_divergence(bars, bar_idx)
-            cvd_confirms = False
-            if has_cvd_div:
-                if abs_type == "ask" and cvd_dir == "bearish":
-                    cvd_confirms = True
-                elif abs_type == "bid" and cvd_dir == "bullish":
-                    cvd_confirms = True
+            # Skip si HIGH vol local
+            if local_regime == 2:
+                continue
 
-            # Filtre Volume Profile
-            on_vp_level = False
-            if abs_date in vp_levels:
-                vp = vp_levels[abs_date]
-                for level_name in ["POC", "VAH", "VAL"]:
-                    if abs(abs_price - vp[level_name]) <= vp_tolerance:
-                        on_vp_level = True
-                        break
+            score, cvd_ok, vp_ok, vp_name = score_absorption(
+                abso, bar_idx, bars, vp_levels, local_regime
+            )
 
-            # Simuler le trade
-            trail_val = trail_pts if tp_mode == "Trailing" else None
-            tp_val = tp_pts if tp_mode != "Trailing" else None
-            result_pts = simulate_trade(bars, bar_idx, abs_price, direction,
-                                        sl_pts, tp_val, tp_mode, trail_val)
-
-            trades.append({
-                "date": abs_date,
-                "time": abs_bar,
-                "price": abs_price,
-                "type": abs_type,
-                "direction": direction,
-                "volume": abso["volume"],
-                "cvd_div": cvd_confirms,
-                "vp_level": on_vp_level,
-                "result_pts": round(result_pts, 2),
-                "win": result_pts > 0,
+            scored.append({
+                **abso.to_dict(),
+                "bar_idx": bar_idx,
+                "score": score,
+                "cvd_confirms": cvd_ok,
+                "on_vp": vp_ok,
+                "vp_name": vp_name,
+                "regime": local_regime,
             })
 
-    trades_df = pd.DataFrame(trades)
+        if not scored:
+            skipped_low_score += 1
+            continue
 
-    # ── Affichage ────────────────────────────────────────────────────
+        # ── 7. Prendre LE MEILLEUR signal (1 trade/session) ─────────
+        scored_df = pd.DataFrame(scored).sort_values("score", ascending=False)
+        best = scored_df.iloc[0]
+
+        # Score minimum pour trader (au moins 2 criteres solides sur 4)
+        if best["score"] < 50:
+            skipped_low_score += 1
+            all_daily_stats.append({
+                "date": bars.iloc[0]["date"],
+                "regime": ["LOW", "MED", "HIGH"][dominant_regime],
+                "action": "SKIP",
+                "reason": f"Score trop bas ({best['score']:.0f}/100)",
+                "n_absorptions": len(abs_levels),
+                "result_pts": 0,
+            })
+            continue
+
+        # ── 8. SL dynamique = ATR x multiplier ──────────────────────
+        bar_idx = int(best["bar_idx"])
+        atr = bars.iloc[bar_idx]["atr_14"]
+        if np.isnan(atr) or atr <= 0:
+            atr = bars["tr"].mean()
+        if np.isnan(atr) or atr <= 0:
+            atr = 8.0  # fallback MNQ
+        sl_pts = np.clip(atr * atr_multiplier_sl, min_sl_pts, max_sl_pts)
+
+        # ── 9. TP Kalman mean reversion ──────────────────────────────
+        direction = "short" if best["type"] == "ask" else "long"
+        tp_pts, fair_val, sigma_stat, k_gain = find_kalman_tp(
+            best["price"], direction, bars, bar_idx, sl_pts
+        )
+
+        # ── 10. Position sizing (Apex-safe) ─────────────────────────
+        # Calcul: combien de contracts pour risquer X% du capital
+        regime_mult = 0.75 if best["regime"] == 0 else 1.0
+        risk_dollars = capital_initial * (risk_pct / 100) * regime_mult
+        contracts = max(1, int(risk_dollars / (sl_pts * DOLLAR_PER_PT)))
+
+        # CAP: ne jamais depasser max_contracts
+        contracts = min(contracts, max_contracts)
+
+        # Protection: si une perte toucherait la daily loss limit, reduire
+        loss_if_sl = sl_pts * DOLLAR_PER_PT * contracts
+        if loss_if_sl > daily_loss_limit:
+            contracts = max(1, int(daily_loss_limit / (sl_pts * DOLLAR_PER_PT)))
+
+        # Protection: si proche du DD max, reduire a 1 contract
+        remaining_dd = max_drawdown_dollars - (running_peak - running_equity)
+        if loss_if_sl > remaining_dd * 0.5:
+            contracts = 1
+
+        # ── 11. Simuler le trade (avec slippage + trailing) ────────
+        slip = slippage_ticks * TICK_SIZE  # ex: 2 ticks * 0.25 = 0.5 pts
+        trail_dist = atr * trail_atr_mult if trailing_active else 0
+        result_pts = simulate_trade(bars, bar_idx, best["price"],
+                                     direction, sl_pts, tp_pts,
+                                     use_trailing=trailing_active,
+                                     trail_distance=trail_dist,
+                                     slip_pts=slip)
+
+        rr_actual = abs(result_pts) / sl_pts if sl_pts > 0 else 0
+        pnl_dollars = result_pts * DOLLAR_PER_PT * contracts
+
+        # Mettre a jour l'equity running (pour protection DD)
+        running_equity += pnl_dollars
+        if running_equity > running_peak:
+            running_peak = running_equity
+
+        trade = {
+            "date": best["date"],
+            "time": best["bar"],
+            "price": best["price"],
+            "type": best["type"],
+            "direction": direction,
+            "score": best["score"],
+            "regime": ["LOW", "MED", "HIGH"][int(best["regime"])],
+            "cvd_confirms": best["cvd_confirms"],
+            "on_vp": best["on_vp"],
+            "vp_name": best["vp_name"],
+            "fair_value": round(fair_val, 2),
+            "sigma_stat": round(sigma_stat, 2),
+            "kalman_K": round(k_gain, 3),
+            "sl_pts": round(sl_pts, 2),
+            "tp_pts": round(tp_pts, 2),
+            "rr_target": round(tp_pts / sl_pts, 1),
+            "result_pts": round(result_pts, 2),
+            "rr_actual": round(rr_actual, 1),
+            "contracts": contracts,
+            "pnl_dollars": round(pnl_dollars, 2),
+            "win": result_pts > 0,
+            "equity": round(running_equity, 2),
+            "dd_from_peak": round(running_peak - running_equity, 2),
+            "n_absorptions_day": len(abs_levels),
+        }
+        all_trades.append(trade)
+
+        all_daily_stats.append({
+            "date": best["date"],
+            "regime": trade["regime"],
+            "action": "TRADE",
+            "reason": f"Score {best['score']:.0f}, {direction} @ {best['price']:.2f}",
+            "n_absorptions": len(abs_levels),
+            "result_pts": result_pts,
+        })
+
+    progress.empty()
+
+    # ══════════════════════════════════════════════════════════════════
+    # RESULTATS
+    # ══════════════════════════════════════════════════════════════════
+
+    if not all_trades:
+        st.warning("Aucun trade execute. Baisse le score minimum ou les parametres d'absorption.")
+        st.stop()
+
+    trades_df = pd.DataFrame(all_trades)
+    daily_df = pd.DataFrame(all_daily_stats)
+
+    # ── Challenge Apex Status ────────────────────────────────────────
+    st.markdown("---")
+    if challenge_busted:
+        st.error(f"**CHALLENGE BUST** — Drawdown a depasse ${max_drawdown_dollars}")
+    else:
+        max_dd_actual = trades_df["dd_from_peak"].max() if "dd_from_peak" in trades_df.columns else 0
+        dd_pct_of_max = max_dd_actual / max_drawdown_dollars * 100
+        st.subheader("Challenge Apex")
+        ca1, ca2, ca3, ca4 = st.columns(4)
+        ca1.metric("DD max autorise", f"${max_drawdown_dollars:,}")
+        ca2.metric("DD max atteint", f"${max_dd_actual:,.0f}",
+                   delta=f"{dd_pct_of_max:.0f}% du max")
+        ca3.metric("Marge restante", f"${max_drawdown_dollars - max_dd_actual:,.0f}")
+        ca4.metric("Skip protection DD", skipped_dd_protection)
+
+        if dd_pct_of_max < 50:
+            st.success(f"DD sous controle ({dd_pct_of_max:.0f}% du max)")
+        elif dd_pct_of_max < 75:
+            st.warning(f"DD a surveiller ({dd_pct_of_max:.0f}% du max)")
+        else:
+            st.error(f"DD dangereux ({dd_pct_of_max:.0f}% du max)")
+
+    # ── Resume pipeline ──────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("Pipeline")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Jours analyses", len(files))
+    c2.metric("Skip HIGH vol", skipped_high_vol)
+    c3.metric("Skip pas de signal", skipped_no_signal)
+    c4.metric("Skip score bas", skipped_low_score)
+
+    st.success(f"**{len(trades_df)} trades executes** sur {len(files)} jours "
+               f"(1 trade/session max, filtre regime + score)")
+
+    # ── Metriques globales ──────────────────��────────────────────────
     st.markdown("---")
     st.subheader("Resultats")
 
-    # Tabs pour les differentes vues
-    tab_all, tab_cvd, tab_vp, tab_combo, tab_details = st.tabs([
-        "Tous les trades", "Absorption + CVD", "Absorption + VP",
-        "Absorption + CVD + VP", "Detail des trades"
-    ])
+    results = trades_df["result_pts"].values
+    pnl = trades_df["pnl_dollars"].values
+    wins = results[results > 0]
+    losses = results[results < 0]
+    n_total = len(results)
+    n_wins = len(wins)
+    winrate = n_wins / n_total
 
-    def show_results(df_trades, tab, label):
-        """Affiche les stats pour un ensemble de trades."""
-        with tab:
-            if len(df_trades) == 0:
-                st.warning(f"Aucun trade pour: {label}")
-                return
+    avg_win = wins.mean() if len(wins) > 0 else 0
+    avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
+    expectancy = (winrate * avg_win) - ((1 - winrate) * avg_loss)
 
-            results = df_trades["result_pts"].values
-            wins = results[results > 0]
-            losses = results[results < 0]
-            n_total = len(results)
-            n_wins = len(wins)
-            n_losses = len(losses)
-            winrate = n_wins / n_total
+    gross_profit = wins.sum() if len(wins) > 0 else 0
+    gross_loss = abs(losses.sum()) if len(losses) > 0 else 1
+    profit_factor = gross_profit / gross_loss
 
-            avg_win = wins.mean() if len(wins) > 0 else 0
-            avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
-            expectancy = (winrate * avg_win) - ((1 - winrate) * avg_loss)
+    kelly_full, kelly_half = kelly_fraction(results)
 
-            gross_profit = wins.sum() if len(wins) > 0 else 0
-            gross_loss = abs(losses.sum()) if len(losses) > 0 else 1
-            profit_factor = gross_profit / gross_loss
+    # Equity
+    equity = capital_initial + np.cumsum(pnl)
+    equity = np.insert(equity, 0, capital_initial)
+    peak = np.maximum.accumulate(equity)
+    drawdown = (equity - peak) / peak * 100
+    max_dd = drawdown.min()
 
-            # Kelly
-            if avg_loss > 0 and avg_win > 0:
-                b = avg_win / avg_loss
-                p = winrate
-                kelly = (p * b - (1 - p)) / b
-                half_kelly = kelly / 2
-            else:
-                kelly, half_kelly, b, p = 0, 0, 1, 0.5
+    # Avg R:R
+    avg_rr = trades_df["rr_target"].mean()
+    avg_rr_actual_win = trades_df[trades_df["win"]]["rr_actual"].mean() if n_wins > 0 else 0
 
-            # Equity
-            pts_per_tick = 1 / tick_size
-            dollar_per_pt = tick_value * pts_per_tick
-            risk_per_trade = capital_initial * (risk_pct / 100)
-            contracts = max(1, int(risk_per_trade / (sl_pts * dollar_per_pt)))
-            pnl_dollars = results * dollar_per_pt * contracts
-            equity = capital_initial + np.cumsum(pnl_dollars)
-            equity = np.insert(equity, 0, capital_initial)
-            peak = np.maximum.accumulate(equity)
-            drawdown = (equity - peak) / peak * 100
-            max_dd = drawdown.min()
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Trades", n_total)
+    col1.metric("W / L", f"{n_wins} / {len(losses)}")
+    col2.metric("Winrate", f"{winrate:.1%}")
+    col2.metric("Profit Factor", f"{profit_factor:.2f}")
+    col3.metric("Esperance", f"{expectancy:.1f} pts")
+    col3.metric("R:R moyen cible", f"{avg_rr:.1f}")
+    col4.metric("Gain moyen", f"{avg_win:.1f} pts")
+    col4.metric("Perte moy.", f"{avg_loss:.1f} pts")
+    col5.metric("Max Drawdown", f"{max_dd:.1f}%")
+    col5.metric("P&L total", f"${pnl.sum():,.0f}")
 
-            # Metriques
-            st.markdown(f"### {label}")
-            c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Trades", n_total)
-            c1.metric("W / L", f"{n_wins} / {n_losses}")
-            c2.metric("Winrate", f"{winrate:.1%}")
-            c2.metric("Profit Factor", f"{profit_factor:.2f}")
-            c3.metric("Esperance", f"{expectancy:.1f} pts")
-            c3.metric("Gain moyen", f"{avg_win:.1f} pts")
-            c4.metric("Perte moy.", f"{avg_loss:.1f} pts")
-            c4.metric("Max DD", f"{max_dd:.1f}%")
-            c5.metric("Kelly", f"{kelly:.1%}")
-            c5.metric("1/2 Kelly", f"{half_kelly:.1%}")
-
-            # Equity + Drawdown
-            fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                                row_heights=[0.7, 0.3],
-                                subplot_titles=["Equity Curve", "Drawdown (%)"])
-            fig.add_trace(go.Scatter(
-                y=equity, mode="lines", line=dict(color=CYAN, width=2),
-                fill="tozeroy", fillcolor="rgba(0,229,255,0.08)", name="Equity"
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                y=drawdown, mode="lines", line=dict(color=RED, width=1.5),
-                fill="tozeroy", fillcolor="rgba(255,51,102,0.12)", name="DD"
-            ), row=2, col=1)
-            fig.update_layout(height=450, showlegend=False, **DARK)
-            fig.update_xaxes(title_text="Trade #", row=2, col=1)
-            fig.update_yaxes(title_text="$", row=1, col=1)
-            fig.update_yaxes(title_text="%", row=2, col=1)
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Distribution P&L
-            colors = [GREEN if r > 0 else RED for r in results]
-            fig_d = go.Figure()
-            fig_d.add_trace(go.Bar(
-                x=list(range(1, n_total + 1)), y=results,
-                marker_color=colors
-            ))
-            fig_d.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.3)
-            fig_d.add_hline(y=expectancy, line_dash="dot", line_color=CYAN,
-                            annotation_text=f"Esperance = {expectancy:.1f} pts")
-            fig_d.update_layout(height=300, xaxis_title="Trade #",
-                                yaxis_title="Points", **DARK)
-            st.plotly_chart(fig_d, use_container_width=True)
-
-            # Kelly curve
-            if kelly > 0:
-                f_range = np.linspace(0, min(1, kelly * 3), 200)
-                g = p * np.log(1 + b * f_range) + (1 - p) * np.log(
-                    np.maximum(1 - f_range, 1e-10))
-                fig_k = go.Figure()
-                fig_k.add_trace(go.Scatter(
-                    x=f_range, y=g, mode="lines",
-                    line=dict(color=CYAN, width=2), name="Growth"
-                ))
-                g_k = p * np.log(1 + b * kelly) + (1 - p) * np.log(max(1 - kelly, 1e-10))
-                fig_k.add_trace(go.Scatter(
-                    x=[kelly], y=[g_k], mode="markers",
-                    marker=dict(color=GREEN, size=12), name=f"Kelly={kelly:.1%}"
-                ))
-                fig_k.add_trace(go.Scatter(
-                    x=[half_kelly],
-                    y=[p * np.log(1 + b * half_kelly) + (1 - p) * np.log(max(1 - half_kelly, 1e-10))],
-                    mode="markers",
-                    marker=dict(color=YELLOW, size=12), name=f"1/2K={half_kelly:.1%}"
-                ))
-                fig_k.update_layout(title="Kelly Criterion", height=300,
-                                    xaxis_title="Fraction", yaxis_title="g(f)", **DARK)
-                st.plotly_chart(fig_k, use_container_width=True)
-
-            # Verdict
-            if expectancy > 0 and winrate > 0.50:
-                st.success(f"Edge CONFIRME : {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
-                           f"Kelly={kelly:.1%}")
-            elif expectancy > 0:
-                st.warning(f"Edge marginal : {winrate:.1%} WR, {expectancy:.1f} pts/trade")
-            else:
-                st.error(f"Pas d'edge : {winrate:.1%} WR, {expectancy:.1f} pts/trade")
-
-    # Tab 1: Tous les trades
-    show_results(trades_df, tab_all, "Absorption seule")
-
-    # Tab 2: Absorption + CVD
-    show_results(trades_df[trades_df["cvd_div"]], tab_cvd, "Absorption + CVD divergence")
-
-    # Tab 3: Absorption + VP
-    show_results(trades_df[trades_df["vp_level"]], tab_vp, "Absorption + Volume Profile")
-
-    # Tab 4: Absorption + CVD + VP
-    show_results(trades_df[trades_df["cvd_div"] & trades_df["vp_level"]],
-                 tab_combo, "Absorption + CVD + VP")
-
-    # Tab 5: Detail
-    with tab_details:
-        st.markdown("### Tous les trades")
-        display_df = trades_df.copy()
-        display_df["result_pts"] = display_df["result_pts"].round(2)
-        display_df["win"] = display_df["win"].map({True: "TP", False: "SL"})
-        display_df["cvd_div"] = display_df["cvd_div"].map({True: "Oui", False: "Non"})
-        display_df["vp_level"] = display_df["vp_level"].map({True: "Oui", False: "Non"})
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-        # Export CSV
-        csv = display_df.to_csv(index=False)
-        st.download_button("Telecharger CSV", csv, "backtest_results.csv", "text/csv")
-
-    # ── Stats par session ────────────────────────────────────────────
+    # ── Kelly ───────��────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Absorptions par session")
-    daily = trades_df.groupby("date").agg(
-        n_trades=("result_pts", "count"),
-        n_wins=("win", lambda x: (x == True).sum() if x.dtype == bool else (x == "TP").sum()),
-        total_pts=("result_pts", "sum"),
-    ).reset_index()
-    daily["winrate"] = (daily["n_wins"] / daily["n_trades"] * 100).round(1)
+    ck1, ck2 = st.columns(2)
+    with ck1:
+        st.markdown("### Kelly Criterion")
+        st.metric("Kelly optimal", f"{kelly_full:.1%}")
+        st.metric("Demi-Kelly", f"{kelly_half:.1%}")
+        avg_sl = trades_df["sl_pts"].mean()
+        kelly_contracts = max(1, int(capital_initial * kelly_half / (avg_sl * DOLLAR_PER_PT)))
+        st.metric("Contracts (1/2 Kelly)", kelly_contracts)
 
-    fig_daily = go.Figure()
-    colors_daily = [GREEN if t > 0 else RED for t in daily["total_pts"]]
-    fig_daily.add_trace(go.Bar(
-        x=daily["date"].astype(str), y=daily["total_pts"],
-        marker_color=colors_daily, text=daily["n_trades"],
-        textposition="outside", textfont=dict(size=10)
+    with ck2:
+        if kelly_full > 0:
+            p = winrate
+            b_ratio = avg_win / avg_loss if avg_loss > 0 else 1
+            f_range = np.linspace(0, min(1, kelly_full * 3), 200)
+            g = p * np.log(1 + b_ratio * f_range) + (1 - p) * np.log(
+                np.maximum(1 - f_range, 1e-10))
+            fig_k = go.Figure()
+            fig_k.add_trace(go.Scatter(x=f_range, y=g, mode="lines",
+                                       line=dict(color=CYAN, width=2)))
+            g_k = p * np.log(1 + b_ratio * kelly_full) + (1 - p) * np.log(max(1 - kelly_full, 1e-10))
+            fig_k.add_trace(go.Scatter(x=[kelly_full], y=[g_k], mode="markers",
+                                       marker=dict(color=GREEN, size=12),
+                                       name=f"Kelly={kelly_full:.1%}"))
+            fig_k.add_trace(go.Scatter(
+                x=[kelly_half],
+                y=[p * np.log(1 + b_ratio * kelly_half) + (1 - p) * np.log(max(1 - kelly_half, 1e-10))],
+                mode="markers", marker=dict(color=YELLOW, size=12),
+                name=f"1/2K={kelly_half:.1%}"))
+            fig_k.update_layout(title="Kelly Curve", height=300,
+                                xaxis_title="f", yaxis_title="g(f)", **DARK)
+            st.plotly_chart(fig_k, use_container_width=True)
+
+    # ── Equity curve ─────────────────────────────────────────────────
+    st.markdown("---")
+    fig_eq = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                            row_heights=[0.7, 0.3],
+                            subplot_titles=["Equity ($)", "Drawdown (%)"])
+    fig_eq.add_trace(go.Scatter(
+        x=trades_df["date"].astype(str).tolist(),
+        y=equity[1:], mode="lines+markers",
+        line=dict(color=CYAN, width=2),
+        marker=dict(size=4, color=[GREEN if w else RED for w in trades_df["win"]]),
+        text=[f"{'W' if w else 'L'} {r:+.1f}pts" for w, r in zip(trades_df["win"], results)],
+        hovertemplate="%{x}<br>%{text}<br>Equity: $%{y:,.0f}<extra></extra>"
+    ), row=1, col=1)
+    fig_eq.add_trace(go.Scatter(
+        x=trades_df["date"].astype(str).tolist(),
+        y=drawdown[1:], mode="lines",
+        line=dict(color=RED, width=1.5),
+        fill="tozeroy", fillcolor="rgba(255,51,102,0.12)"
+    ), row=2, col=1)
+    fig_eq.update_layout(height=500, showlegend=False, **DARK)
+    fig_eq.update_yaxes(title_text="$", row=1, col=1)
+    fig_eq.update_yaxes(title_text="%", row=2, col=1)
+    st.plotly_chart(fig_eq, use_container_width=True)
+
+    # ── Distribution P&L ─────────────────────────────────────────────
+    st.markdown("### Distribution P&L")
+    colors = [GREEN if r > 0 else RED for r in results]
+    fig_d = go.Figure()
+    fig_d.add_trace(go.Bar(
+        x=trades_df["date"].astype(str).tolist(), y=results,
+        marker_color=colors,
+        text=[f"{r:+.1f}" for r in results], textposition="outside",
+        textfont=dict(size=9)
     ))
-    fig_daily.update_layout(
-        title="P&L par session (nombre de trades au-dessus)",
-        xaxis_title="Date", yaxis_title="Points",
-        height=350, **DARK
-    )
-    st.plotly_chart(fig_daily, use_container_width=True)
+    fig_d.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.3)
+    fig_d.add_hline(y=expectancy, line_dash="dot", line_color=CYAN,
+                    annotation_text=f"Esperance = {expectancy:.1f} pts")
+    fig_d.update_layout(height=350, xaxis_title="Date", yaxis_title="Points", **DARK)
+    st.plotly_chart(fig_d, use_container_width=True)
 
-    # Comparaison des combos
+    # ── Stats par regime ─────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Comparaison des filtres")
-    combos = {
-        "Absorption seule": trades_df,
-        "Absorption + CVD": trades_df[trades_df["cvd_div"]],
-        "Absorption + VP": trades_df[trades_df["vp_level"]],
-        "Absorption + CVD + VP": trades_df[trades_df["cvd_div"] & trades_df["vp_level"]],
-    }
-    summary = []
-    for name, sub in combos.items():
+    st.subheader("Performance par regime")
+    for regime_name in ["LOW", "MED"]:
+        sub = trades_df[trades_df["regime"] == regime_name]
         if len(sub) == 0:
             continue
         r = sub["result_pts"].values
@@ -666,13 +942,77 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         avg_w = w.mean() if len(w) > 0 else 0
         avg_l = abs(l.mean()) if len(l) > 0 else 0
         exp = (wr * avg_w) - ((1 - wr) * avg_l)
-        summary.append({
-            "Strategie": name,
+        st.markdown(f"**{regime_name} vol** — {len(r)} trades, "
+                    f"WR {wr:.1%}, Esperance {exp:.1f} pts, "
+                    f"Total {r.sum():.1f} pts")
+
+    # ── Stats par score ──────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("Performance par score")
+    bins = [(37, 50), (50, 62), (62, 75), (75, 100)]
+    score_stats = []
+    for lo, hi in bins:
+        sub = trades_df[(trades_df["score"] >= lo) & (trades_df["score"] < hi)]
+        if len(sub) == 0:
+            continue
+        r = sub["result_pts"].values
+        w = r[r > 0]
+        l = r[r < 0]
+        wr = len(w) / len(r)
+        avg_w = w.mean() if len(w) > 0 else 0
+        avg_l = abs(l.mean()) if len(l) > 0 else 0
+        exp = (wr * avg_w) - ((1 - wr) * avg_l)
+        score_stats.append({
+            "Score": f"{lo}-{hi}",
             "Trades": len(r),
             "Winrate": f"{wr:.1%}",
-            "Gain moy": f"{avg_w:.1f}",
-            "Perte moy": f"{avg_l:.1f}",
             "Esperance": f"{exp:.1f} pts",
             "Total": f"{r.sum():.1f} pts",
         })
-    st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
+    if score_stats:
+        st.dataframe(pd.DataFrame(score_stats), use_container_width=True, hide_index=True)
+
+    # ── Journal ──────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("Journal des trades")
+    display = trades_df.copy()
+    display["win"] = display["win"].map({True: "TP", False: "SL"})
+    display["cvd_confirms"] = display["cvd_confirms"].map({True: "Oui", False: "Non"})
+    display["on_vp"] = display["on_vp"].map({True: "Oui", False: "Non"})
+    st.dataframe(display, use_container_width=True, hide_index=True)
+    csv = display.to_csv(index=False)
+    st.download_button("Telecharger CSV", csv, "backtest_quant.csv", "text/csv")
+
+    # ── Daily log ────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("Log journalier")
+    st.dataframe(daily_df, use_container_width=True, hide_index=True)
+
+    # ── Verdict ──────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("Verdict")
+    # Verdict base sur l'esperance et le PF, pas le winrate seul
+    # Un systeme sniper (20% WR, gros R:R) est valide si PF > 1.5 et esperance > 0
+    total_return = (equity[-1] - capital_initial) / capital_initial * 100
+    if expectancy > 0 and profit_factor > 1.5:
+        st.success(
+            f"**EDGE CONFIRME** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
+            f"PF {profit_factor:.2f}, Kelly {kelly_full:.1%}\n\n"
+            f"Profil **sniper** : peu de wins mais gros R:R = rentable\n\n"
+            f"Pipeline: Regime + Score ≥50 + SL ATR + TP VP → "
+            f"**{n_total} trades / {len(files)} jours**\n\n"
+            f"Return: **{total_return:+.1f}%** | Max DD: **{max_dd:.1f}%** | "
+            f"Demi-Kelly: **{kelly_half:.1%}** = {kelly_contracts} contracts"
+        )
+    elif expectancy > 0 and profit_factor > 1.0:
+        st.warning(
+            f"**Edge marginal** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
+            f"PF {profit_factor:.2f}\n\n"
+            f"Return: {total_return:+.1f}% | Ameliore le score minimum ou les filtres."
+        )
+    else:
+        st.error(
+            f"**Pas d'edge** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
+            f"PF {profit_factor:.2f}\n\n"
+            f"Ajuste: ratio absorption, min volume, ou parametres regime."
+        )

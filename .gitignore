@@ -3,3 +3,4 @@ __pycache__/
 .claude/
 *.ipynb
 .streamlit/secrets.toml
+.env
