@@ -86,7 +86,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-LEARNING_DIR = Path(__file__).parent / "learning"
+LEARNING_DIR = Path(__file__).parent.parent / "learning"
 
 # ── Module registry ─────────────────────────────────────────────────
 MODULES = {
