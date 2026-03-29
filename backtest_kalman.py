@@ -38,8 +38,10 @@ bar_seconds = st.sidebar.selectbox("Barre (secondes)", [30, 60, 120, 300], index
 st.sidebar.markdown("---")
 st.sidebar.header("Kalman OU")
 kalman_lookback = st.sidebar.number_input("Lookback calibration (barres)", value=120, min_value=30, step=10)
-band_k = st.sidebar.number_input("Bande k (x sigma_stat)", value=1.0, min_value=0.3, max_value=3.0, step=0.1,
-                                  help="Entry quand prix depasse fair_value ± k × sigma_stat")
+band_k = st.sidebar.number_input("Bande k min (sigma)", value=1.0, min_value=0.3, max_value=3.0, step=0.1,
+                                  help="Entry quand deviation > k sigma (min)")
+band_k_max = st.sidebar.number_input("Bande k max (sigma)", value=5.0, min_value=0.5, max_value=10.0, step=0.5,
+                                      help="Ignore si deviation > k_max sigma (evite crash-recovery)")
 kalman_R_mult = st.sidebar.number_input("Kalman R multiplier", value=5.0, min_value=0.5, step=0.5,
                                          help="Confiance modele vs data. Plus haut = plus lisse")
 
@@ -84,8 +86,39 @@ DD_SAFETY_LIMIT = max_drawdown_dollars * (dd_safety_pct / 100)
 # ENGINE
 # ══════════════════════════════════════════════════════════════════════
 
+@st.cache_data
+def load_ohlcv_csv(filepath):
+    """Charge le CSV ohlcv-1m Databento en memoire (cache)."""
+    df = pd.read_csv(filepath, usecols=["ts_event", "open", "high", "low", "close", "volume"])
+    df["bar"] = pd.to_datetime(df["ts_event"], utc=True)
+    df.drop(columns=["ts_event"], inplace=True)
+    df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].astype(float)
+    df["volume"] = df["volume"].astype(int)
+    df.sort_values("bar", inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    # Calcul ATR et returns sur tout le dataset (plus precis qu'a la journee)
+    df["tr"] = np.maximum(
+        df["high"] - df["low"],
+        np.maximum(
+            abs(df["high"] - df["close"].shift(1)),
+            abs(df["low"] - df["close"].shift(1))
+        )
+    )
+    df["atr_14"] = df["tr"].rolling(14, min_periods=1).mean()
+    df["returns"] = df["close"].pct_change().fillna(0)
+    df["date"] = df["bar"].dt.date
+    return df
+
+
+def filter_session(df, start_h, start_m, end_h, end_m):
+    """Filtre les barres sur la session de trading."""
+    t_min = df["bar"].dt.hour * 60 + df["bar"].dt.minute
+    mask = (t_min >= start_h * 60 + start_m) & (t_min < end_h * 60 + end_m)
+    return df[mask].reset_index(drop=True)
+
+
 def load_single_day(filepath, start_h, start_m, end_h, end_m):
-    """Charge un fichier, filtre session."""
+    """Legacy: charge un fichier ticks Databento, filtre session."""
     df = pd.read_csv(filepath, usecols=["ts_event", "side", "price", "size"])
     df["ts"] = pd.to_datetime(df["ts_event"], utc=True)
     df["price"] = df["price"].astype(float)
@@ -97,30 +130,18 @@ def load_single_day(filepath, start_h, start_m, end_h, end_m):
 
 
 def build_bars(df, freq_seconds):
-    """Ticks → barres OHLCV + ATR + delta."""
+    """Legacy: ticks → barres OHLCV + ATR."""
     df = df.copy()
     df["bar"] = df["ts"].dt.floor(f"{freq_seconds}s")
-    df["buy_vol"] = np.where(df["side"] == "B", df["size"], 0)
-    df["sell_vol"] = np.where(df["side"] == "A", df["size"], 0)
-
     bars = df.groupby("bar").agg(
-        open=("price", "first"),
-        high=("price", "max"),
-        low=("price", "min"),
-        close=("price", "last"),
+        open=("price", "first"), high=("price", "max"),
+        low=("price", "min"), close=("price", "last"),
         volume=("size", "sum"),
-        buy_volume=("buy_vol", "sum"),
-        sell_volume=("sell_vol", "sum"),
     ).reset_index()
-
-    bars["delta"] = bars["buy_volume"] - bars["sell_volume"]
-    bars["cvd"] = bars["delta"].cumsum()
     bars["tr"] = np.maximum(
         bars["high"] - bars["low"],
-        np.maximum(
-            abs(bars["high"] - bars["close"].shift(1)),
-            abs(bars["low"] - bars["close"].shift(1))
-        )
+        np.maximum(abs(bars["high"] - bars["close"].shift(1)),
+                   abs(bars["low"] - bars["close"].shift(1)))
     )
     bars["atr_14"] = bars["tr"].rolling(14, min_periods=1).mean()
     bars["returns"] = bars["close"].pct_change().fillna(0)
@@ -204,7 +225,6 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
         if sigma < 1e-10:
             sigma = 1.0
 
-        # Sigma stationnaire
         sigma_stat = sigma / np.sqrt(max(2 * (1 - phi), 0.001))
 
         # Kalman filter
@@ -228,7 +248,7 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
     return fair_values, sigma_stats, kalman_gains
 
 
-def find_signals(bars, fair_values, sigma_stats, regimes, band_k):
+def find_signals(bars, fair_values, sigma_stats, regimes, band_k, band_k_max=3.0):
     """
     Genere les signaux d'entree:
     - LONG  quand close < fair_value - k * sigma_stat (prix trop bas)
@@ -255,14 +275,17 @@ def find_signals(bars, fair_values, sigma_stats, regimes, band_k):
         close = bars.iloc[i]["close"]
         fv = fair_values[i]
         ss = sigma_stats[i]
-        upper = fv + band_k * ss
-        lower = fv - band_k * ss
+        deviation = abs(close - fv) / ss if ss > 0 else 0
+
+        # Filtre: deviation hors plage = bruit ou crash-recovery, skip
+        if deviation < band_k or deviation > band_k_max:
+            continue
 
         direction = None
-        if close > upper:
-            direction = "short"  # prix trop haut, va revenir
-        elif close < lower:
-            direction = "long"   # prix trop bas, va revenir
+        if close > fv:
+            direction = "short"
+        elif close < fv:
+            direction = "long"
 
         if direction:
             traded_today.add(date)
@@ -274,7 +297,7 @@ def find_signals(bars, fair_values, sigma_stats, regimes, band_k):
                 "fair_value": fv,
                 "sigma_stat": ss,
                 "direction": direction,
-                "deviation": abs(close - fv) / ss,  # combien de sigma hors bande
+                "deviation": deviation,
                 "regime": regimes[i],
             })
 
@@ -335,12 +358,24 @@ def kelly_fraction(results):
 # ══════════════════════════════════════════════════════════════════════
 
 if st.sidebar.button("Lancer le Backtest", type="primary"):
-    files = sorted(glob.glob(os.path.join(data_dir, "*.trades.csv")))
-    if not files:
-        st.error("Aucun fichier .trades.csv trouve.")
+    # Detecter le format: 1 CSV ohlcv-1m ou anciens fichiers ticks
+    csv_files = sorted(glob.glob(os.path.join(data_dir, "*.ohlcv-1m.csv")))
+    legacy_files = sorted(glob.glob(os.path.join(data_dir, "*.trades.csv")))
+
+    if csv_files:
+        # Nouveau format: 1 seul CSV ohlcv-1m
+        with st.spinner("Chargement du CSV ohlcv-1m..."):
+            full_df = load_ohlcv_csv(csv_files[0])
+        dates = sorted(full_df["date"].unique())
+        st.info(f"{len(dates)} jours. Pipeline: GARCH regime → Kalman OU → Bandes → 1 trade/session")
+    elif legacy_files:
+        full_df = None
+        dates = legacy_files
+        st.info(f"{len(dates)} fichiers ticks. Pipeline: GARCH regime → Kalman OU → Bandes → 1 trade/session")
+    else:
+        st.error("Aucun fichier CSV trouve. Mets le dossier Databento dans le champ ci-dessus.")
         st.stop()
 
-    st.info(f"{len(files)} fichiers. Pipeline: GARCH regime → Kalman OU → Bandes → 1 trade/session")
     progress = st.progress(0)
 
     all_trades = []
@@ -353,9 +388,9 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     challenge_busted = False
     slip = slippage_ticks * TICK_SIZE
 
-    for file_idx, filepath in enumerate(files):
-        progress.progress((file_idx + 1) / len(files),
-                          text=f"Jour {file_idx + 1}/{len(files)}")
+    for file_idx, day_key in enumerate(dates):
+        progress.progress((file_idx + 1) / len(dates),
+                          text=f"Jour {file_idx + 1}/{len(dates)}")
 
         # Protection DD
         running_dd = running_peak - running_equity
@@ -366,16 +401,22 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             skipped_dd += 1
             continue
 
-        # 1. Charger
-        ticks = load_single_day(filepath, session_start_h, session_start_m,
-                                session_end_h, session_end_m)
-        if len(ticks) < 100:
-            skipped_no_signal += 1
-            continue
+        # 1. Barres du jour
+        if full_df is not None:
+            # Format ohlcv-1m: filtrer par date puis par session
+            day_df = full_df[full_df["date"] == day_key].copy()
+            bars = filter_session(day_df, session_start_h, session_start_m,
+                                  session_end_h, session_end_m)
+        else:
+            # Legacy ticks
+            ticks = load_single_day(day_key, session_start_h, session_start_m,
+                                    session_end_h, session_end_m)
+            if len(ticks) < 100:
+                skipped_no_signal += 1
+                continue
+            bars = build_bars(ticks, bar_seconds)
+            del ticks
 
-        # 2. Barres
-        bars = build_bars(ticks, bar_seconds)
-        del ticks
         if len(bars) < kalman_lookback + 20:
             skipped_no_signal += 1
             continue
@@ -402,7 +443,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         )
 
         # 5. Signaux
-        signals = find_signals(bars, fair_values, sigma_stats, regimes, band_k)
+        signals = find_signals(bars, fair_values, sigma_stats, regimes, band_k, band_k_max)
 
         if not signals:
             skipped_no_signal += 1
@@ -519,10 +560,10 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     st.markdown("---")
     st.subheader("Pipeline")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Jours analyses", len(files))
+    c1.metric("Jours analyses", len(dates))
     c2.metric("Skip HIGH vol", skipped_high_vol)
     c3.metric("Skip pas de signal", skipped_no_signal)
-    st.success(f"**{len(trades_df)} trades** sur {len(files)} jours "
+    st.success(f"**{len(trades_df)} trades** sur {len(dates)} jours "
                f"(Kalman OU, k={band_k}, 1/session)")
 
     # Metriques
@@ -543,8 +584,11 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     profit_factor = gross_profit / gross_loss
     kelly_full, kelly_half = kelly_fraction(results)
 
-    daily_returns = pnl / capital_initial
-    sharpe = (daily_returns.mean() / daily_returns.std() * np.sqrt(252)) if daily_returns.std() > 0 else 0
+    # Sharpe sur returns JOURNALIERS (jours sans trade = 0)
+    daily_pnl = trades_df.groupby("date")["pnl_dollars"].sum()
+    all_bdays = pd.bdate_range(trades_df["date"].min(), trades_df["date"].max())
+    daily_ret = daily_pnl.reindex(all_bdays, fill_value=0) / capital_initial
+    sharpe = (daily_ret.mean() / daily_ret.std() * np.sqrt(252)) if daily_ret.std() > 0 else 0
 
     equity = capital_initial + np.cumsum(pnl)
     equity = np.insert(equity, 0, capital_initial)
@@ -636,22 +680,88 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     fig_d.update_layout(height=350, xaxis_title="Date", yaxis_title="Points", **DARK)
     st.plotly_chart(fig_d, use_container_width=True)
 
-    # Stats par regime
+    # Distribution P&L conditionnelle par regime (Propriete de Markov)
     st.markdown("---")
-    st.subheader("Performance par regime")
-    for rname in ["LOW", "MED"]:
+    st.subheader("Distribution P&L par regime (Propriete de Markov)")
+    st.caption(
+        "Chaque regime produit une distribution de P&L differente. "
+        "Mixer tous les trades donne des statistiques trompeuses (Roman Paolucci #71)."
+    )
+
+    reg_col_low, reg_col_med = st.columns(2)
+    for col_widget, rname in zip([reg_col_low, reg_col_med], ["LOW", "MED"]):
         sub = trades_df[trades_df["regime"] == rname]
         if len(sub) == 0:
+            col_widget.info(f"Pas de trades en regime {rname}")
             continue
+
         r = sub["result_pts"].values
-        w = r[r > 0]
-        l = r[r < 0]
-        wr = len(w) / len(r)
-        avg_w = w.mean() if len(w) > 0 else 0
-        avg_l = abs(l.mean()) if len(l) > 0 else 0
-        exp = (wr * avg_w) - ((1 - wr) * avg_l)
-        st.markdown(f"**{rname} vol** — {len(r)} trades, WR {wr:.1%}, "
-                    f"Esperance {exp:.1f} pts, Total {r.sum():.1f} pts")
+        wins_r = r[r > 0]
+        losses_r = r[r < 0]
+        wr_r = len(wins_r) / len(r) if len(r) > 0 else 0
+        avg_w_r = wins_r.mean() if len(wins_r) > 0 else 0
+        avg_l_r = abs(losses_r.mean()) if len(losses_r) > 0 else 0
+        exp_r = (wr_r * avg_w_r) - ((1 - wr_r) * avg_l_r)
+        pf_r = wins_r.sum() / max(abs(losses_r.sum()), 0.01) if len(losses_r) > 0 else 99.0
+
+        # Sharpe conditionnel: sur les jours de ce regime uniquement
+        sub_daily = sub.groupby("date")["pnl_dollars"].sum()
+        regime_sharpe = 0.0
+        if len(sub_daily) > 1:
+            sub_days_ret = sub_daily.reindex(all_bdays, fill_value=0) / capital_initial
+            if sub_days_ret.std() > 0:
+                regime_sharpe = sub_days_ret.mean() / sub_days_ret.std() * np.sqrt(252)
+
+        bar_color = CYAN if rname == "LOW" else ORANGE
+
+        fig_r = go.Figure()
+        fig_r.add_trace(go.Histogram(
+            x=r, nbinsx=max(8, len(r) // 2),
+            marker_color=bar_color, opacity=0.85,
+            name=f"P&L {rname}"
+        ))
+        fig_r.add_vline(x=exp_r, line_dash="dash", line_color="white",
+                        annotation_text=f"E[PL]={exp_r:.1f}pts",
+                        annotation_font_color="white")
+        fig_r.add_vline(x=0, line_color="rgba(255,255,255,0.25)")
+        fig_r.update_layout(
+            title=(
+                f"Regime {rname} — {len(r)} trades | WR {wr_r:.0%} | "
+                f"PF {pf_r:.2f} | Sharpe {regime_sharpe:.2f}"
+            ),
+            height=300, showlegend=False,
+            xaxis_title="Points", yaxis_title="Frequence",
+            **DARK
+        )
+        col_widget.plotly_chart(fig_r, use_container_width=True)
+
+    # Comparaison et interpretation automatique
+    low_sub = trades_df[trades_df["regime"] == "LOW"]["result_pts"].values
+    med_sub = trades_df[trades_df["regime"] == "MED"]["result_pts"].values
+    low_exp = (low_sub[low_sub > 0].mean() * (low_sub > 0).mean()
+               - abs(low_sub[low_sub < 0].mean()) * (low_sub < 0).mean()) if len(low_sub) > 0 else 0
+    med_exp = (med_sub[med_sub > 0].mean() * (med_sub > 0).mean()
+               - abs(med_sub[med_sub < 0].mean()) * (med_sub < 0).mean()) if len(med_sub) > 0 else 0
+
+    if low_exp > 0 and med_exp > 0:
+        st.success(
+            f"**Edge robuste** : positif en LOW ({low_exp:+.1f} pts) ET en MED ({med_exp:+.1f} pts). "
+            "Les deux regimes contribuent a l'edge."
+        )
+    elif low_exp > 0 > med_exp:
+        st.warning(
+            f"**Edge regime-dependant** : positif en LOW ({low_exp:+.1f} pts) mais negatif en MED "
+            f"({med_exp:+.1f} pts). Envisage de desactiver les trades MED vol."
+        )
+    elif med_exp > 0 > low_exp:
+        st.warning(
+            f"**Edge regime-dependant** : positif en MED ({med_exp:+.1f} pts) mais negatif en LOW "
+            f"({low_exp:+.1f} pts). Comportement inhabituel — verifier les parametres."
+        )
+    else:
+        st.error(
+            f"**Pas d'edge dans aucun regime** : LOW={low_exp:+.1f} pts, MED={med_exp:+.1f} pts."
+        )
 
     # Stats par deviation
     st.markdown("---")
