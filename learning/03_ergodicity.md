@@ -208,6 +208,19 @@ $$f^* = \frac{p \cdot b - q}{b}$$
 
 En pratique : utilise **DEMI-KELLY**
 
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $g$ | g (croissance geometrique) | Ce que tu gagnes VRAIMENT en moyenne sur le long terme |
+| $E[r]$ | Esperance de r | Ton gain moyen par trade (ton edge) |
+| $\sigma^2$ | Sigma carre | Variance = dispersion de tes gains au carre |
+| $\sigma^2/2$ | Penalite de volatilite | Ce que la variance te COUTE (toujours negatif) |
+| $f^*$ | f etoile | La fraction optimale du capital a risquer (Kelly) |
+| $p$ | p | Probabilite de gagner (win rate) |
+| $q$ | q | Probabilite de perdre = 1 - p |
+| $b$ | b | Ratio gain/perte = combien tu gagnes par rapport a ce que tu perds |
+
 **POUR TON TRADING :**
 - Ton edge d'absorption est ton $E[r]$
 - Ta volatilite de P&L est ton $\sigma$

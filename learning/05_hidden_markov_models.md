@@ -320,6 +320,20 @@ C'est ton FILTRE DE REGIME.
 - Toujours valider OUT OF SAMPLE
 - Les etats ne sont pas forcement interpretables
 
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $\pi$ | Pi (initiales) | Probabilites de depart — dans quel etat on commence |
+| $A$ | Matrice A (transition) | Probabilite de passer d'un etat a un autre |
+| $B$ | Matrice B (emission) | Ce qu'on observe dans chaque etat (returns typiques) |
+| $\mu$ | Mu | Rendement moyen dans un etat (ex: Bull = +0.2%) |
+| $\sigma$ | Sigma | Volatilite dans un etat (ex: Bear = 4.5%) |
+| $\alpha(t,j)$ | Alpha t j | Probabilite d'etre en etat j au temps t (Forward) |
+| $\beta(t,i)$ | Beta t i | Probabilite des observations futures si on est en i (Backward) |
+| $\gamma(t,i)$ | Gamma t i | Probabilite finale d'etre en etat i au temps t |
+| $\mathcal{N}(\mu, \sigma)$ | Loi normale | Distribution des returns dans chaque etat |
+
 **POUR TON TRADING :**
 
 HMM = FILTRE DE REGIME : "Dans quel type de marche suis-je aujourd'hui ?"

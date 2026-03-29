@@ -278,3 +278,17 @@ PIPELINE :
   + Absorption visible
   = ENTRY
 ```
+
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $\lambda(t)$ | Lambda t | Intensite instantanee = taux d'arrivee des evenements a l'instant t |
+| $\mu$ | Mu | Baseline = taux d'arrivee normal quand aucun event recent |
+| $\alpha$ | Alpha | Force d'excitation = combien chaque event fait monter lambda |
+| $\beta$ | Beta | Vitesse de decay = a quelle vitesse l'excitation retombe |
+| $e^{-\beta(t-t_i)}$ | Exponentielle | Decroissance : l'impact de l'event $i$ s'estompe avec le temps |
+| $t_i$ | Temps ti | Moment ou l'event $i$ s'est produit |
+| $\alpha/\beta$ | Ratio stabilite | Doit etre $< 1$ sinon le processus explose (trop auto-excitant) |
+| $dN$ | dN | 1 si un nouvel event arrive maintenant, 0 sinon |
+| $\lambda \gg \mu$ | Lambda >> Mu | Cluster detecte : beaucoup plus d'events que la normale |

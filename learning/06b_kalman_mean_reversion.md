@@ -349,4 +349,21 @@ Le prix converge vers $\mu$ exponentiellement.
 6. Combine avec HMM (module 05) : ne trade QUE en low/med vol
 7. Combine avec GARCH (module 04) : ajuste la taille selon la vol
 
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $dX_t$ | dX t | Variation infinitesimale du prix a l'instant t |
+| $\theta$ | Theta | Vitesse de mean reversion — grand = revient vite vers la moyenne |
+| $\mu$ | Mu | La fair value (juste valeur) vers laquelle le prix converge |
+| $\sigma$ | Sigma | Volatilite du processus OU (dispersion des residus) |
+| $dW_t$ | dW t | Bruit aleatoire pur (mouvement brownien) |
+| $\phi$ | Phi | Persistance AR(1) = fraction du niveau precedent qui reste ($< 1$) |
+| $\sigma_{stat}$ | Sigma stationnaire | Ecart-type de la distribution stationnaire = $\sigma / \sqrt{2\theta}$ |
+| $k$ | k | Multiplicateur des bandes = combien de $\sigma_{stat}$ pour entrer |
+| $Q$ | Q | Bruit du modele Kalman = $\sigma^2(1 - \phi^2)$ |
+| $R$ | R | Confiance dans le prix observe vs le modele OU |
+| $\hat{x}_{kalman}$ | x kalman | Fair value estimee par le filtre Kalman en temps reel |
+| $\phi^h$ | Phi puissance h | Convergence exponentielle : dans $h$ pas, le prix sera $\phi^h$ plus pres de $\mu$ |
+
 **APP KTS.PY :** IBKR live, calibre OU auto, Kalman temps reel, noise lever slider, forecast OU, trading Long/Short/Close

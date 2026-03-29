@@ -386,6 +386,20 @@ Moyenne, variance, Sharpe, win rate = consistants. Max drawdown = NON consistant
 
 **BIAIS vs CONSISTANCE :** On peut etre biaise ET consistant (biais disparait).
 
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $n$ | Nombre d'observations | Nombre de trades |
+| $\bar{X}$ | X barre | Moyenne de tes resultats |
+| $\mu$ | Mu | La vraie valeur (inconnue) vers laquelle on converge |
+| $\sigma$ | Sigma | Ecart-type de la distribution |
+| $\to \infty$ | Tend vers l'infini | Quand n devient tres grand |
+| $X_n \xrightarrow{d} X$ | Convergence en distribution | La forme de la courbe se rapproche de X |
+| $X_n \xrightarrow{p} X$ | Convergence en probabilite | La valeur se rapproche de X |
+| $\mathcal{N}(\mu, \sigma^2/n)$ | Loi normale | Distribution de la moyenne avec n observations |
+| $f'(\mu)$ | Derivee de f en mu | Pente de la fonction f evaluee en mu |
+
 **POUR TON TRADING :**
 - N'evalue JAMAIS ta strategie sur < 100 trades
 - Le Sharpe est biaise vers le haut sur petit echantillon

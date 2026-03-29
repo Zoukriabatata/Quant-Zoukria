@@ -271,6 +271,19 @@ $$\sigma_{LT}^2 = \frac{\alpha_0}{1 - \alpha_1 - \beta_1}$$
 
 **VaR GARCH >> VaR naive :** naive sous-estime massivement le risque ($40\%$ exceedances vs $5\%$ cible), GARCH bien meilleur ($10\%$ exceedances).
 
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $\sigma_t^2$ | Sigma carre au temps t | Variance (volatilite au carre) aujourd'hui |
+| $\sigma_t$ | Sigma t | Volatilite aujourd'hui (racine de la variance) |
+| $\varepsilon_{t-1}$ | Epsilon t-1 | Le choc (surprise) d'hier = prix reel - prix prevu |
+| $\varepsilon_{t-1}^2$ | Epsilon carre | Le choc d'hier au carre (toujours positif) |
+| $\alpha_0$ | Alpha zero | Plancher de volatilite (vol minimale meme quand tout est calme) |
+| $\alpha_1$ | Alpha un | Poids du choc recent (reaction aux nouvelles) |
+| $\beta_1$ | Beta un | Poids de la vol passee (memoire/persistance) |
+| $\sigma_{LT}^2$ | Sigma LT carre | Variance de long terme (ou la vol revient toujours) |
+
 **POUR TON TRADING :**
 - GARCH te donne la vol ACTUELLE (pas une moyenne fixe)
 - En high vol : REDUIS ta taille de position

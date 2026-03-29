@@ -243,6 +243,14 @@ METRIQUES INUTILES (seules) :
 METRIQUES MOINS INUTILES :
   Sharpe = E[R-Rf] / sigma (risk-adjusted)
   Sortino = E[R-Rf] / sigma_downside (meilleur)
+
+LETTRES ET SYMBOLES :
+  E[R]           = esperance de ton return = gain moyen
+  Rf             = taux sans risque (0% en pratique pour futures)
+  R - Rf         = ton gain au-dessus du "gratuit"
+  sigma (σ)      = ecart-type de tes returns = dispersion
+  sigma_downside = ecart-type des pertes uniquement (pas des gains)
+  MaxDD          = Max Drawdown = pire perte pic-a-creux en %
   MaxDD = pire perte pic-a-creux (non consistant)
 
 TOUTES SONT : NECESSAIRES mais PAS SUFFISANTES

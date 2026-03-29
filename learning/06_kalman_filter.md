@@ -316,3 +316,18 @@ $$\boxed{K = \frac{P_{pred}}{P_{pred} + R}} \qquad \hat{x}_{new} = \hat{x}_{pred
 - Petit $R$ = reactif (bon pour signaux rapides)
 - Grand $R$ = lisse (bon pour tendances lentes)
 - **COMBINE AVEC :** GARCH $\to$ ajuste $Q$ dynamiquement ; HMM $\to$ detecte le regime pour ajuster $R$
+
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $\hat{x}_{pred}$ | x chapeau pred | L'etat predit AVANT de voir la nouvelle observation |
+| $\hat{x}_{new}$ | x chapeau new | L'etat estime APRES avoir vu la nouvelle observation |
+| $F$ | F (matrice de transition) | Comment l'etat evolue d'un pas a l'autre (modele de physique) |
+| $P_{pred}$ | P pred | Incertitude sur la prediction (avant observation) |
+| $P_{new}$ | P new | Incertitude mise a jour (apres observation) |
+| $K$ | K (Kalman gain) | Poids donne aux donnees vs au modele (entre 0 et 1) |
+| $Q$ | Q (bruit processus) | Combien le vrai etat peut changer entre deux pas |
+| $R$ | R (bruit mesure) | Combien les observations sont bruitees / peu fiables |
+| $z$ | z | La nouvelle observation (le prix observe) |
+| $z - \hat{x}_{pred}$ | Innovation | La surprise : difference entre ce qu'on observait et ce qu'on attendait |

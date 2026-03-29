@@ -246,6 +246,15 @@ POUR PROUVER UN EDGE :
 NOMBRE MIN DE TRADES :
   n > (2 * sigma / mu)^2
 
+LETTRES ET SYMBOLES :
+  mu (μ)         = ta moyenne de gains (ton edge)
+  sigma (σ)      = ecart-type = dispersion de tes resultats
+  n              = nombre de trades
+  sqrt(n)        = racine carree de n
+  SE             = sigma / sqrt(n) = precision de ta moyenne
+  IC 95%         = intervalle de confiance = plage probable du vrai edge
+  ~ Normal(μ, σ) = "suit une loi normale de moyenne μ et ecart-type σ"
+
 POUR TON TRADING :
   - Ne tire JAMAIS de conclusion avec < 100 trades
   - Un bon mois ne prouve rien (trop peu de donnees)

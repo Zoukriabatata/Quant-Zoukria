@@ -184,6 +184,21 @@ $$\text{prior} = A^\top \cdot \text{posterior} \quad\longrightarrow\quad \text{l
 
 **APP IBKR :** Connexion live, barres 5s, chart OHLC colore par regime, recalibration a la demande.
 
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $\mu$ | Mu | Volatilite moyenne d'un regime (ex: LOW vol = 0.18%) |
+| $\sigma$ | Sigma | Dispersion de la vol dans un regime (etendue du bucket) |
+| $\mathcal{N}(\mu, \sigma)$ | Loi normale | Distribution de la vol dans chaque etat |
+| $A$ | Matrice de transition | Probabilite de passer d'un regime a un autre |
+| $P(\text{regime})$ | Probabilite du regime | La confiance qu'on est en LOW / MED / HIGH |
+| prior | Prior | Estimation du regime AVANT d'observer la nouvelle barre |
+| likelihood | Vraisemblance | Proba d'observer cette vol SI on etait dans ce regime |
+| posterior | Posterior | Estimation du regime APRES avoir observe la nouvelle barre |
+| $\propto$ | Proportionnel | "proportionnel a" — on normalise apres |
+| $\arg\max$ | ArgMax | "l'etat qui donne la probabilite la plus grande" |
+
 **POUR TON TRADING :**
 
 | Regime | Action |

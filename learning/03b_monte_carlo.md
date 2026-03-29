@@ -237,6 +237,16 @@ $4\times$ plus de sims = erreur $\div 2$.
 
 **DEFI EN FINANCE :** La distribution CHANGE dans le temps. Monte Carlo suppose une distribution FIXE. Solution : recalibrer, HMM, GARCH, stress tests.
 
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $\bar{X}_n$ | X barre n | Moyenne de n simulations |
+| $E[X]$ | Esperance de X | Ce qu'on veut estimer (la vraie valeur) |
+| $\sigma$ | Sigma | Ecart-type des resultats simules |
+| $n$ | n | Nombre de simulations (plus c'est grand, mieux c'est) |
+| $\sigma/\sqrt{n}$ | Erreur standard | Precision de l'estimation — diminue quand n augmente |
+
 **POUR TON TRADING :**
 - Simule 10 000 seances pour estimer ton vrai edge
 - Calcule la proba de ruine avec ton sizing actuel

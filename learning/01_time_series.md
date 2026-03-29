@@ -268,6 +268,17 @@ Les previsions de prix EXACTES n'existent pas.
 On travaille avec des DISTRIBUTIONS (probabilites).
 Le but = filtrer le bruit pour voir le signal.
 
+**LETTRES ET SYMBOLES :**
+
+| Lettre | Nom | Signification |
+|--------|-----|---------------|
+| $P(t)$ | Prix au temps t | Le prix du MNQ a l'instant t |
+| $n$ | Nombre de barres | Taille de la fenetre MA |
+| $\alpha$ | Alpha (EMA) | Poids donne au prix actuel (0 a 1) |
+| $\varepsilon$ | Epsilon | Bruit aleatoire = partie impredictible du prix |
+| $MA(n)$ | Moving Average | Moyenne mobile sur n barres |
+| $EMA(t)$ | Exponential MA | Moyenne mobile qui pese plus les barres recentes |
+
 **POUR TON TRADING :**
 Ton signal d'absorption = une time series.
 Tu dois le FILTRER (Kalman) pour enlever le bruit
