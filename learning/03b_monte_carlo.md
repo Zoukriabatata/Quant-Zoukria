@@ -237,6 +237,40 @@ $4\times$ plus de sims = erreur $\div 2$.
 
 **DEFI EN FINANCE :** La distribution CHANGE dans le temps. Monte Carlo suppose une distribution FIXE. Solution : recalibrer, HMM, GARCH, stress tests.
 
+**FORMULES A RETENIR :**
+
+---
+
+**1. Convergence Monte Carlo (LGN)**
+
+$$\bar{X}_n = \frac{1}{n}\sum_{i=1}^n X_i \;\xrightarrow{n \to \infty}\; E[X]$$
+
+**Pourquoi ca marche :** en simulant $n$ fois la meme experience aleatoire, la moyenne des resultats converge vers la vraie valeur esperee. C'est directement la Loi des Grands Nombres. La simulation "remplace" le calcul analytique quand le probleme est trop complexe pour une formule exacte.
+
+**Quand l'utiliser :** pour estimer l'esperance de n'importe quelle quantite complexe — ton edge moyen, la proba de ruine, la valeur d'une option.
+
+---
+
+**2. Precision de l'estimation**
+
+$$\text{Erreur} \approx \frac{\sigma}{\sqrt{n}}$$
+
+**Pourquoi ca marche :** vient directement du CLT. L'ecart-type de ta moyenne simulee est $\sigma/\sqrt{n}$. Pour diviser l'erreur par 2 il faut 4 fois plus de simulations. Pour diviser par 10, il faut 100 fois plus.
+
+**Quand l'utiliser :** pour decider combien de simulations lancer. En pratique : 10 000 simulations donnent une erreur d'environ $1\%$ sur des probabilites — suffisant pour le trading.
+
+---
+
+**3. Estimation d'une probabilite**
+
+$$P(X > \text{seuil}) \approx \frac{\text{nombre de simulations ou } X > \text{seuil}}{n}$$
+
+**Pourquoi ca marche :** chaque simulation est un essai de Bernoulli (succes ou echec). La LGN dit que la proportion de succes converge vers la vraie probabilite. Simple mais puissant — ca permet d'estimer des probas de ruine, de toucher un target, etc.
+
+**Quand l'utiliser :** pour la proba de ruine ("si je risque $200/trade, quelle proba de perdre mon compte en 100 trades ?").
+
+---
+
 **LETTRES ET SYMBOLES :**
 
 | Lettre | Nom | Signification |

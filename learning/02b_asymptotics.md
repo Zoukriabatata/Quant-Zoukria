@@ -386,6 +386,48 @@ Moyenne, variance, Sharpe, win rate = consistants. Max drawdown = NON consistant
 
 **BIAIS vs CONSISTANCE :** On peut etre biaise ET consistant (biais disparait).
 
+**FORMULES A RETENIR :**
+
+---
+
+**1. Loi des Grands Nombres**
+
+$$\bar{X} \xrightarrow{n \to \infty} \mu \qquad \text{avec erreur} \sim \frac{\sigma}{\sqrt{n}}$$
+
+**Pourquoi ca marche :** quand tu fais la moyenne de beaucoup de valeurs independantes, les ecarts aleatoires se compensent et tu converges vers la vraie valeur. L'erreur diminue comme $1/\sqrt{n}$ — doubler le nombre de trades divise l'incertitude par $\sqrt{2} \approx 1.4$.
+
+**Quand l'utiliser :** pour estimer ton edge reel a partir de tes trades historiques.
+
+---
+
+**2. Theoreme Central Limite**
+
+$$\frac{\sqrt{n}\,(\bar{X} - \mu)}{\sigma} \xrightarrow{d} \mathcal{N}(0, 1) \qquad \Longleftrightarrow \qquad \bar{X} \sim \mathcal{N}\!\left(\mu,\; \frac{\sigma^2}{n}\right)$$
+
+**Pourquoi ca marche :** peu importe comment sont distribues tes gains individuels, la MOYENNE suit une courbe en cloche pour $n$ grand. C'est ca qui permet de construire des intervalles de confiance sur ton Sharpe, ton edge, ton winrate.
+
+**Quand l'utiliser :** pour quantifier l'incertitude sur N'IMPORTE QUELLE moyenne calculee sur tes trades.
+
+---
+
+**3. Erreur Standard du Sharpe (methode du delta)**
+
+$$SE_{\text{Sharpe}} = \sqrt{\frac{1 + \text{Sharpe}^2/2}{n}} \qquad IC_{95\%} = \left[\text{Sharpe} \pm 2 \cdot SE_{\text{Sharpe}}\right]$$
+
+**Pourquoi ca marche :** le Sharpe est une fonction de deux estimateurs (moyenne / ecart-type). La methode du delta propage l'incertitude a travers cette division. Le terme $\text{Sharpe}^2/2$ vient de la variance de l'ecart-type. Resultat : un Sharpe de 1.0 sur 100 trades a un IC de [0.76, 1.24] — beaucoup d'incertitude.
+
+**Quand l'utiliser :** TOUJOURS quand tu interprete un Sharpe backtest. Un Sharpe de 2.5 sur 30 trades = non significatif.
+
+---
+
+**4. Correction du biais du Sharpe**
+
+$$\text{Sharpe}_{\text{corrige}} = \text{Sharpe} \times \sqrt{\frac{n-1}{n}}$$
+
+**Pourquoi ca marche :** sur petit echantillon, la variance empirique sous-estime la vraie variance — ce qui gonfle le Sharpe. Cette correction mineure reduit le biais. En pratique : 200 trades et le biais est $< 0.5\%$, negligeable.
+
+---
+
 **LETTRES ET SYMBOLES :**
 
 | Lettre | Nom | Signification |

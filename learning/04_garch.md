@@ -271,6 +271,40 @@ $$\sigma_{LT}^2 = \frac{\alpha_0}{1 - \alpha_1 - \beta_1}$$
 
 **VaR GARCH >> VaR naive :** naive sous-estime massivement le risque ($40\%$ exceedances vs $5\%$ cible), GARCH bien meilleur ($10\%$ exceedances).
 
+**FORMULES A RETENIR :**
+
+---
+
+**1. ARCH(1) — reaction aux chocs**
+
+$$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2$$
+
+**Pourquoi ca marche :** la volatilite d'aujourd'hui depend de la TAILLE du mouvement d'hier ($\varepsilon_{t-1}^2$, toujours positif). Gros choc hier → vol elevee aujourd'hui. Jour calme hier → vol basse. Simple mais deja utile. Probleme : si aujourd'hui est calme, la vol retombe immediatement — pas realiste (la peur persiste).
+
+**Quand l'utiliser :** version simplifiee, bon point de depart pour comprendre. En pratique, utilise GARCH.
+
+---
+
+**2. GARCH(1,1) — clustering et memoire**
+
+$$\boxed{\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2 + \beta_1 \cdot \sigma_{t-1}^2}$$
+
+**Pourquoi ca marche :** ajoute le terme $\beta_1 \cdot \sigma_{t-1}^2$ = la volatilite D'HIER se transmet a celle d'aujourd'hui. Quand $\beta_1 = 0.85$, 85% de la vol d'hier reste aujourd'hui. C'est pourquoi les periodes de panique durent des jours, pas des minutes. C'est le "clustering" : gros mouvement → gros mouvements pendant plusieurs jours.
+
+**Quand l'utiliser :** pour estimer la volatilite en temps reel et ajuster ta taille de position. En high vol GARCH → reduis tes contrats.
+
+---
+
+**3. Volatilite long terme (niveau normal)**
+
+$$\sigma_{LT}^2 = \frac{\alpha_0}{1 - \alpha_1 - \beta_1}$$
+
+**Pourquoi ca marche :** si on laisse le modele tourner infiniment sans choc, la volatilite converge vers cette valeur d'equilibre. C'est la "normale" du marche. Apres chaque crise, la vol revient ici. Plus $\alpha_1 + \beta_1$ est proche de 1, plus ca prend du temps (la memoire est longue).
+
+**Quand l'utiliser :** pour calibrer tes parametres — la $\sigma_{LT}$ doit correspondre a la volatilite historique que tu observes sur MNQ.
+
+---
+
 **LETTRES ET SYMBOLES :**
 
 | Lettre | Nom | Signification |

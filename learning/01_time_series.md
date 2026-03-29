@@ -268,6 +268,40 @@ Les previsions de prix EXACTES n'existent pas.
 On travaille avec des DISTRIBUTIONS (probabilites).
 Le but = filtrer le bruit pour voir le signal.
 
+**FORMULES A RETENIR :**
+
+---
+
+**1. Moving Average**
+
+$$MA(n) = \frac{1}{n}\sum_{i=0}^{n-1} P(t-i)$$
+
+**Pourquoi ca marche :** on additionne les $n$ derniers prix et on divise par $n$. Le bruit aleatoire (positif et negatif) se CANCEL — ce qui reste c'est la tendance. C'est exactement comme calculer ta moyenne de gains sur les 20 derniers trades.
+
+**Quand l'utiliser :** quand tu veux voir la direction generale du marche, pas le mouvement tick par tick. La MA lisse, mais elle est EN RETARD (elle regarde le passe).
+
+---
+
+**2. Exponential Moving Average**
+
+$$EMA(t) = \alpha \cdot P(t) + (1-\alpha) \cdot EMA(t-1)$$
+
+**Pourquoi ca marche :** au lieu de peser tous les prix egalement, on pese le prix actuel ($\alpha$) plus que le passe ($1-\alpha$). Si $\alpha = 0.3$ : 30% du prix actuel, 70% de tout ce qu'on a vu avant. Plus $\alpha$ est grand, plus l'EMA reagit vite aux mouvements recents.
+
+**Quand l'utiliser :** quand tu veux un indicateur reactif mais pas trop sensible au bruit. L'EMA est la base du Kalman (module 06).
+
+---
+
+**3. Random Walk**
+
+$$P(t+1) = P(t) + \varepsilon_t$$
+
+**Pourquoi ca marche :** dit que le meilleur predicateur du prix de demain c'est le prix d'aujourd'hui. Le terme $\varepsilon_t$ represente tout ce qu'on ne sait pas encore (news, ordres, etc.). Ce n'est pas une formule "utile" — c'est le POINT DE DEPART. Si le marche est un random walk pur, aucun modele ne peut predire le futur.
+
+**Pourquoi c'est important :** tes modeles GARCH, HMM, Kalman essaient de capturer ce que ce modele naif RATE.
+
+---
+
 **LETTRES ET SYMBOLES :**
 
 | Lettre | Nom | Signification |

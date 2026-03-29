@@ -246,6 +246,55 @@ POUR PROUVER UN EDGE :
 NOMBRE MIN DE TRADES :
   n > (2 * sigma / mu)^2
 
+FORMULES A RETENIR :
+
+  1. DISTRIBUTION DE LA MOYENNE
+     X_barre ~ Normal( mu,  sigma / sqrt(n) )
+
+     Pourquoi ca marche : quand tu moyennes n resultats
+     independants, la moyenne resultante CONVERGE vers une
+     courbe en cloche. Ca marche PEU IMPORTE la forme
+     de tes gains individuels (meme si chaque trade est
+     bizarre et asymetrique). C'est la magie du CLT.
+
+     Quand l'utiliser : pour estimer si ta moyenne de gains
+     est "reelle" ou juste de la chance.
+
+  2. ERREUR STANDARD
+     SE = sigma / sqrt(n)
+
+     Pourquoi ca marche : plus tu as de trades (n grand),
+     plus ta moyenne devient PRECISE. Diviser par sqrt(n)
+     c'est la vitesse a laquelle l'incertitude se reduit.
+     100 trades = 10x plus precis qu'un seul trade.
+
+     Quand l'utiliser : toujours, avant de conclure quoi que
+     ce soit sur ton edge. C'est ta "marge d'erreur".
+
+  3. INTERVALLE DE CONFIANCE 95%
+     IC = [ mu - 2*SE,  mu + 2*SE ]
+
+     Pourquoi ca marche : la regle 95% vient de la courbe
+     normale — 95% des valeurs sont dans +/- 2 ecarts-types.
+     Si 0 est EN DEHORS de cet intervalle, ton edge est
+     statistiquement confirme a 95%.
+
+     Quand l'utiliser : apres chaque periode de trading pour
+     savoir si tu peux faire confiance a tes resultats.
+
+  4. NOMBRE MINIMUM DE TRADES
+     n > ( 2 * sigma / mu )^2
+
+     Pourquoi ca marche : cette formule dit exactement combien
+     de trades il faut pour que 0 soit juste en dehors de
+     l'IC 95%. Vient directement de la formule SE ci-dessus.
+     Plus ton edge (mu) est petit par rapport a la volatilite
+     (sigma), plus il faut de trades.
+
+     Quand l'utiliser : AVANT de commencer a trader — pour
+     savoir combien de temps tu dois attendre avant de
+     conclure que ta strategie marche (ou pas).
+
 LETTRES ET SYMBOLES :
   mu (μ)         = ta moyenne de gains (ton edge)
   sigma (σ)      = ecart-type = dispersion de tes resultats

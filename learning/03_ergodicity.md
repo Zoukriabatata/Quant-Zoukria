@@ -208,6 +208,32 @@ $$f^* = \frac{p \cdot b - q}{b}$$
 
 En pratique : utilise **DEMI-KELLY**
 
+**FORMULES A RETENIR :**
+
+---
+
+**1. Croissance geometrique reelle**
+
+$$\boxed{g = E[r] - \frac{\sigma^2}{2}}$$
+
+**Pourquoi ca marche :** quand tu multiplies des rendements successifs, la moyenne geometrique est TOUJOURS inferieure a la moyenne arithmetique. La difference exacte est $\sigma^2/2$. C'est une consequence mathematique de la loi log-normale. Exemple : $+50\%$ puis $-40\%$ = $\times 1.5 \times 0.6 = \times 0.9$ = perte, meme si la moyenne arithmetique est $+5\%$.
+
+**Quand l'utiliser :** pour evaluer si une strategie est vraiment profitable a long terme. Si $\sigma$ est trop grande, $g$ peut etre negatif meme avec un edge positif. C'est la formule LA PLUS IMPORTANTE pour le sizing.
+
+---
+
+**2. Kelly Criterion**
+
+$$f^* = \frac{p \cdot b - q}{b}$$
+
+**Pourquoi ca marche :** Kelly maximise la croissance geometrique $g$ en trouvant la fraction optimale $f^*$ a risquer. Si tu risques trop ($f > f^*$), la penalite $\sigma^2/2$ explose et $g$ chute. Si tu risques trop peu ($f \ll f^*$), tu laisses du profit sur la table. Kelly est l'optimum exact.
+
+**Quand l'utiliser :** pour determiner la taille maximale de position. En pratique : utilise DEMI-KELLY ($f^*/2$) car on connait mal les vrais $p$ et $b$.
+
+**Exemple :** $p=0.55$, gain $=+150$, perte $=-100$ → $b=1.5$ → $f^* = \frac{0.55 \times 1.5 - 0.45}{1.5} = 25\%$ → demi-Kelly = $12.5\%$ du capital.
+
+---
+
 **LETTRES ET SYMBOLES :**
 
 | Lettre | Nom | Signification |

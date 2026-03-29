@@ -244,6 +244,50 @@ METRIQUES MOINS INUTILES :
   Sharpe = E[R-Rf] / sigma (risk-adjusted)
   Sortino = E[R-Rf] / sigma_downside (meilleur)
 
+FORMULES A RETENIR :
+
+  1. SHARPE RATIO
+     Sharpe = sqrt(252) * E[R - Rf] / sigma(R)
+
+     Pourquoi ca marche : divise ton rendement moyen par
+     ton ecart-type. Si tu gagnes en moyenne +1% mais que
+     tes resultats varient de +/-10%, ton Sharpe est faible.
+     Si tu gagnes +1% avec une variation de +/-0.5%, ton
+     Sharpe est excellent. Le sqrt(252) annualise le resultat
+     (252 jours de trading dans une annee).
+
+     Quand l'utiliser : pour COMPARER deux strategies sur
+     une base egale. Un Sharpe de 1.5 avec peu de volatilite
+     est mieux qu'un Sharpe de 2.0 avec beaucoup de variance.
+
+     IMPORTANT : se calcule sur les RETURNS JOURNALIERS
+     (inclus les jours sans trade = 0), pas trade par trade.
+
+  2. SORTINO RATIO
+     Sortino = sqrt(252) * E[R - Rf] / sigma_downside
+
+     Pourquoi ca marche : comme le Sharpe MAIS ne penalise
+     que les BAISSES. La volatilite haussiere (gagner plus
+     que prevu) n'est pas un risque — pourquoi la penaliser ?
+     sigma_downside = ecart-type des seuls returns negatifs.
+
+     Quand l'utiliser : pour evaluer une strategie qui a
+     beaucoup de gros gains mais peu de grosses pertes.
+     Le Sortino sera meilleur que le Sharpe dans ce cas.
+
+  3. MAX DRAWDOWN
+     MaxDD = max( (pic - valeur) / pic )
+
+     Pourquoi ca marche : mesure la pire perte possible
+     depuis un sommet. Si ton compte monte a 12 000$
+     puis chute a 8 000$, MaxDD = (12000-8000)/12000 = 33%.
+
+     ATTENTION : le MaxDD GRANDIT avec le temps (non
+     consistant, voir module 02b). Un MaxDD de 10% apres
+     6 mois peut devenir 20% apres 2 ans, meme sans changer
+     de strategie. Ne compare jamais des MaxDD sur des
+     periodes differentes.
+
 LETTRES ET SYMBOLES :
   E[R]           = esperance de ton return = gain moyen
   Rf             = taux sans risque (0% en pratique pour futures)
