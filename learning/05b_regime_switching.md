@@ -113,7 +113,7 @@ Exemple : $\text{posterior} = [0.82,\; 0.15,\; 0.03]$, $\arg\max = 0 \to$ LOW vo
 
 | Regime | Kalman | GARCH / Taille | Action |
 |--------|--------|----------------|--------|
-| LOW vol | $R$ grand (lisse) | Vol basse = taille normale | TRADE si signal d'absorption |
+| LOW vol | $R$ grand (lisse) | Vol basse = taille normale | TRADE si signal present |
 | MED vol | $R$ moyen | Taille reduite | TRADE demi-taille si signal fort |
 | HIGH vol | $R$ petit (reactif) | Vol haute = tres petite taille | PAS DE TRADE (sauf exception) |
 
@@ -203,6 +203,6 @@ $$\text{prior} = A^\top \cdot \text{posterior} \quad\longrightarrow\quad \text{l
 
 | Regime | Action |
 |--------|--------|
-| LOW | Trade normalement (absorption fiable) |
+| LOW | Trade normalement (signal fiable) |
 | MED | Demi-taille (prudence) |
 | HIGH | No trade (survie d'abord) |

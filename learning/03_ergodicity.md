@@ -248,7 +248,7 @@ $$f^* = \frac{p \cdot b - q}{b}$$
 | $b$ | b | Ratio gain/perte = combien tu gagnes par rapport a ce que tu perds |
 
 **POUR TON TRADING :**
-- Ton edge d'absorption est ton $E[r]$
+- Ton edge est ton $E[r]$
 - Ta volatilite de P&L est ton $\sigma$
 - Si $\sigma$ est trop grand, REDUIS ta taille
 - Mieux vaut un petit edge avec peu de variance qu'un gros edge avec beaucoup de variance

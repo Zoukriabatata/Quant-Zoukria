@@ -1,5 +1,5 @@
 # 05c — Hawkes Processes
-# "Microstructure : valider l'absorption"
+# "Microstructure : valider un cluster de signaux"
 
 > **Video :** [Hawkes Processes for Quant Finance — Roman Paolucci](https://youtu.be/BotPHbWFRUA)
 
@@ -11,17 +11,17 @@
 
 ## Le probleme
 
-Tu vois une absorption sur l'orderflow.
-Mais est-ce REELLE ou un FAUX SIGNAL ?
+Tu vois un signal de trading.
+Mais est-ce REEL ou un FAUX SIGNAL ?
 
 ```
-ABSORPTION SEULE :
-  "Il y a du volume au bid"
-  --> Peut-etre que quelqu'un absorbe
+SIGNAL SEUL :
+  "Le prix s'est eloigne de la fair value"
+  --> Peut-etre une vraie opportunite
   --> Peut-etre juste du bruit normal
 
-ABSORPTION + HAWKES :
-  "Il y a du volume au bid ET l'intensite des ordres
+SIGNAL + HAWKES :
+  "Le prix s'eloigne ET l'intensite des mouvements
    est en train de CLUSTERISER dans cette zone"
   --> Beaucoup plus probable que c'est reel
 ```
@@ -61,13 +61,13 @@ CRASH BOURSIER :
   Chaque vente AUGMENTE la probabilite de la prochaine vente.
   C'est exactement un Hawkes.
 
-TON ORDERFLOW :
-  1. Gros ordre au bid (absorption)
-  2. D'autres voient le support --> ajoutent des ordres
-  3. Plus d'ordres --> plus de confiance
-  4. CLUSTER d'ordres = absorption CONFIRMEE
+TON TRADING :
+  1. Fort mouvement de prix (signal potentiel)
+  2. D'autres participants reagissent dans la meme zone
+  3. Plus de reactions --> plus de confiance
+  4. CLUSTER de mouvements = signal CONFIRME
 
-  Sans Hawkes : tu vois un gros ordre (maybe noise)
+  Sans Hawkes : tu vois un mouvement isole (maybe noise)
   Avec Hawkes : tu vois un CLUSTER qui s'auto-renforce
 ```
 
@@ -137,26 +137,26 @@ C'est la recursion du notebook #94 :
   lambdas = mu_base + (lambdas - mu_base) * exp(-beta*dt) + alpha * increments
 ```
 
-## 5. Pourquoi ca change tout pour l'absorption
+## 5. Pourquoi ca change tout pour ton signal
 
 ```
 SANS HAWKES :
-  Tu vois 1 gros ordre au bid --> signal ?
-  Tu vois 3 ordres en 10 secondes --> signal ?
+  Tu vois 1 fort mouvement --> signal ?
+  Tu vois 3 mouvements en 10 secondes --> signal ?
   Tu ne sais pas si c'est du clustering ou du hasard.
 
 AVEC HAWKES :
-  Tu modelises l'intensite des ordres d'achat.
+  Tu modelises l'intensite des mouvements de prix.
   Si lambda(t) est en train de SPIKE (bien au-dessus de mu) :
-  --> les ordres CLUSTERISENT = auto-excitation
-  --> l'absorption est REELLE
+  --> les mouvements CLUSTERISENT = auto-excitation
+  --> le signal est REEL
 
   Si lambda(t) est stable autour de mu :
-  --> les ordres arrivent normalement
-  --> le "gros ordre" est probablement du bruit
+  --> les mouvements arrivent normalement
+  --> le "fort mouvement" est probablement du bruit
 
 DECISION :
-  lambda(t) >> mu + seuil  --> absorption VALIDEE --> trade
+  lambda(t) >> mu + seuil  --> signal VALIDE --> trade
   lambda(t) ~ mu           --> bruit normal --> no trade
 ```
 
@@ -208,7 +208,7 @@ Temps 3 (pas d'event) :
 ## Exercice 2 : Detecter un cluster
 
 ```
-Observations sur 10 ticks (nombre d'ordres d'achat) :
+Observations sur 10 ticks (nombre de mouvements de prix) :
   0, 0, 1, 0, 3, 5, 4, 2, 1, 0
 
 Calcule lambda(t) avec mu=0.5, alpha=0.3, beta=0.5 :
@@ -221,7 +221,7 @@ Calcule lambda(t) avec mu=0.5, alpha=0.3, beta=0.5 :
 
   A t5, lambda = 2.61 >> mu = 0.5
   C'est 5x le baseline --> CLUSTER CONFIRME
-  --> Si c'est des ordres d'achat = absorption VALIDEE
+  --> CLUSTER VALIDE = signal reel
 ```
 
 ## Exercice 3 : Seuil de validation
@@ -262,20 +262,19 @@ CLUSTERS :
   lambda >> mu = cluster d'events = auto-excitation
   lambda ~ mu  = arrivals normales = pas de cluster
 
-POUR TON ABSORPTION :
-  Modelise l'intensite des ordres d'achat/vente
-  lambda(t) spike --> cluster d'ordres = absorption REELLE
+POUR TON TRADING :
+  Modelise l'intensite des mouvements de prix
+  lambda(t) spike --> cluster de mouvements = signal REEL
   lambda(t) stable --> bruit normal = FAUX signal
 
-  absorption + Hawkes cluster --> TRADE
-  absorption SANS Hawkes      --> NO TRADE
+  Signal + Hawkes cluster --> TRADE
+  Signal SANS Hawkes      --> NO TRADE
 
 PIPELINE :
   Regime OK (Markov Switching)
   + Vol OK (GARCH)
   + Cluster valide (Hawkes)
   + Direction propre (Kalman)
-  + Absorption visible
   = ENTRY
 ```
 

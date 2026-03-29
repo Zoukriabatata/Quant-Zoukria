@@ -213,8 +213,8 @@ TOI en comparaison :
 ## Exercice 3 : Adverse selection et toi
 
 ```
-Quand tu trades l'absorption :
-  TU es le trader informe (tu vois l'absorption)
+Quand tu trades avec ton signal :
+  TU es le trader informe (tu vois le signal)
   Le market-maker est le pigeon (il ne voit que le flux)
 
   C'est l'ADVERSE SELECTION en ta faveur !
@@ -262,14 +262,14 @@ PIEGES RETAIL :
 TON AVANTAGE REEL :
   Tu es AGILE (pas de bureaucratie)
   Tu peux CHOISIR quand trader
-  Tu as un edge de MICROSTRUCTURE (absorption)
+  Tu as un edge de MICROSTRUCTURE (Kalman + regime)
   Avec ton pipeline : regime + vol + hawkes + kalman
   --> tu es le trader INFORME, pas le pigeon
 
 POUR TON TRADING :
   1. Comprends que tu joues contre des machines
   2. Ton edge = la ou les machines ne regardent PAS
-     (absorption = jugement discret + microstructure)
+     (signal = jugement discret + pipeline quantitatif)
   3. NE TRADE QUE quand le pipeline dit GO
   4. Sinon = cash = le meilleur trade c'est pas de trade
   5. Les metriques changent = recalibre regulierement

@@ -345,7 +345,7 @@ Le prix converge vers $\mu$ exponentiellement.
 2. Initialise le Kalman avec $\phi$, $\mu$, $\sigma$
 3. A chaque tick : update le Kalman
 4. $\hat{x}_{kalman}$ = ta fair value en temps reel
-5. Si absorption detectee (module 06) + prix hors bande $\to$ signal fort de mean reversion
+5. Si prix hors bande $\to$ signal fort de mean reversion
 6. Combine avec HMM (module 05) : ne trade QUE en low/med vol
 7. Combine avec GARCH (module 04) : ajuste la taille selon la vol
 

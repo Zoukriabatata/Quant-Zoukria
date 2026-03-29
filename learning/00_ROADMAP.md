@@ -52,7 +52,7 @@ NIVEAU 3 — Le signal propre
 NIVEAU 4 — Integration trading
 +--------------------------------------------------+
 |  07. Pipeline complet                             |
-|      GARCH --> HMM --> Kalman --> Absorption      |
+|      GARCH --> HMM --> Kalman --> Signal           |
 +--------------------------------------------------+
 ```
 
@@ -63,7 +63,7 @@ NIVEAU 4 — Integration trading
 1. Lis chaque module dans l'ordre
 2. Fais les exercices de la section LECON
 3. Relis le RESUME avant de passer au suivant
-4. Le module 07 connecte tout a ton edge (absorption)
+4. Le module 07 connecte tout a ton edge
 
 ---
 

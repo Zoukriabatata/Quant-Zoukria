@@ -31,7 +31,6 @@ t4: 18451.00
 Tout ce que tu fais en trading = analyser des time series :
 - Le prix = time series
 - Le volume = time series
-- L'orderflow = time series
 - La volatilite = time series
 
 Si tu ne comprends pas comment une time series se decompose,
@@ -314,6 +313,6 @@ $$P(t+1) = P(t) + \varepsilon_t$$
 | $EMA(t)$ | Exponential MA | Moyenne mobile qui pese plus les barres recentes |
 
 **POUR TON TRADING :**
-Ton signal d'absorption = une time series.
+Ton signal de trading = une time series.
 Tu dois le FILTRER (Kalman) pour enlever le bruit
 et le CONTEXTUALISER (HMM/GARCH) par le regime.

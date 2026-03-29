@@ -12,7 +12,7 @@
 ## Le probleme
 
 Le marche n'est pas toujours pareil. Certains jours c'est calme,
-d'autres c'est le chaos. Ton edge d'absorption ne marche pas
+d'autres c'est le chaos. Ton edge ne marche pas
 pareil dans les deux cas.
 
 ```
@@ -21,7 +21,7 @@ REGIME 1 (calme) :          REGIME 2 (volatile) :
                               \  /  \/\  /\
                                \/       \/
 
-  Ton absorption              Ton absorption
+  Ton signal                  Ton signal
   marche bien ici             peut se faire
                               ecraser ici
 ```
@@ -266,7 +266,7 @@ $\to$ probablement bascule en regime BEAR
 
 ## Exercice 3 : Application a ton trading
 
-Question : Comment utiliser le HMM pour ton absorption ?
+Question : Comment utiliser le HMM pour ton trading ?
 
 1. Calibre un HMM 3-etats sur les rendements MNQ
    $\to$ tu obtiens : Low-vol, Medium-vol, High-vol
@@ -275,9 +275,9 @@ Question : Comment utiliser le HMM pour ton absorption ?
    $P(\text{Low})=0.7$, $P(\text{Med})=0.2$, $P(\text{High})=0.1$
 
 3. Adapte ta strategie :
-   - Low vol : absorption fiable, taille normale
-   - Med vol : absorption ok, reduis un peu
-   - High vol : absorption moins fiable, petite taille ou pas de trade
+   - Low vol : signal fiable, taille normale
+   - Med vol : signal ok, reduis un peu
+   - High vol : signal moins fiable, petite taille ou pas de trade
 
 C'est ton FILTRE DE REGIME.
 
@@ -342,5 +342,5 @@ Pipeline : Donnees $\to$ HMM $\to$ regime $\to$ adapte ta taille/strategie
 
 | Regime | Action |
 |--------|--------|
-| Low vol | Absorption fiable = taille normale |
-| High vol | Absorption risquee = petite taille / no trade |
+| Low vol | Signal fiable = taille normale |
+| High vol | Signal risque = petite taille / no trade |

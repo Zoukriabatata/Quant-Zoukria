@@ -11,9 +11,9 @@
 
 ## Le probleme
 
-Ton signal d'absorption est BRUITE.
+Ton signal de trading est BRUITE.
 A chaque tick tu recois des donnees, mais elles contiennent :
-- Du vrai signal (quelqu'un absorbe reellement)
+- Du vrai signal (une vraie opportunite)
 - Du bruit (fluctuations aleatoires, faux signaux)
 
 ```
@@ -78,10 +78,10 @@ Ton GPS utilise un Kalman Filter !
 
 ```
 SANS Kalman (signal brut) :
-  Tick 1 : absorption = 150  --> signal ?
-  Tick 2 : absorption = 50   --> faux signal ?
-  Tick 3 : absorption = 200  --> signal !
-  Tick 4 : absorption = 80   --> bruit ?
+  Tick 1 : signal = 150  --> signal ?
+  Tick 2 : signal = 50   --> faux signal ?
+  Tick 3 : signal = 200  --> signal !
+  Tick 4 : signal = 80   --> bruit ?
 
   Tu ne sais jamais si c'est reel ou du bruit.
   Tu entres trop tot ou trop tard.
@@ -310,8 +310,8 @@ $$\boxed{K = \frac{P_{pred}}{P_{pred} + R}} \qquad \hat{x}_{new} = \hat{x}_{pred
 **DUAL FILTER** (regime change) : si $|\text{innovation}| > 3\sqrt{P+R}$ $\Rightarrow$ inflate $P$ $\Rightarrow$ $K$ monte $\Rightarrow$ s'adapte vite
 
 **POUR TON TRADING :**
-- Signal d'absorption brut $\to$ Kalman $\to$ signal propre
-- $R$ = "combien de bruit dans mes donnees d'orderflow ?"
+- Signal brut $\to$ Kalman $\to$ signal propre
+- $R$ = "combien de bruit dans mes donnees ?"
 - $Q$ = "a quelle vitesse le vrai signal change ?"
 - Petit $R$ = reactif (bon pour signaux rapides)
 - Grand $R$ = lisse (bon pour tendances lentes)

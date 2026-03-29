@@ -14,7 +14,7 @@ GARCH seul : "La vol est haute"
   --> ok, mais est-ce bullish ou bearish ?
 
 HMM seul : "On est en regime bear"
-  --> ok, mais mon signal d'absorption est-il fiable la ?
+  --> ok, mais mon signal est-il fiable la ?
 
 Kalman seul : "Le signal filtre dit d'acheter"
   --> ok, mais si on est en high vol, c'est dangereux
@@ -22,16 +22,16 @@ Kalman seul : "Le signal filtre dit d'acheter"
 ENSEMBLE :
   GARCH dit "vol haute" +
   HMM dit "regime bear" +
-  Kalman dit "signal d'absorption detecte"
+  Kalman dit "signal detecte"
 
-  ==> "Il y a de l'absorption mais en regime bear high-vol.
+  ==> "Il y a un signal mais en regime bear high-vol.
        Soit je passe, soit je reduis ma taille."
 ```
 
 ## Le pipeline OPTIMAL (upgrade)
 
 ```
-DONNEES BRUTES (prix, volume, orderflow MNQ)
+DONNEES BRUTES (prix, volume MNQ)
          |
          v
 +---------------------------+
@@ -50,14 +50,14 @@ DONNEES BRUTES (prix, volume, orderflow MNQ)
 +---------------------------+
 | 3. HAWKES PROCESS         |  "Le cluster est-il REEL ?"
 | Microstructure (#94)      |  --> lambda(t) >> mu ?
-| Valide l'absorption       |  --> cluster confirme
+| Valide le cluster         |  --> cluster confirme
 +---------------------------+
          |
          v
 +---------------------------+
 | 4. KALMAN AVANCE          |  "Quelle DIRECTION ?"
 | OU mean reversion (#95)   |  --> fair value adaptative
-| x_filtered = ... |  --> signal d'absorption propre
+| x_filtered = ... |  --> signal propre
 | (R ajuste par     |     (R depend du regime HMM)
 |  regime HMM)      |     (Q depend de sigma GARCH)
 +------------------+
@@ -98,9 +98,9 @@ Le regime alimente :
 | $P(\text{High-vol}) > 0.7$ | Plus petit (suit les donnees) | Reduite ou no trade |
 | $P(\text{Low-vol}) > 0.7$ | Plus grand (lisse davantage) | Normale |
 
-## Etape 3 : Kalman filtre le signal d'absorption
+## Etape 3 : Kalman filtre le signal
 
-Input : signal brut d'absorption + $Q(\text{GARCH})$ + $R(\text{HMM})$. Output : $\text{signal\_filtered}(t)$
+Input : signal brut + $Q(\text{GARCH})$ + $R(\text{HMM})$. Output : $\text{signal\_filtered}(t)$
 
 | Regime | $Q$ | $R$ | Effet |
 |---|---|---|---|
@@ -110,8 +110,8 @@ Input : signal brut d'absorption + $Q(\text{GARCH})$ + $R(\text{HMM})$. Output :
 ## Etape 4 : Decision de trading
 
 ENTREES :
-1. $\text{signal\_filtered} > \text{seuil\_absorption}$ ?
-2. regime = compatible avec absorption ?
+1. $\text{signal\_filtered} > \text{seuil}$ ?
+2. regime = compatible avec le signal ?
 3. $\sigma_{garch}$ = acceptable pour ma taille ?
 
 **MATRICE DE DECISION :**
@@ -137,12 +137,12 @@ Matin du lundi. Tu ouvres ton dashboard.
 
 GARCH : sigma = 1.8% (au-dessus de la moyenne de 1.2%)
 HMM : P(Low)=0.15, P(Med)=0.55, P(High)=0.30
-Kalman : signal d'absorption = 0.73 (seuil = 0.60)
+Kalman : signal = 0.73 (seuil = 0.60)
 
 Analyse :
   1. Vol elevee (1.8% vs 1.2% moyenne) --> prudence
   2. Regime mixte (55% Med, 30% High) --> incertain
-  3. Signal d'absorption > seuil --> signal present
+  3. Signal > seuil --> signal present
 
 Decision ?
   Le signal est la mais le contexte est risque.
@@ -156,7 +156,7 @@ Decision ?
 ```
 GARCH : sigma = 3.2% (tres haute, crise)
 HMM : P(Low)=0.05, P(Med)=0.15, P(High)=0.80
-Kalman : signal d'absorption = 0.85 (tres fort !)
+Kalman : signal = 0.85 (tres fort !)
 
 Le signal est FORT. Mais :
   - Vol extreme (3.2%)
@@ -176,7 +176,7 @@ Decision : PAS DE TRADE
 ```
 GARCH : sigma = 0.8% (faible, marche calme)
 HMM : P(Low)=0.82, P(Med)=0.15, P(High)=0.03
-Kalman : signal d'absorption = 0.71 (au-dessus du seuil 0.60)
+Kalman : signal = 0.71 (au-dessus du seuil 0.60)
 
 Analyse :
   1. Vol basse --> conditions ideales
@@ -185,7 +185,7 @@ Analyse :
 
 Decision : TRADE TAILLE PLEINE
   - C'est le setup ideal
-  - Absorption detectee en marche calme
+  - Signal propre en marche calme
   - Stop normal, target normal
   - C'est ICI que tu fais ton argent
 ```
@@ -214,7 +214,7 @@ Decision : TRADE TAILLE PLEINE
 | Tout | Non | PAS DE TRADE |
 
 **PHILOSOPHIE :**
-- Le SIGNAL dit "quoi" (absorption detectee)
+- Le SIGNAL dit "quoi" (signal detecte)
 - Le REGIME dit "quand" (conditions favorables)
 - La VOL dit "combien" (taille de position)
 - Les 3 doivent etre alignes pour trader.
