@@ -300,7 +300,7 @@ max_contracts          = APEX_50K["max_contracts_pa"] if mode_funded else APEX_5
 
 fixed_contracts = st.sidebar.number_input(
     "Contrats fixes (0 = Half-Kelly auto)",
-    value=0 if mode_funded else 30,
+    value=0 if mode_funded else 60,
     min_value=0, max_value=max_contracts, step=1,
     help=(
         "0 = sizing Half-Kelly automatique\n"
