@@ -1615,7 +1615,8 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         n_sims    = mc1.number_input("Simulations", value=10_000, min_value=1000, step=1000)
         trades_pm = mc2.number_input("Trades/mois estimés", value=max(1, int(n_total / max(1, n_bdays / 22))),
                                      min_value=1, step=1)
-        mc_contracts = mc3.number_input("Contrats (MC)", value=int(fixed_contracts) if fixed_contracts > 0 else max(1, kc),
+        mc_contracts = mc3.number_input("Contrats (MC)",
+                                         value=min(int(fixed_contracts) if fixed_contracts > 0 else max(1, kc), max_contracts),
                                          min_value=1, max_value=max_contracts, step=1)
 
         if st.button("Lancer Monte Carlo", type="primary"):
