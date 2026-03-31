@@ -196,26 +196,12 @@ kalman_lookback = st.sidebar.number_input("Lookback (barres)", value=120, min_va
 kalman_R_mult = st.sidebar.number_input("R multiplier", value=5.0, min_value=0.5, step=0.5)
 
 st.sidebar.markdown("---")
-st.sidebar.header("Filtres signal (Quant Guild)")
-use_gmm_live = st.sidebar.toggle(
-    "GMM Sticky Regime (Lec 51/72)",
-    value=True,
-    help="Filtre le signal par régime LOW uniquement via GMM 3-états sticky"
-)
+st.sidebar.header("Filtres signal")
 confirm_reversal_live = st.sidebar.toggle(
-    "Confirmation reversion (Lec 72)",
+    "Confirmation reversion (Lec 72/95)",
     value=True,
     help="Signal valide seulement si la barre en cours est déjà plus proche du FV que la précédente"
 )
-use_hl_live = st.sidebar.toggle(
-    "Filtre demi-vie OU (Lec 92/95)",
-    value=True,
-    help="N'affiche le signal que si la reversion est assez rapide (demi-vie < seuil)"
-)
-max_hl_live = st.sidebar.number_input(
-    "Demi-vie max (barres)", value=60, min_value=10, max_value=300, step=10,
-    help="60 barres = ~1h pour revenir à 50% de l'écart"
-) if use_hl_live else 9999
 
 st.sidebar.markdown("---")
 st.sidebar.header("Risk")
@@ -641,25 +627,6 @@ if np.isnan(fv) or np.isnan(ss):
     st.stop()
 
 # ── Filtres signal avancés (Quant Guild Lec 51/72/74/92/95) ──────────
-# Calcul des returns pour GMM
-returns_arr = bars_df["close"].pct_change().fillna(0).values
-
-# Régime actuel via GMM sticky ou fallback
-signal_regime_ok = True
-current_regime_label = "N/A"
-if use_gmm_live:
-    gmm_regimes = classify_regime_gmm(returns_arr, sticky_window=5)
-    if gmm_regimes is not None:
-        cur_regime = gmm_regimes[last_idx]
-        regime_names = {0: "LOW", 1: "MED", 2: "HIGH"}
-        current_regime_label = regime_names.get(cur_regime, "?")
-        signal_regime_ok = (cur_regime == 0)  # uniquement LOW
-    else:
-        current_regime_label = "GMM N/A"
-
-# Filtre demi-vie OU
-hl_ok = (not use_hl_live) or (not np.isnan(last_hl) and last_hl <= max_hl_live)
-
 # Confirmation reversion : la dernière barre est-elle plus proche du FV que l'avant-dernière ?
 reversal_ok = True
 if confirm_reversal_live and last_idx > 0 and not np.isnan(fair_values[last_idx - 1]):
@@ -667,8 +634,8 @@ if confirm_reversal_live and last_idx > 0 and not np.isnan(fair_values[last_idx 
     curr_dev = abs(last_price - fv)
     reversal_ok = (curr_dev < prev_dev)
 
-# Signal final après filtres
-filters_pass = signal_regime_ok and hl_ok and reversal_ok
+# Signal final
+filters_pass = reversal_ok
 
 # ── Detection donnees perimees (delay IBKR paper) ─────────────────────
 try:
@@ -960,15 +927,8 @@ _sig_border = signal_color
 _sig_cls = {"LONG": "long", "SHORT": "short"}.get(signal, "none")
 
 # Indicateurs filtres
-_hl_str = f"{last_hl:.0f}b" if not np.isnan(last_hl) else "N/A"
-_reg_icon = "✓" if signal_regime_ok else "✗"
-_hl_icon  = "✓" if hl_ok else "✗"
 _rev_icon = "✓" if reversal_ok else "✗"
-_filter_detail = (
-    f"Régime {current_regime_label} {_reg_icon} &nbsp;·&nbsp; "
-    f"Demi-vie {_hl_str} {_hl_icon} &nbsp;·&nbsp; "
-    f"Reversion {_rev_icon}"
-)
+_filter_detail = f"Reversion {_rev_icon}"
 
 st.markdown(f"""
 <div class="signal-box {_sig_cls}" style="background:{_sig_bg};border-color:{_sig_border}22">
