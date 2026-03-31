@@ -1416,186 +1416,186 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         fig_eq = make_subplots(rows=2, cols=1, shared_xaxes=True,
                             row_heights=[0.7, 0.3],
                             subplot_titles=["Equity ($)", "Drawdown (%)"])
-    fig_eq.add_trace(go.Scatter(
-        x=trades_df["date"].astype(str).tolist(),
-        y=equity[1:], mode="lines+markers",
-        line=dict(color=CYAN, width=2),
-        marker=dict(size=5, color=[GREEN if w else RED for w in trades_df["win"]]),
-        text=[f"{'W' if w else 'L'} {r:+.1f}pts | FV={fv:.0f}" for w, r, fv
-              in zip(trades_df["win"], results, trades_df["fair_value"])],
-        hovertemplate="%{x}<br>%{text}<br>$%{y:,.0f}<extra></extra>"
-    ), row=1, col=1)
-    fig_eq.add_trace(go.Scatter(
-        x=trades_df["date"].astype(str).tolist(),
-        y=drawdown[1:], mode="lines",
-        line=dict(color=RED, width=1.5),
-        fill="tozeroy", fillcolor="rgba(255,51,102,0.12)"
-    ), row=2, col=1)
-    fig_eq.update_layout(height=500, showlegend=False, **DARK)
-    fig_eq.update_yaxes(title_text="$", row=1, col=1)
-    fig_eq.update_yaxes(title_text="%", row=2, col=1)
-    st.plotly_chart(fig_eq, use_container_width=True)
-
-    # Distribution P&L
-    st.markdown("<p class='section-title'>Distribution P&L</p>", unsafe_allow_html=True)
-    colors = [GREEN if r > 0 else RED for r in results]
-    fig_d = go.Figure()
-    fig_d.add_trace(go.Bar(
-        x=trades_df["date"].astype(str).tolist(), y=results,
-        marker_color=colors, text=[f"{r:+.1f}" for r in results],
-        textposition="outside", textfont=dict(size=9)
-    ))
-    fig_d.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.3)
-    fig_d.add_hline(y=expectancy, line_dash="dot", line_color=CYAN,
-                    annotation_text=f"Esperance = {expectancy:.1f} pts")
-    fig_d.update_layout(height=350, xaxis_title="Date", yaxis_title="Points", **DARK)
-    st.plotly_chart(fig_d, use_container_width=True)
-
-    # Distribution P&L conditionnelle par regime (Propriete de Markov)
-    st.markdown("---")
-    st.subheader("Distribution P&L par regime (Propriete de Markov)")
-    st.caption(
-        "Chaque regime produit une distribution de P&L differente. "
-        "Mixer tous les trades donne des statistiques trompeuses (Roman Paolucci #71)."
-    )
-
-    reg_col_low, reg_col_med = st.columns(2)
-    for col_widget, rname in zip([reg_col_low, reg_col_med], ["LOW", "MED"]):
-        sub = trades_df[trades_df["regime"] == rname]
-        if len(sub) == 0:
-            col_widget.info(f"Pas de trades en regime {rname}")
-            continue
-
-        r = sub["result_pts"].values
-        wins_r = r[r > 0]
-        losses_r = r[r < 0]
-        wr_r = len(wins_r) / len(r) if len(r) > 0 else 0
-        avg_w_r = wins_r.mean() if len(wins_r) > 0 else 0
-        avg_l_r = abs(losses_r.mean()) if len(losses_r) > 0 else 0
-        exp_r = (wr_r * avg_w_r) - ((1 - wr_r) * avg_l_r)
-        pf_r = wins_r.sum() / max(abs(losses_r.sum()), 0.01) if len(losses_r) > 0 else 99.0
-
-        # Sharpe conditionnel: sur les jours de ce regime uniquement
-        sub_daily = sub.groupby("date")["pnl_dollars"].sum()
-        regime_sharpe = 0.0
-        if len(sub_daily) > 1:
-            sub_days_ret = sub_daily.reindex(all_bdays, fill_value=0) / capital_initial
-            if sub_days_ret.std() > 0:
-                regime_sharpe = sub_days_ret.mean() / sub_days_ret.std() * np.sqrt(252)
-
-        bar_color = CYAN if rname == "LOW" else ORANGE
-
-        fig_r = go.Figure()
-        fig_r.add_trace(go.Histogram(
-            x=r, nbinsx=max(8, len(r) // 2),
-            marker_color=bar_color, opacity=0.85,
-            name=f"P&L {rname}"
+        fig_eq.add_trace(go.Scatter(
+            x=trades_df["date"].astype(str).tolist(),
+            y=equity[1:], mode="lines+markers",
+            line=dict(color=CYAN, width=2),
+            marker=dict(size=5, color=[GREEN if w else RED for w in trades_df["win"]]),
+            text=[f"{'W' if w else 'L'} {r:+.1f}pts | FV={fv:.0f}" for w, r, fv
+                  in zip(trades_df["win"], results, trades_df["fair_value"])],
+            hovertemplate="%{x}<br>%{text}<br>$%{y:,.0f}<extra></extra>"
+        ), row=1, col=1)
+        fig_eq.add_trace(go.Scatter(
+            x=trades_df["date"].astype(str).tolist(),
+            y=drawdown[1:], mode="lines",
+            line=dict(color=RED, width=1.5),
+            fill="tozeroy", fillcolor="rgba(255,51,102,0.12)"
+        ), row=2, col=1)
+        fig_eq.update_layout(height=500, showlegend=False, **DARK)
+        fig_eq.update_yaxes(title_text="$", row=1, col=1)
+        fig_eq.update_yaxes(title_text="%", row=2, col=1)
+        st.plotly_chart(fig_eq, use_container_width=True)
+    
+        # Distribution P&L
+        st.markdown("<p class='section-title'>Distribution P&L</p>", unsafe_allow_html=True)
+        colors = [GREEN if r > 0 else RED for r in results]
+        fig_d = go.Figure()
+        fig_d.add_trace(go.Bar(
+            x=trades_df["date"].astype(str).tolist(), y=results,
+            marker_color=colors, text=[f"{r:+.1f}" for r in results],
+            textposition="outside", textfont=dict(size=9)
         ))
-        fig_r.add_vline(x=exp_r, line_dash="dash", line_color="white",
-                        annotation_text=f"E[PL]={exp_r:.1f}pts",
-                        annotation_font_color="white")
-        fig_r.add_vline(x=0, line_color="rgba(255,255,255,0.25)")
-        fig_r.update_layout(
-            title=(
-                f"Regime {rname} — {len(r)} trades | WR {wr_r:.0%} | "
-                f"PF {pf_r:.2f} | Sharpe {regime_sharpe:.2f}"
-            ),
-            height=300, showlegend=False,
-            xaxis_title="Points", yaxis_title="Frequence",
-            **DARK
+        fig_d.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.3)
+        fig_d.add_hline(y=expectancy, line_dash="dot", line_color=CYAN,
+                        annotation_text=f"Esperance = {expectancy:.1f} pts")
+        fig_d.update_layout(height=350, xaxis_title="Date", yaxis_title="Points", **DARK)
+        st.plotly_chart(fig_d, use_container_width=True)
+    
+        # Distribution P&L conditionnelle par regime (Propriete de Markov)
+        st.markdown("---")
+        st.subheader("Distribution P&L par regime (Propriete de Markov)")
+        st.caption(
+            "Chaque regime produit une distribution de P&L differente. "
+            "Mixer tous les trades donne des statistiques trompeuses (Roman Paolucci #71)."
         )
-        col_widget.plotly_chart(fig_r, use_container_width=True)
-
-    # Comparaison et interpretation automatique
-    low_sub = trades_df[trades_df["regime"] == "LOW"]["result_pts"].values
-    med_sub = trades_df[trades_df["regime"] == "MED"]["result_pts"].values
-    low_exp = (low_sub[low_sub > 0].mean() * (low_sub > 0).mean()
-               - abs(low_sub[low_sub < 0].mean()) * (low_sub < 0).mean()) if len(low_sub) > 0 else 0
-    med_exp = (med_sub[med_sub > 0].mean() * (med_sub > 0).mean()
-               - abs(med_sub[med_sub < 0].mean()) * (med_sub < 0).mean()) if len(med_sub) > 0 else 0
-
-    if low_exp > 0 and med_exp > 0:
-        st.success(
-            f"**Edge robuste** : positif en LOW ({low_exp:+.1f} pts) ET en MED ({med_exp:+.1f} pts). "
-            "Les deux regimes contribuent a l'edge."
-        )
-    elif low_exp > 0 > med_exp:
-        st.warning(
-            f"**Edge regime-dependant** : positif en LOW ({low_exp:+.1f} pts) mais negatif en MED "
-            f"({med_exp:+.1f} pts). Envisage de desactiver les trades MED vol."
-        )
-    elif med_exp > 0 > low_exp:
-        st.warning(
-            f"**Edge regime-dependant** : positif en MED ({med_exp:+.1f} pts) mais negatif en LOW "
-            f"({low_exp:+.1f} pts). Comportement inhabituel — verifier les parametres."
-        )
-    else:
-        st.error(
-            f"**Pas d'edge dans aucun regime** : LOW={low_exp:+.1f} pts, MED={med_exp:+.1f} pts."
-        )
-
-    # Stats par deviation
-    st.markdown("---")
-    st.subheader("Performance par deviation (sigma)")
-    bins = [(1.0, 1.5), (1.5, 2.0), (2.0, 3.0), (3.0, 10.0)]
-    dev_stats = []
-    for lo, hi in bins:
-        sub = trades_df[(trades_df["deviation"] >= lo) & (trades_df["deviation"] < hi)]
-        if len(sub) == 0:
-            continue
-        r = sub["result_pts"].values
-        w = r[r > 0]
-        l = r[r < 0]
-        wr = len(w) / len(r)
-        avg_w = w.mean() if len(w) > 0 else 0
-        avg_l = abs(l.mean()) if len(l) > 0 else 0
-        exp = (wr * avg_w) - ((1 - wr) * avg_l)
-        dev_stats.append({
-            "Deviation": f"{lo}-{hi}σ", "Trades": len(r),
-            "Winrate": f"{wr:.1%}", "Esperance": f"{exp:.1f} pts",
-            "Total": f"{r.sum():.1f} pts",
-        })
-    if dev_stats:
-        st.dataframe(pd.DataFrame(dev_stats), use_container_width=True, hide_index=True)
-
-    # Journal
-    st.markdown("---")
-    st.subheader("Journal des trades")
-    display = trades_df.copy()
-    display["win"] = display["win"].map({True: "TP", False: "SL"})
-    st.dataframe(display, use_container_width=True, hide_index=True)
-    csv = display.to_csv(index=False)
-    st.download_button("Telecharger CSV", csv, "backtest_kalman.csv", "text/csv")
-
-    # Log journalier
-    st.markdown("---")
-    st.subheader("Log journalier")
-    st.dataframe(daily_df, use_container_width=True, hide_index=True)
-
-    # Verdict
-    st.markdown("---")
-    st.subheader("Verdict")
-    if expectancy > 0 and profit_factor > 1.5:
-        st.success(
-            f"**EDGE CONFIRME** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
-            f"PF {profit_factor:.2f}, Kelly {kelly_full:.1%}\n\n"
-            f"Signal: Kalman OU (k={band_k}σ) | TP {tp_ratio:.0%} vers FV | SL = ATR\n\n"
-            f"Return: **{total_return:+.1f}%** | Max DD: **{max_dd:.1f}%** | "
-            f"Demi-Kelly: **{kelly_half:.1%}** = {kc} contracts"
-        )
-    elif expectancy > 0 and profit_factor > 1.0:
-        st.warning(
-            f"**Edge marginal** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
-            f"PF {profit_factor:.2f}\n\n"
-            f"Essaie: augmenter k (bande plus large) ou ajuster le lookback."
-        )
-    else:
-        st.error(
-            f"**Pas d'edge** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
-            f"PF {profit_factor:.2f}\n\n"
-            f"Ajuste: k, lookback, ou parametres GARCH."
-        )
-
+    
+        reg_col_low, reg_col_med = st.columns(2)
+        for col_widget, rname in zip([reg_col_low, reg_col_med], ["LOW", "MED"]):
+            sub = trades_df[trades_df["regime"] == rname]
+            if len(sub) == 0:
+                col_widget.info(f"Pas de trades en regime {rname}")
+                continue
+    
+            r = sub["result_pts"].values
+            wins_r = r[r > 0]
+            losses_r = r[r < 0]
+            wr_r = len(wins_r) / len(r) if len(r) > 0 else 0
+            avg_w_r = wins_r.mean() if len(wins_r) > 0 else 0
+            avg_l_r = abs(losses_r.mean()) if len(losses_r) > 0 else 0
+            exp_r = (wr_r * avg_w_r) - ((1 - wr_r) * avg_l_r)
+            pf_r = wins_r.sum() / max(abs(losses_r.sum()), 0.01) if len(losses_r) > 0 else 99.0
+    
+            # Sharpe conditionnel: sur les jours de ce regime uniquement
+            sub_daily = sub.groupby("date")["pnl_dollars"].sum()
+            regime_sharpe = 0.0
+            if len(sub_daily) > 1:
+                sub_days_ret = sub_daily.reindex(all_bdays, fill_value=0) / capital_initial
+                if sub_days_ret.std() > 0:
+                    regime_sharpe = sub_days_ret.mean() / sub_days_ret.std() * np.sqrt(252)
+    
+            bar_color = CYAN if rname == "LOW" else ORANGE
+    
+            fig_r = go.Figure()
+            fig_r.add_trace(go.Histogram(
+                x=r, nbinsx=max(8, len(r) // 2),
+                marker_color=bar_color, opacity=0.85,
+                name=f"P&L {rname}"
+            ))
+            fig_r.add_vline(x=exp_r, line_dash="dash", line_color="white",
+                            annotation_text=f"E[PL]={exp_r:.1f}pts",
+                            annotation_font_color="white")
+            fig_r.add_vline(x=0, line_color="rgba(255,255,255,0.25)")
+            fig_r.update_layout(
+                title=(
+                    f"Regime {rname} — {len(r)} trades | WR {wr_r:.0%} | "
+                    f"PF {pf_r:.2f} | Sharpe {regime_sharpe:.2f}"
+                ),
+                height=300, showlegend=False,
+                xaxis_title="Points", yaxis_title="Frequence",
+                **DARK
+            )
+            col_widget.plotly_chart(fig_r, use_container_width=True)
+    
+        # Comparaison et interpretation automatique
+        low_sub = trades_df[trades_df["regime"] == "LOW"]["result_pts"].values
+        med_sub = trades_df[trades_df["regime"] == "MED"]["result_pts"].values
+        low_exp = (low_sub[low_sub > 0].mean() * (low_sub > 0).mean()
+                   - abs(low_sub[low_sub < 0].mean()) * (low_sub < 0).mean()) if len(low_sub) > 0 else 0
+        med_exp = (med_sub[med_sub > 0].mean() * (med_sub > 0).mean()
+                   - abs(med_sub[med_sub < 0].mean()) * (med_sub < 0).mean()) if len(med_sub) > 0 else 0
+    
+        if low_exp > 0 and med_exp > 0:
+            st.success(
+                f"**Edge robuste** : positif en LOW ({low_exp:+.1f} pts) ET en MED ({med_exp:+.1f} pts). "
+                "Les deux regimes contribuent a l'edge."
+            )
+        elif low_exp > 0 > med_exp:
+            st.warning(
+                f"**Edge regime-dependant** : positif en LOW ({low_exp:+.1f} pts) mais negatif en MED "
+                f"({med_exp:+.1f} pts). Envisage de desactiver les trades MED vol."
+            )
+        elif med_exp > 0 > low_exp:
+            st.warning(
+                f"**Edge regime-dependant** : positif en MED ({med_exp:+.1f} pts) mais negatif en LOW "
+                f"({low_exp:+.1f} pts). Comportement inhabituel — verifier les parametres."
+            )
+        else:
+            st.error(
+                f"**Pas d'edge dans aucun regime** : LOW={low_exp:+.1f} pts, MED={med_exp:+.1f} pts."
+            )
+    
+        # Stats par deviation
+        st.markdown("---")
+        st.subheader("Performance par deviation (sigma)")
+        bins = [(1.0, 1.5), (1.5, 2.0), (2.0, 3.0), (3.0, 10.0)]
+        dev_stats = []
+        for lo, hi in bins:
+            sub = trades_df[(trades_df["deviation"] >= lo) & (trades_df["deviation"] < hi)]
+            if len(sub) == 0:
+                continue
+            r = sub["result_pts"].values
+            w = r[r > 0]
+            l = r[r < 0]
+            wr = len(w) / len(r)
+            avg_w = w.mean() if len(w) > 0 else 0
+            avg_l = abs(l.mean()) if len(l) > 0 else 0
+            exp = (wr * avg_w) - ((1 - wr) * avg_l)
+            dev_stats.append({
+                "Deviation": f"{lo}-{hi}σ", "Trades": len(r),
+                "Winrate": f"{wr:.1%}", "Esperance": f"{exp:.1f} pts",
+                "Total": f"{r.sum():.1f} pts",
+            })
+        if dev_stats:
+            st.dataframe(pd.DataFrame(dev_stats), use_container_width=True, hide_index=True)
+    
+        # Journal
+        st.markdown("---")
+        st.subheader("Journal des trades")
+        display = trades_df.copy()
+        display["win"] = display["win"].map({True: "TP", False: "SL"})
+        st.dataframe(display, use_container_width=True, hide_index=True)
+        csv = display.to_csv(index=False)
+        st.download_button("Telecharger CSV", csv, "backtest_kalman.csv", "text/csv")
+    
+        # Log journalier
+        st.markdown("---")
+        st.subheader("Log journalier")
+        st.dataframe(daily_df, use_container_width=True, hide_index=True)
+    
+        # Verdict
+        st.markdown("---")
+        st.subheader("Verdict")
+        if expectancy > 0 and profit_factor > 1.5:
+            st.success(
+                f"**EDGE CONFIRME** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
+                f"PF {profit_factor:.2f}, Kelly {kelly_full:.1%}\n\n"
+                f"Signal: Kalman OU (k={band_k}σ) | TP {tp_ratio:.0%} vers FV | SL = ATR\n\n"
+                f"Return: **{total_return:+.1f}%** | Max DD: **{max_dd:.1f}%** | "
+                f"Demi-Kelly: **{kelly_half:.1%}** = {kc} contracts"
+            )
+        elif expectancy > 0 and profit_factor > 1.0:
+            st.warning(
+                f"**Edge marginal** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
+                f"PF {profit_factor:.2f}\n\n"
+                f"Essaie: augmenter k (bande plus large) ou ajuster le lookback."
+            )
+        else:
+            st.error(
+                f"**Pas d'edge** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
+                f"PF {profit_factor:.2f}\n\n"
+                f"Ajuste: k, lookback, ou parametres GARCH."
+            )
+    
     # ══════════════════════════════════════════════════════════════════
     # TAB 5 — MONTE CARLO CHALLENGE SIMULATOR
     # Ref : Quant Guild Lec 75 (Backtesting with Poker) + Lec 28 (Gambler's Ruin)
