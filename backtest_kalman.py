@@ -1,7 +1,7 @@
 """
 Backtest Kalman OU Mean Reversion — MNQ
 Databento tick data → GARCH regime → Kalman fair value → OU bands
-→ Entry quand prix hors bande → TP = retour au fair value → SL = ATR
+→ Entry quand prix hors bande → TP = retour au fair value → SL = σ-kalman
 → 1 trade/session max → Kelly sizing → Apex protection
 """
 
@@ -178,8 +178,8 @@ bar_seconds = st.sidebar.selectbox("Barre (secondes)", [30, 60, 120, 300], index
 st.sidebar.markdown("---")
 st.sidebar.header("Kalman OU")
 kalman_lookback = st.sidebar.number_input("Lookback calibration (barres)", value=120, min_value=30, step=10)
-band_k = st.sidebar.number_input("Bande k min (sigma)", value=1.2, min_value=0.3, max_value=3.0, step=0.1,
-                                  help="Entry quand deviation > k sigma (min) — 1.2 pour plus de frequence, 1.5 pour plus de precision")
+band_k = st.sidebar.number_input("Bande k min (sigma)", value=2.0, min_value=0.3, max_value=3.0, step=0.1,
+                                  help="Entry quand deviation > k sigma (min) — 2.0 = R:R 2:1 avec SL=1σ, besoin WR>33%")
 band_k_max = st.sidebar.number_input("Bande k max (sigma)", value=5.0, min_value=0.5, max_value=10.0, step=0.5,
                                       help="Ignore si deviation > k_max sigma (evite crash-recovery)")
 kalman_R_mult = st.sidebar.number_input("Kalman R multiplier", value=5.0, min_value=0.5, step=0.5,
@@ -196,10 +196,16 @@ only_low_regime = st.sidebar.toggle(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.header("Risk (ATR)")
-atr_sl_mult = st.sidebar.number_input("SL = ATR x", value=1.5, step=0.1)
-max_sl_pts = st.sidebar.number_input("SL max (pts)", value=15.0, step=1.0)
-min_sl_pts = st.sidebar.number_input("SL min (pts)", value=5.0, step=0.5)
+st.sidebar.header("Risk (Sigma-based SL)")
+sl_sigma_mult = st.sidebar.slider(
+    "SL = k × σ_kalman au-delà de l'entrée", min_value=0.5, max_value=3.0, value=1.0, step=0.25,
+    help=(
+        "SL = sl_sigma × sigma_stat pts au-delà du prix d'entrée.\n"
+        "Exemple : entrée à 2σ, SL=1.0σ → stop à 3σ du FV.\n"
+        "Plus petit = plus serré = moins de perte/trade mais plus de stop-outs."
+    )
+)
+min_sl_pts = st.sidebar.number_input("SL min (pts)", value=4.0, step=0.5)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Realisme")
@@ -254,10 +260,10 @@ max_half_life_bars = st.sidebar.number_input(
 ) if use_halflife_filter else None
 
 tp_ratio = st.sidebar.slider(
-    "TP ratio (% distance vers FV)", min_value=0.25, max_value=1.0, value=0.5, step=0.05,
+    "TP ratio (% distance vers FV)", min_value=0.25, max_value=1.0, value=1.0, step=0.05,
     help=(
-        "1.0 = TP au fair value complet (WR ~33%, gros gains)\n"
-        "0.5 = TP à mi-chemin du FV (WR ~50%, distribution stable → challenge faisable)\n"
+        "1.0 = TP au fair value complet (WR ~33%, R:R 2:1 → EV positif)\n"
+        "0.5 = TP à mi-chemin du FV (WR ~50%, mais R:R dépend du SL)\n"
         "0.3 = TP court (WR ~60%, mais R:R faible)"
     )
 )
@@ -1038,13 +1044,10 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             if mode_funded and day_trade_count >= max_trades_per_day:
                 break
 
-            # 7. SL dynamique ATR
-            atr = bars.iloc[bar_idx]["atr_14"]
-            if np.isnan(atr) or atr <= 0:
-                atr = bars["tr"].mean()
-            if np.isnan(atr) or atr <= 0:
-                atr = 8.0
-            sl_pts = np.clip(atr * atr_sl_mult, min_sl_pts, max_sl_pts)
+            # 7. SL sigma-based (Kalman uncertainty — Lec 72/74)
+            # SL = sl_sigma_mult × sigma_stat au-delà de l'entrée
+            # Cohérent avec le modèle OU : stop au-delà de la bande calibrée
+            sl_pts = max(min_sl_pts, sl_sigma_mult * sig["sigma_stat"])
 
             # 8. TP = retour au fair value Kalman
             # TP à tp_ratio * distance vers FV (0.5 = mi-chemin → WR ~50%)
@@ -1579,7 +1582,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             st.success(
                 f"**EDGE CONFIRME** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
                 f"PF {profit_factor:.2f}, Kelly {kelly_full:.1%}\n\n"
-                f"Signal: Kalman OU (k={band_k}σ) | TP {tp_ratio:.0%} vers FV | SL = ATR\n\n"
+                f"Signal: Kalman OU (k={band_k}σ) | TP {tp_ratio:.0%} vers FV | SL = {sl_sigma_mult}×σ-kalman\n\n"
                 f"Return: **{total_return:+.1f}%** | Max DD: **{max_dd:.1f}%** | "
                 f"Demi-Kelly: **{kelly_half:.1%}** = {kc} contracts"
             )
