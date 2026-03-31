@@ -230,15 +230,11 @@ max_trades_per_day = st.sidebar.number_input(
 st.sidebar.markdown("---")
 st.sidebar.header("Filtres signal avancés (Quant Guild)")
 use_gmm_regime = st.sidebar.toggle(
-    "GMM Sticky Regime (Lec 51/72)",
+    "Bayesian Markov Filter (Lec 72/74)",
     value=True,
-    help="Remplace GARCH+percentile par un GMM 3-états avec mémoire (sticky transitions). "
-         "Meilleur identification des vrais régimes LOW vol."
+    help="Filtre Bayésien 3-états — implémentation exacte du bot IBKR Roman Paolucci Lec 72/74. "
+         "Inférence barre par barre via matrice de transition calibrée + likelihood gaussienne."
 )
-gmm_sticky_window = st.sidebar.number_input(
-    "Sticky window (barres)", value=5, min_value=1, max_value=20, step=1,
-    help="Nombre de barres consécutives hors LOW avant de quitter le régime LOW — imite HMM"
-) if use_gmm_regime else 5
 
 confirm_reversal = st.sidebar.toggle(
     "Confirmation reversion (Lec 72)",
@@ -256,6 +252,15 @@ max_half_life_bars = st.sidebar.number_input(
     "Demi-vie max (barres)", value=60, min_value=10, max_value=300, step=10,
     help="Seuil demi-vie OU. Session ~420 barres/1m. 60 barres = 1h max pour revenir à 50%."
 ) if use_halflife_filter else None
+
+tp_ratio = st.sidebar.slider(
+    "TP ratio (% distance vers FV)", min_value=0.25, max_value=1.0, value=0.5, step=0.05,
+    help=(
+        "1.0 = TP au fair value complet (WR ~33%, gros gains)\n"
+        "0.5 = TP à mi-chemin du FV (WR ~50%, distribution stable → challenge faisable)\n"
+        "0.3 = TP court (WR ~60%, mais R:R faible)"
+    )
+)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Mode de simulation")
@@ -437,53 +442,84 @@ def classify_regime(garch_vol, window=60):
     return regimes
 
 
-def classify_regime_gmm(returns, sticky_window=5):
+class MarkovRegime:
     """
-    Régime 3-états via Gaussian Mixture Model sur |returns|.
-    Ref: Quant Guild Lecture 51 (HMM) + 72/74 (Markov Regime Switching Bot)
+    Filtre de régime Bayésien 3-états — implémentation exacte Quant Guild Lec 72/74.
 
-    Remplace GARCH+percentile par un GMM non-paramétrique :
-    - GMM apprend les 3 distributions de volatilité directement des données
-    - Sticky : ne quitte pas LOW avant sticky_window barres consécutives hors LOW
-      (imite la propriété de mémoire du HMM — transitions collantes)
-    - Labels : 0=LOW, 1=MED, 2=HIGH (triés par vol croissante)
+    Architecture identique au bot IBKR de Roman Paolucci :
+    - Calibration sur données historiques (percentile 33/67 → params émission + matrice transition)
+    - Inférence barre par barre : prior = T^T @ state_probs → likelihood gaussienne → posterior Bayes
+    - States : 0=LOW vol, 1=MED vol, 2=HIGH vol
+
+    Vs GMM : le Bayesian filter garde la mémoire des états précédents via state_probs.
+    Chaque mise à jour incorpore l'historique complet via la matrice de transition.
     """
-    try:
-        from sklearn.mixture import GaussianMixture
-    except ImportError:
-        # Fallback GARCH si sklearn absent
-        return None
 
-    n = len(returns)
-    X = np.abs(returns).reshape(-1, 1)
-    # GMM 3 composantes
-    gmm = GaussianMixture(n_components=3, covariance_type="full",
-                          n_init=5, random_state=42, max_iter=200)
-    gmm.fit(X)
-    raw_labels = gmm.predict(X)
+    def __init__(self):
+        # Matrice de transition (Lec 72 defaults — transitions collantes)
+        self.A = np.array([
+            [0.90, 0.08, 0.02],   # LOW  → LOW 90%, MED 8%, HIGH 2%
+            [0.10, 0.80, 0.10],   # MED  → LOW 10%, MED 80%, HIGH 10%
+            [0.02, 0.08, 0.90],   # HIGH → LOW 2%,  MED 8%,  HIGH 90%
+        ])
+        # Paramètres d'émission (seront calibrés)
+        self.mu  = np.array([0.0005, 0.002, 0.005])
+        self.sig = np.array([0.0003, 0.001, 0.003])
+        # Croyance courante sur les états (uniform prior)
+        self.state_probs = np.array([1/3, 1/3, 1/3])
+        self.calibrated = False
 
-    # Re-mapper : 0=LOW vol, 1=MED, 2=HIGH (ordre croissant de la moyenne de chaque composante)
-    means = gmm.means_.flatten()
-    order = np.argsort(means)
-    remap = {order[i]: i for i in range(3)}
-    regimes = np.array([remap[l] for l in raw_labels])
+    def calibrate(self, returns):
+        """Calibre les paramètres d'émission + matrice de transition depuis les données."""
+        vols = np.abs(returns)
+        vols = vols[vols > 0]
+        if len(vols) < 20:
+            return
+        p33, p67 = np.percentile(vols, 33), np.percentile(vols, 67)
+        labels = np.zeros(len(vols), dtype=int)
+        labels[vols >= p33] = 1
+        labels[vols >= p67] = 2
+        # Paramètres d'émission par régime
+        for s in range(3):
+            rv = vols[labels == s]
+            if len(rv) >= 3:
+                self.mu[s]  = np.mean(rv)
+                self.sig[s] = max(np.std(rv), 1e-8)
+        # Matrice de transition par comptage + Laplace smoothing
+        counts = np.zeros((3, 3))
+        for t in range(1, len(labels)):
+            counts[labels[t-1], labels[t]] += 1
+        for i in range(3):
+            row = counts[i].sum()
+            if row > 0:
+                self.A[i] = (counts[i] + 0.1) / (row + 0.3)
+        self.state_probs = np.array([1/3, 1/3, 1/3])
+        self.calibrated = True
 
-    # Sticky : si on est en LOW, rester LOW jusqu'à sticky_window barres consécutives non-LOW
-    non_low_streak = 0
-    smoothed = regimes.copy()
-    for i in range(1, n):
-        if smoothed[i - 1] == 0:           # étais en LOW
-            if regimes[i] != 0:
-                non_low_streak += 1
-                if non_low_streak < sticky_window:
-                    smoothed[i] = 0        # rester LOW
-                else:
-                    non_low_streak = 0
-            else:
-                non_low_streak = 0
-        else:
-            non_low_streak = 0
-    return smoothed
+    def update(self, vol_obs):
+        """Mise à jour Bayésienne sur une nouvelle observation de volatilité."""
+        # 1. Prédiction : prior = A^T @ state_probs
+        prior = self.A.T @ self.state_probs
+        # 2. Vraisemblance gaussienne par état
+        lk = np.array([self._gauss(vol_obs, s) for s in range(3)])
+        # 3. Posterior : Bayes
+        post = prior * lk
+        total = post.sum()
+        self.state_probs = post / total if total > 0 else prior
+        return int(np.argmax(self.state_probs))
+
+    def _gauss(self, x, s):
+        c = 1.0 / (self.sig[s] * np.sqrt(2 * np.pi))
+        return c * np.exp(-0.5 * ((x - self.mu[s]) / self.sig[s]) ** 2)
+
+    def run_on_series(self, returns):
+        """Applique le filtre sur toute une série. Retourne array de régimes 0/1/2."""
+        n = len(returns)
+        regimes = np.ones(n, dtype=int)
+        self.state_probs = np.array([1/3, 1/3, 1/3])
+        for i in range(n):
+            regimes[i] = self.update(abs(returns[i]))
+        return regimes
 
 
 def kalman_ou_filter(prices, lookback, R_mult=5.0):
@@ -932,12 +968,12 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             skipped_no_signal += 1
             continue
 
-        # 3. Régime vol
+        # 3. Régime vol — Bayesian Markov Filter (Lec 72/74) ou GARCH fallback
         garch_vol = compute_garch_vol(bars["returns"].values, garch_alpha1, garch_beta1)
         if use_gmm_regime:
-            gmm_result = classify_regime_gmm(bars["returns"].values,
-                                             sticky_window=int(gmm_sticky_window))
-            regimes = gmm_result if gmm_result is not None else classify_regime(garch_vol)
+            mr = MarkovRegime()
+            mr.calibrate(bars["returns"].values)
+            regimes = mr.run_on_series(bars["returns"].values)
         else:
             regimes = classify_regime(garch_vol)
 
@@ -1011,7 +1047,8 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             sl_pts = np.clip(atr * atr_sl_mult, min_sl_pts, max_sl_pts)
 
             # 8. TP = retour au fair value Kalman
-            tp_price = sig["fair_value"]
+            # TP à tp_ratio * distance vers FV (0.5 = mi-chemin → WR ~50%)
+            tp_price = sig["price"] + tp_ratio * (sig["fair_value"] - sig["price"])
 
             # 9. Sizing
             if fixed_contracts > 0:
@@ -1129,7 +1166,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
 
     # ── Onglets resultats ─────────────────────────────────────────────
     tab1_label = "💰 Funded PA" if mode_funded else "📅 Bilan Mensuel"
-    tab1, tab2, tab3, tab4 = st.tabs([tab1_label, "📈 Resultats", "🔧 Pipeline", "📉 Charts"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([tab1_label, "📈 Resultats", "🔧 Pipeline", "📉 Charts", "🎲 Monte Carlo"])
 
     monthly_df    = pd.DataFrame(monthly_results)
     final_pnl     = trades_df["pnl_dollars"].sum()
@@ -1542,7 +1579,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         st.success(
             f"**EDGE CONFIRME** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
             f"PF {profit_factor:.2f}, Kelly {kelly_full:.1%}\n\n"
-            f"Signal: Kalman OU (k={band_k}σ) | TP = retour fair value | SL = ATR\n\n"
+            f"Signal: Kalman OU (k={band_k}σ) | TP {tp_ratio:.0%} vers FV | SL = ATR\n\n"
             f"Return: **{total_return:+.1f}%** | Max DD: **{max_dd:.1f}%** | "
             f"Demi-Kelly: **{kelly_half:.1%}** = {kc} contracts"
         )
@@ -1558,3 +1595,169 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             f"PF {profit_factor:.2f}\n\n"
             f"Ajuste: k, lookback, ou parametres GARCH."
         )
+
+    # ══════════════════════════════════════════════════════════════════
+    # TAB 5 — MONTE CARLO CHALLENGE SIMULATOR
+    # Ref : Quant Guild Lec 75 (Backtesting with Poker) + Lec 28 (Gambler's Ruin)
+    # ══════════════════════════════════════════════════════════════════
+    with tab5:
+        st.markdown("<p class='section-title'>Monte Carlo — Probabilité de réussir le challenge Apex 50K EOD</p>",
+                    unsafe_allow_html=True)
+        st.caption(
+            "Simule N fois un mois de challenge en tirant aléatoirement dans la distribution "
+            "empirique des trades (bootstrap). Donne la vraie probabilité de passer, bust, ou échouer."
+        )
+
+        mc1, mc2, mc3 = st.columns(3)
+        n_sims    = mc1.number_input("Simulations", value=10_000, min_value=1000, step=1000)
+        trades_pm = mc2.number_input("Trades/mois estimés", value=max(1, int(n_total / max(1, n_bdays / 22))),
+                                     min_value=1, step=1)
+        mc_contracts = mc3.number_input("Contrats (MC)", value=int(fixed_contracts) if fixed_contracts > 0 else max(1, kc),
+                                         min_value=1, max_value=max_contracts, step=1)
+
+        if st.button("Lancer Monte Carlo", type="primary"):
+            rng = np.random.default_rng(42)
+            trade_results_pts = trades_df["result_pts"].values
+            avg_sl_mc = trades_df["sl_pts"].mean()
+
+            n_pass = 0; n_bust = 0; n_fail = 0
+            final_pnls = []
+            peak_dds   = []
+            sim_paths  = []   # garder 200 paths pour le graphe
+
+            for sim in range(int(n_sims)):
+                equity   = capital_initial
+                peak_eq  = capital_initial
+                pnl_day  = {}   # date fictive → P&L (pour règle consistance)
+                busted   = False
+                passed   = False
+                max_dd_sim = 0.0
+
+                # Tirage avec remplacement (bootstrap)
+                sampled = rng.choice(trade_results_pts, size=int(trades_pm), replace=True)
+                sampled_days = rng.integers(0, 22, size=int(trades_pm))  # jour fictif 0-21
+
+                day_pnl_arr = np.zeros(22)
+                for r_pts, day in zip(sampled, sampled_days):
+                    pnl = r_pts * DOLLAR_PER_PT * mc_contracts
+                    # Daily loss limit
+                    if day_pnl_arr[day] <= -daily_loss_limit:
+                        continue
+                    day_pnl_arr[day] += pnl
+                    equity += pnl
+                    if equity > peak_eq:
+                        peak_eq = equity
+                    dd = peak_eq - equity
+                    if dd > max_dd_sim:
+                        max_dd_sim = dd
+                    # Bust : EOD threshold touché
+                    if dd >= max_drawdown_dollars:
+                        busted = True
+                        break
+                    # Objectif atteint
+                    if equity - capital_initial >= APEX_50K["profit_target"]:
+                        passed = True
+                        break
+
+                # Règle consistance 50% : aucun jour > 50% du profit total
+                if passed and not busted:
+                    total_profit = equity - capital_initial
+                    best_day = day_pnl_arr.max()
+                    if total_profit > 0 and best_day / total_profit > 0.50:
+                        passed = False  # consistance violée
+
+                if busted:
+                    n_bust += 1
+                elif passed:
+                    n_pass += 1
+                else:
+                    n_fail += 1
+
+                final_pnls.append(equity - capital_initial)
+                peak_dds.append(max_dd_sim)
+                if sim < 200:
+                    # Path cumulatif simplifié
+                    cum = np.concatenate([[0], np.cumsum(
+                        [r * DOLLAR_PER_PT * mc_contracts for r in sampled]
+                    )])
+                    sim_paths.append(cum[:int(trades_pm)+1])
+
+            pass_rate = n_pass / int(n_sims) * 100
+            bust_rate = n_bust / int(n_sims) * 100
+            fail_rate = n_fail / int(n_sims) * 100
+
+            # Métriques
+            mc_a, mc_b, mc_c, mc_d, mc_e = st.columns(5)
+            color_pass = "normal" if pass_rate >= 50 else ("off" if pass_rate >= 30 else "inverse")
+            mc_a.metric("Taux de réussite", f"{pass_rate:.1f}%",
+                        delta=f"{'✓ cible atteinte' if pass_rate >= 50 else '✗ insuffisant'}",
+                        delta_color=color_pass)
+            mc_b.metric("Taux de bust", f"{bust_rate:.1f}%", delta_color="inverse")
+            mc_c.metric("Taux d'échec", f"{fail_rate:.1f}%", delta_color="inverse")
+            mc_d.metric("P&L médian / mois", f"${np.median(final_pnls):+,.0f}")
+            mc_e.metric("DD max médian", f"${np.median(peak_dds):,.0f}")
+
+            if pass_rate >= 70:
+                st.success(f"**EDGE TRADABLE** — {pass_rate:.1f}% de chance de passer le challenge. "
+                           f"Objectif 50-80% atteint.")
+            elif pass_rate >= 50:
+                st.warning(f"**EDGE MARGINAL** — {pass_rate:.1f}% de chance. "
+                           f"Augmente les contrats ou baisse le tp_ratio.")
+            else:
+                st.error(f"**EDGE INSUFFISANT** — {pass_rate:.1f}% de chance. "
+                         f"Distribution trop dispersée. Baisse tp_ratio ou augmente band_k.")
+
+            # Graphe paths Monte Carlo
+            st.markdown("<p class='section-title'>200 chemins simulés — P&L cumulatif</p>",
+                        unsafe_allow_html=True)
+            fig_mc = go.Figure()
+            for path in sim_paths:
+                fig_mc.add_trace(go.Scatter(
+                    y=path, mode="lines",
+                    line=dict(width=0.5, color="rgba(60,196,183,0.12)"),
+                    showlegend=False, hoverinfo="skip"
+                ))
+            fig_mc.add_hline(y=APEX_50K["profit_target"], line_color=GREEN,
+                             line_dash="dash", annotation_text="Objectif $3 000")
+            fig_mc.add_hline(y=-max_drawdown_dollars, line_color=RED,
+                             line_dash="dash", annotation_text="Bust $-2 000")
+            fig_mc.add_hline(y=0, line_color="rgba(255,255,255,0.2)")
+            fig_mc.update_layout(height=400, yaxis_title="P&L ($)",
+                                 xaxis_title="Trade #", **DARK)
+            st.plotly_chart(fig_mc, use_container_width=True)
+
+            # Distribution des P&L finaux
+            st.markdown("<p class='section-title'>Distribution des P&L finaux (fin de mois)</p>",
+                        unsafe_allow_html=True)
+            fig_dist = go.Figure()
+            fig_dist.add_trace(go.Histogram(
+                x=final_pnls, nbinsx=60,
+                marker_color=TEAL, opacity=0.8, name="P&L final"
+            ))
+            fig_dist.add_vline(x=APEX_50K["profit_target"], line_color=GREEN,
+                               line_dash="dash", annotation_text="Target $3k")
+            fig_dist.add_vline(x=0, line_color="white", opacity=0.3)
+            fig_dist.add_vline(x=-max_drawdown_dollars, line_color=RED,
+                               line_dash="dash", annotation_text="Bust")
+            fig_dist.update_layout(height=300, xaxis_title="P&L ($)", **DARK)
+            st.plotly_chart(fig_dist, use_container_width=True)
+
+            # Table résumé
+            st.markdown(f"""
+<div class='result-block'>
+<div class='result-row'><span class='result-key'>Simulations</span>
+<span class='result-val'>{int(n_sims):,}</span></div>
+<div class='result-row'><span class='result-key'>Trades/mois</span>
+<span class='result-val'>{int(trades_pm)}</span></div>
+<div class='result-row'><span class='result-key'>Contrats</span>
+<span class='result-val'>{mc_contracts} MNQ</span></div>
+<div class='result-row'><span class='result-key'>WR empirique</span>
+<span class='result-val'>{winrate:.1%}</span></div>
+<div class='result-row'><span class='result-key'>E[trade]</span>
+<span class='result-val'>{expectancy:.1f} pts = ${expectancy * DOLLAR_PER_PT * mc_contracts:.0f}</span></div>
+<div class='result-row'><span class='result-key'>Taux réussite</span>
+<span class='result-val {"green" if pass_rate>=50 else "red"}'>{pass_rate:.1f}%</span></div>
+<div class='result-row'><span class='result-key'>Taux bust</span>
+<span class='result-val {"red" if bust_rate>10 else ""}'>{bust_rate:.1f}%</span></div>
+</div>
+""", unsafe_allow_html=True)
