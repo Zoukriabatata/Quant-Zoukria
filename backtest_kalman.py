@@ -178,8 +178,8 @@ bar_seconds = st.sidebar.selectbox("Barre (secondes)", [30, 60, 120, 300], index
 st.sidebar.markdown("---")
 st.sidebar.header("Kalman OU")
 kalman_lookback = st.sidebar.number_input("Lookback calibration (barres)", value=120, min_value=30, step=10)
-band_k = st.sidebar.number_input("Bande k min (sigma)", value=2.0, min_value=0.3, max_value=3.0, step=0.1,
-                                  help="Entry quand deviation > k sigma (min) — 2.0 = R:R 2:1 avec SL=1σ, besoin WR>33%")
+band_k = st.sidebar.number_input("Bande k min (sigma)", value=1.5, min_value=0.3, max_value=3.0, step=0.1,
+                                  help="Entry quand deviation > k sigma (min) — 1.5 = bon équilibre fréquence/R:R avec SL=0.75σ")
 band_k_max = st.sidebar.number_input("Bande k max (sigma)", value=5.0, min_value=0.5, max_value=10.0, step=0.5,
                                       help="Ignore si deviation > k_max sigma (evite crash-recovery)")
 kalman_R_mult = st.sidebar.number_input("Kalman R multiplier", value=5.0, min_value=0.5, step=0.5,
@@ -229,8 +229,8 @@ skip_close_bars = st.sidebar.number_input(
     help="Ignore les N dernieres barres de session — evite le closing gamma (Roman #74)"
 )
 max_trades_per_day = st.sidebar.number_input(
-    "Max trades/jour (funded)", value=3, min_value=1, max_value=10, step=1,
-    help="Plafond intraday en mode Funded PA — empeche les spikes d'equity irrealistes (Roman #77)"
+    "Max trades/jour", value=2, min_value=1, max_value=10, step=1,
+    help="Plafond intraday — Apex DLL $1k/jour s'applique dans les 2 modes. 2 = bon équilibre fréquence/risk."
 )
 
 st.sidebar.markdown("---")
@@ -1020,28 +1020,28 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             })
             continue
 
-        # 6. Boucle sur les signaux du jour
-        # En challenge : 1 signal (signals[0]). En funded : tous, séquentiels (attente exit).
-        signals_to_trade = signals if mode_funded else [signals[0]]
-        last_exit_bar    = -1   # barre de sortie du dernier trade (funded uniquement)
-        daily_pnl        = 0.0  # P&L intra-journée (funded uniquement)
-        day_consec       = 0    # pertes consec intra-journée (funded uniquement)
-        day_trade_count  = 0    # compteur trades dans la journée (funded uniquement)
+        # 6. Boucle sur les signaux du jour (tous modes)
+        # max_trades_per_day appliqué dans les 2 modes — Apex DLL $1k/jour
+        signals_to_trade = signals
+        last_exit_bar    = -1   # barre de sortie du dernier trade
+        daily_pnl        = 0.0  # P&L intra-journée
+        day_consec       = 0    # pertes consec intra-journée
+        day_trade_count  = 0    # compteur trades dans la journée
 
         for sig in signals_to_trade:
             bar_idx = sig["bar_idx"]
 
-            # En funded : ne pas entrer pendant qu'un trade est ouvert
-            if mode_funded and bar_idx <= last_exit_bar:
+            # Ne pas entrer pendant qu'un trade est ouvert
+            if bar_idx <= last_exit_bar:
                 continue
 
-            # En funded : stop journalier intra-day
-            if mode_funded and daily_pnl <= -DAILY_LOSS_HARD:
+            # Stop journalier intra-day (Apex DLL $1k — les 2 modes)
+            if daily_pnl <= -DAILY_LOSS_HARD:
                 break
-            if mode_funded and day_consec >= 2:
+            if day_consec >= 2:
                 break
-            # En funded : plafond max trades/jour (evite spikes irrealistes)
-            if mode_funded and day_trade_count >= max_trades_per_day:
+            # Plafond max trades/jour
+            if day_trade_count >= max_trades_per_day:
                 break
 
             # 7. SL sigma-based (Kalman uncertainty — Lec 72/74)
