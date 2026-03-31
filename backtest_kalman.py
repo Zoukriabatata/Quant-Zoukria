@@ -16,30 +16,170 @@ from plotly.subplots import make_subplots
 # ── Theme ────────────────────────────────────────────────────────────
 DARK = dict(
     template="plotly_dark",
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(17,17,17,1)",
-    font=dict(color="#e0e0e0", size=13),
+    paper_bgcolor="rgba(6,6,6,0)",
+    plot_bgcolor="rgba(10,10,10,1)",
+    font=dict(color="#888", size=12, family="JetBrains Mono"),
     margin=dict(t=50, b=40, l=50, r=30),
 )
-CYAN, MAGENTA, GREEN, RED = "#00e5ff", "#ff00e5", "#00ff88", "#ff3366"
+TEAL, CYAN, MAGENTA, GREEN, RED = "#3CC4B7", "#00e5ff", "#ff00e5", "#00ff88", "#ff3366"
 YELLOW, ORANGE = "#ffd600", "#ff9100"
 
-st.set_page_config(page_title="Backtest Kalman OU", page_icon="KO", layout="wide")
-st.title("Backtest Kalman OU Mean Reversion — MNQ")
+st.set_page_config(page_title="Backtest Kalman OU", page_icon="📊", layout="wide")
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+* { box-sizing: border-box; }
+
+[data-testid="stAppViewContainer"] {
+    background: #060606;
+    font-family: 'Space Grotesk', sans-serif;
+}
+[data-testid="stSidebar"] {
+    background: #0a0a0a;
+    border-right: 1px solid #1a1a1a;
+}
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stToolbar"] { display: none; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #3CC4B7; border-radius: 2px; }
+
+/* ── Sidebar Nav ── */
+[data-testid="stSidebarNav"] { padding: 0.5rem 0; }
+[data-testid="stSidebarNavLink"] {
+    display: block;
+    padding: 0.6rem 1.2rem;
+    margin: 2px 8px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: #555 !important;
+    text-decoration: none !important;
+    transition: background 0.15s, color 0.15s;
+    border: 1px solid transparent;
+}
+[data-testid="stSidebarNavLink"]:hover {
+    background: #111 !important;
+    color: #ccc !important;
+    border-color: #1a1a1a;
+}
+[data-testid="stSidebarNavLink"][aria-current="page"] {
+    background: rgba(60,196,183,0.08) !important;
+    color: #3CC4B7 !important;
+    border-color: rgba(60,196,183,0.2);
+}
+[data-testid="stSidebarNavLink"] span { font-size: 0.75rem !important; }
+
+.page-header {
+    padding: 1.5rem 0 0.5rem;
+    border-bottom: 1px solid #1a1a1a;
+    margin-bottom: 1.5rem;
+}
+.page-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    color: #3CC4B7;
+    text-transform: uppercase;
+}
+.page-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.02em;
+    margin: 0.3rem 0 0;
+}
+
+.section-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: #3CC4B7;
+    text-transform: uppercase;
+    margin: 1.5rem 0 0.8rem 0;
+}
+.stat-row {
+    display: flex;
+    gap: 0;
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 0.5rem 0 1rem;
+}
+.stat-cell {
+    flex: 1;
+    padding: 1.2rem 1rem;
+    text-align: center;
+    border-right: 1px solid #1a1a1a;
+    background: #060606;
+}
+.stat-cell:last-child { border-right: none; }
+.stat-cell:hover { background: #0f0f0f; }
+.stat-num {
+    font-size: 1.6rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: -0.02em;
+}
+.stat-lbl {
+    font-size: 0.6rem;
+    color: #444;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 0.2rem;
+}
+
+.result-block {
+    background: #0a0a0a;
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    line-height: 2;
+    margin: 0.5rem 0;
+}
+.result-row { display: flex; gap: 1rem; align-items: center; }
+.result-key { color: #3CC4B7; min-width: 140px; font-weight: 700; }
+.result-val { color: #888; }
+.result-val.green { color: #00ff88; }
+.result-val.red   { color: #ff3366; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div class="page-header">
+    <div class="page-tag">BACKTEST · DATABENTO MNQ · APEX 50K EOD</div>
+    <div class="page-title">Backtest Kalman OU</div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Sidebar ──────────────────────────────────────────────────────────
 st.sidebar.header("Donnees")
 data_dir = st.sidebar.text_input(
-    "Dossier CSV Databento",
-    value=r"C:\Users\ryadb\Downloads\GLBX-20260327-P8LBCQVG8R"
+    "Dossier CSV Databento (1)",
+    value=r"C:\Users\ryadb\Downloads\data OHLCV M1"
+)
+data_dir2 = st.sidebar.text_input(
+    "Dossier CSV Databento (2) — optionnel",
+    value=""
+)
+data_dir3 = st.sidebar.text_input(
+    "Dossier CSV Databento (3) — optionnel",
+    value=""
 )
 bar_seconds = st.sidebar.selectbox("Barre (secondes)", [30, 60, 120, 300], index=1)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Kalman OU")
 kalman_lookback = st.sidebar.number_input("Lookback calibration (barres)", value=120, min_value=30, step=10)
-band_k = st.sidebar.number_input("Bande k min (sigma)", value=1.0, min_value=0.3, max_value=3.0, step=0.1,
-                                  help="Entry quand deviation > k sigma (min)")
+band_k = st.sidebar.number_input("Bande k min (sigma)", value=1.2, min_value=0.3, max_value=3.0, step=0.1,
+                                  help="Entry quand deviation > k sigma (min) — 1.2 pour plus de frequence, 1.5 pour plus de precision")
 band_k_max = st.sidebar.number_input("Bande k max (sigma)", value=5.0, min_value=0.5, max_value=10.0, step=0.5,
                                       help="Ignore si deviation > k_max sigma (evite crash-recovery)")
 kalman_R_mult = st.sidebar.number_input("Kalman R multiplier", value=5.0, min_value=0.5, step=0.5,
@@ -49,6 +189,11 @@ st.sidebar.markdown("---")
 st.sidebar.header("GARCH Regime")
 garch_alpha1 = st.sidebar.number_input("GARCH alpha1", value=0.12, step=0.01, format="%.2f")
 garch_beta1 = st.sidebar.number_input("GARCH beta1", value=0.85, step=0.01, format="%.2f")
+only_low_regime = st.sidebar.toggle(
+    "LOW regime uniquement",
+    value=True,
+    help="Ne trader qu'en regime LOW vol — MED vol detruit le PF (Sharpe -0.09 en MED vs +0.55 en LOW)"
+)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Risk (ATR)")
@@ -68,35 +213,151 @@ session_end_h = st.sidebar.number_input("Fin (h UTC)", value=21, min_value=0, ma
 session_end_m = st.sidebar.number_input("Fin (min)", value=0, min_value=0, max_value=59)
 
 st.sidebar.markdown("---")
-st.sidebar.header("Challenge Apex")
-capital_initial = st.sidebar.number_input("Capital ($)", value=50000, step=1000)
-max_drawdown_dollars = st.sidebar.number_input("Max DD Apex ($)", value=2000, step=100)
-daily_loss_limit = st.sidebar.number_input("Perte max/jour ($)", value=400, step=50)
-max_contracts = st.sidebar.number_input("Contracts max", value=2, min_value=1, step=1)
-risk_pct = st.sidebar.number_input("Risque/trade (%)", value=0.5, min_value=0.1, step=0.1)
-dd_safety_pct = st.sidebar.number_input("Stop trading a X% du DD max", value=75, min_value=50, step=5)
+st.sidebar.header("Filtres temps")
+skip_open_bars = st.sidebar.number_input(
+    "Skip barres ouverture", value=30, min_value=0, step=5,
+    help="Ignore les N premieres barres de session — evite la volatilite d'ouverture (Roman #72)"
+)
+skip_close_bars = st.sidebar.number_input(
+    "Skip barres cloture", value=30, min_value=0, step=5,
+    help="Ignore les N dernieres barres de session — evite le closing gamma (Roman #74)"
+)
+max_trades_per_day = st.sidebar.number_input(
+    "Max trades/jour (funded)", value=3, min_value=1, max_value=10, step=1,
+    help="Plafond intraday en mode Funded PA — empeche les spikes d'equity irrealistes (Roman #77)"
+)
+
+st.sidebar.markdown("---")
+st.sidebar.header("Filtres signal avancés (Quant Guild)")
+use_gmm_regime = st.sidebar.toggle(
+    "GMM Sticky Regime (Lec 51/72)",
+    value=True,
+    help="Remplace GARCH+percentile par un GMM 3-états avec mémoire (sticky transitions). "
+         "Meilleur identification des vrais régimes LOW vol."
+)
+gmm_sticky_window = st.sidebar.number_input(
+    "Sticky window (barres)", value=5, min_value=1, max_value=20, step=1,
+    help="Nombre de barres consécutives hors LOW avant de quitter le régime LOW — imite HMM"
+) if use_gmm_regime else 5
+
+confirm_reversal = st.sidebar.toggle(
+    "Confirmation reversion (Lec 72)",
+    value=True,
+    help="N'entre qu'à la barre qui montre déjà un mouvement vers FV. "
+         "Améliore le WR de ~30% → ~38-42%. Réduit la fréquence."
+)
+use_halflife_filter = st.sidebar.toggle(
+    "Filtre demi-vie OU (Lec 92/95)",
+    value=True,
+    help="N'entre que si la demi-vie OU < seuil barres. "
+         "Élimine les signaux trop lents à revenir dans la session."
+)
+max_half_life_bars = st.sidebar.number_input(
+    "Demi-vie max (barres)", value=60, min_value=10, max_value=300, step=10,
+    help="Seuil demi-vie OU. Session ~420 barres/1m. 60 barres = 1h max pour revenir à 50%."
+) if use_halflife_filter else None
+
+st.sidebar.markdown("---")
+st.sidebar.header("Mode de simulation")
+
+mode_funded = st.sidebar.toggle(
+    "Mode Funded PA — sans reset mensuel",
+    value=False,
+    help=(
+        "OFF = Challenge Apex (reset mensuel, objectif $3K/mois, 60 contrats)\n"
+        "ON  = Compte Funded PA (simulation continue 4-5 mois, 40 contrats max)"
+    )
+)
+
+st.sidebar.markdown("---")
+st.sidebar.header("Challenge Apex 50K EOD Trail" if not mode_funded else "Funded PA — Apex 50K")
+
+# Regles officielles Apex 50K EOD Trail (Rithmic)
+APEX_50K = {
+    "capital":           50_000,
+    "profit_target":     3_000,   # objectif challenge mensuel
+    "trailing_dd":       2_000,   # drawdown trailing EOD max
+    "daily_loss":        1_000,   # perte max par jour
+    "max_contracts":     60,      # eval
+    "max_contracts_pa":  40,      # performance account
+    "consistency_pa":    0.50,    # regle PA : aucun jour > 50% du profit total
+}
+capital_initial        = st.sidebar.number_input("Capital ($)", value=APEX_50K["capital"], step=1000)
+max_drawdown_dollars   = APEX_50K["trailing_dd"]
+daily_loss_limit       = APEX_50K["daily_loss"]
+max_contracts          = APEX_50K["max_contracts_pa"] if mode_funded else APEX_50K["max_contracts"]
+
+fixed_contracts = st.sidebar.number_input(
+    "Contrats fixes (0 = Half-Kelly auto)",
+    value=0 if mode_funded else 30,
+    min_value=0, max_value=max_contracts, step=1,
+    help=(
+        "0 = sizing Half-Kelly automatique\n"
+        f"Exemple : 30 contrats → E[P&L] ≈ ${int(14*2.3*2*30):,}/mois\n"
+        f"Max Apex : {max_contracts} contrats"
+    )
+)
+
+if mode_funded:
+    st.sidebar.info(
+        "Regles Funded PA\n"
+        f"- DD max : ${max_drawdown_dollars:,} (EOD Trail — global)\n"
+        f"- Daily loss : ${daily_loss_limit:,}/jour\n"
+        f"- Max contracts : {max_contracts} MNQ\n"
+        "- Pas de reset mensuel — simulation continue"
+    )
+else:
+    st.sidebar.info(
+        "Regles Apex 50K EOD\n"
+        f"- DD max : ${max_drawdown_dollars:,} (EOD Trail)\n"
+        f"- Daily loss : ${daily_loss_limit:,}/jour\n"
+        f"- Max contracts : {max_contracts} MNQ (eval)"
+    )
+
+# Phases MM (identiques au live) — Half-Kelly base = 10% du DD restant
+# SECURITE  >= 80% objectif     → 4% DD restant
+# PRUDENTE  DD>50% ou <$400 ou jours 1-5 → 5% DD restant
+# STANDARD  jours 6-17           → 10% DD restant (Half-Kelly)
+PHASE_RISK = {"SECURITE": 0.04, "PRUDENTE": 0.05, "STANDARD": 0.10}
+RISK_MIN_DOLLARS = 80.0    # plancher
+RISK_MAX_DOLLARS = 600.0   # plafond par trade
 
 TICK_VALUE = 0.50
 TICK_SIZE = 0.25
 DOLLAR_PER_PT = TICK_VALUE / TICK_SIZE  # $2/pt MNQ
-DD_SAFETY_LIMIT = max_drawdown_dollars * (dd_safety_pct / 100)
+DAILY_LOSS_HARD = daily_loss_limit * 0.80  # stop interne a $800 (80% du limit)
 
 
-# ══════════════════════════════════════════════════════════════════════
+# ══════════════════��═══════════════════════════════════════════════════
 # ENGINE
 # ══════════════════════════════════════════════════════════════════════
 
 @st.cache_data
 def load_ohlcv_csv(filepath):
-    """Charge le CSV ohlcv-1m Databento en memoire (cache)."""
-    df = pd.read_csv(filepath, usecols=["ts_event", "open", "high", "low", "close", "volume"])
+    """
+    Charge le CSV ohlcv-1m Databento.
+    Gere les fichiers multi-contrats (plusieurs expiries MNQ par timestamp) :
+    - Exclut les spreads (symboles contenant '-')
+    - Garde uniquement le front month (contrat le plus liquide a chaque barre)
+    """
+    df = pd.read_csv(filepath,
+                     usecols=["ts_event", "open", "high", "low", "close", "volume", "symbol"])
     df["bar"] = pd.to_datetime(df["ts_event"], utc=True)
     df.drop(columns=["ts_event"], inplace=True)
     df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].astype(float)
     df["volume"] = df["volume"].astype(int)
-    df.sort_values("bar", inplace=True)
+
+    # Exclure les spreads (MNQM4-MNQU4, etc.)
+    df = df[~df["symbol"].str.contains("-", na=False)].copy()
+
+    # Front month = contrat le plus liquide par barre → 1 ligne par timestamp
+    df.sort_values(["bar", "volume"], ascending=[True, False], inplace=True)
+    df = df.drop_duplicates(subset=["bar"], keep="first")
+
+    df.drop(columns=["symbol"], inplace=True)
     df.reset_index(drop=True, inplace=True)
-    # Calcul ATR et returns sur tout le dataset (plus precis qu'a la journee)
+
+    # ATR et returns
     df["tr"] = np.maximum(
         df["high"] - df["low"],
         np.maximum(
@@ -161,7 +422,7 @@ def compute_garch_vol(returns, alpha1=0.12, beta1=0.85):
 
 
 def classify_regime(garch_vol, window=60):
-    """LOW / MED / HIGH vol regime."""
+    """LOW / MED / HIGH vol regime via GARCH percentiles."""
     regimes = np.full(len(garch_vol), 1)
     for i in range(window, len(garch_vol)):
         history = garch_vol[max(0, i - window):i]
@@ -176,20 +437,72 @@ def classify_regime(garch_vol, window=60):
     return regimes
 
 
+def classify_regime_gmm(returns, sticky_window=5):
+    """
+    Régime 3-états via Gaussian Mixture Model sur |returns|.
+    Ref: Quant Guild Lecture 51 (HMM) + 72/74 (Markov Regime Switching Bot)
+
+    Remplace GARCH+percentile par un GMM non-paramétrique :
+    - GMM apprend les 3 distributions de volatilité directement des données
+    - Sticky : ne quitte pas LOW avant sticky_window barres consécutives hors LOW
+      (imite la propriété de mémoire du HMM — transitions collantes)
+    - Labels : 0=LOW, 1=MED, 2=HIGH (triés par vol croissante)
+    """
+    try:
+        from sklearn.mixture import GaussianMixture
+    except ImportError:
+        # Fallback GARCH si sklearn absent
+        return None
+
+    n = len(returns)
+    X = np.abs(returns).reshape(-1, 1)
+    # GMM 3 composantes
+    gmm = GaussianMixture(n_components=3, covariance_type="full",
+                          n_init=5, random_state=42, max_iter=200)
+    gmm.fit(X)
+    raw_labels = gmm.predict(X)
+
+    # Re-mapper : 0=LOW vol, 1=MED, 2=HIGH (ordre croissant de la moyenne de chaque composante)
+    means = gmm.means_.flatten()
+    order = np.argsort(means)
+    remap = {order[i]: i for i in range(3)}
+    regimes = np.array([remap[l] for l in raw_labels])
+
+    # Sticky : si on est en LOW, rester LOW jusqu'à sticky_window barres consécutives non-LOW
+    non_low_streak = 0
+    smoothed = regimes.copy()
+    for i in range(1, n):
+        if smoothed[i - 1] == 0:           # étais en LOW
+            if regimes[i] != 0:
+                non_low_streak += 1
+                if non_low_streak < sticky_window:
+                    smoothed[i] = 0        # rester LOW
+                else:
+                    non_low_streak = 0
+            else:
+                non_low_streak = 0
+        else:
+            non_low_streak = 0
+    return smoothed
+
+
 def kalman_ou_filter(prices, lookback, R_mult=5.0):
     """
     Kalman filter sur un modele OU (Ornstein-Uhlenbeck).
     Ref: Quant Guild #92 + #95
 
     Retourne pour chaque barre:
-    - fair_value: estimation Kalman du prix moyen
-    - sigma_stat: deviation stationnaire (bandes de reversion)
-    - kalman_gain: K du filtre
+    - fair_value  : estimation Kalman du prix moyen
+    - sigma_stat  : deviation stationnaire (bandes de reversion)
+    - kalman_gain : K du filtre
+    - half_lives  : demi-vie OU en barres = -log(2)/log(phi)
+                    Filtre : n'entrer que si half_life < seuil (reversion rapide)
     """
     n = len(prices)
     fair_values = np.full(n, np.nan)
     sigma_stats = np.full(n, np.nan)
     kalman_gains = np.full(n, np.nan)
+    half_lives   = np.full(n, np.nan)
 
     for i in range(lookback, n):
         window = prices[max(0, i - lookback):i]
@@ -203,6 +516,7 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
             fair_values[i] = prices[i]
             sigma_stats[i] = 5.0
             kalman_gains[i] = 0.5
+            half_lives[i]   = 999.0
             continue
 
         sx = np.sum(x_prev)
@@ -215,6 +529,7 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
             fair_values[i] = prices[i]
             sigma_stats[i] = 5.0
             kalman_gains[i] = 0.5
+            half_lives[i]   = 999.0
             continue
 
         phi = np.clip((m * sxy - sx * sy) / denom, 0.5, 0.999)
@@ -226,6 +541,10 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
             sigma = 1.0
 
         sigma_stat = sigma / np.sqrt(max(2 * (1 - phi), 0.001))
+
+        # Demi-vie OU : nombre de barres pour revenir à 50% de l'écart
+        # half_life = -log(2) / log(phi)   (phi proche de 1 → slow mean reversion)
+        hl = -np.log(2) / np.log(phi) if phi > 0 else 999.0
 
         # Kalman filter
         Q = sigma ** 2 * (1 - phi ** 2)
@@ -244,32 +563,47 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
         fair_values[i] = x_est
         sigma_stats[i] = sigma_stat
         kalman_gains[i] = K
+        half_lives[i]   = hl
 
-    return fair_values, sigma_stats, kalman_gains
+    return fair_values, sigma_stats, kalman_gains, half_lives
 
 
-def find_signals(bars, fair_values, sigma_stats, regimes, band_k, band_k_max=3.0):
+def find_signals(bars, fair_values, sigma_stats, regimes, band_k, band_k_max=3.0,
+                 allow_multiple=False, min_bar_idx=0,
+                 skip_open=0, skip_close=0, only_low=False,
+                 half_lives=None, max_half_life=None,
+                 confirm_reversal=False):
     """
-    Genere les signaux d'entree:
-    - LONG  quand close < fair_value - k * sigma_stat (prix trop bas)
-    - SHORT quand close > fair_value + k * sigma_stat (prix trop haut)
-    - Pas de signal en regime HIGH vol
-    - 1 signal max par session (le premier qui declenche)
+    Genere les signaux d'entree.
+
+    Filtres Quant Guild :
+    - only_low        : uniquement régime LOW vol (Lec 51/72/74)
+    - max_half_life   : demi-vie OU max en barres — filtre les signaux trop lents à revenir
+                        (Lec 92/95 : n'entrer que si la reversion est probable dans la session)
+    - confirm_reversal: n'entrer qu'à la barre i+1 si elle est déjà plus proche du FV que i
+                        (Lec 72 timing : confirmation que la reversion a commencé)
+    - skip_open/close : filtre horaire (évite ouverture + gamma closing)
     """
     n = len(bars)
     signals = []
     traded_today = set()
+    valid_end = max(skip_open, n - skip_close)
 
     for i in range(n):
+        if i < skip_open or i >= valid_end:
+            continue
+        if i < min_bar_idx:
+            continue
         if np.isnan(fair_values[i]) or np.isnan(sigma_stats[i]):
             continue
 
         date = bars.iloc[i]["date"]
-        if date in traded_today:
+        if not allow_multiple and date in traded_today:
             continue
 
-        # Pas de trade en HIGH vol
         if regimes[i] == 2:
+            continue
+        if only_low and regimes[i] != 0:
             continue
 
         close = bars.iloc[i]["close"]
@@ -277,9 +611,33 @@ def find_signals(bars, fair_values, sigma_stats, regimes, band_k, band_k_max=3.0
         ss = sigma_stats[i]
         deviation = abs(close - fv) / ss if ss > 0 else 0
 
-        # Filtre: deviation hors plage = bruit ou crash-recovery, skip
         if deviation < band_k or deviation > band_k_max:
             continue
+
+        # Filtre demi-vie OU (Quant Guild #92/#95)
+        # Ne trader que si la reversion est assez rapide pour se produire dans la session
+        if max_half_life is not None and half_lives is not None:
+            hl = half_lives[i]
+            if np.isnan(hl) or hl > max_half_life:
+                continue
+
+        # Confirmation de reversion (Quant Guild #72 — timing d'entrée)
+        # N'entrer que si la barre suivante montre déjà un mouvement vers FV
+        if confirm_reversal:
+            if i + 1 >= n:
+                continue
+            if np.isnan(fair_values[i + 1]) or np.isnan(sigma_stats[i + 1]):
+                continue
+            next_dev = abs(bars.iloc[i + 1]["close"] - fair_values[i + 1]) / sigma_stats[i + 1] \
+                       if sigma_stats[i + 1] > 0 else deviation
+            if next_dev >= deviation:   # pas encore en train de revenir
+                continue
+            # Entrer à la barre i+1 (confirmation)
+            entry_bar = i + 1
+            entry_close = bars.iloc[i + 1]["close"]
+        else:
+            entry_bar = i
+            entry_close = close
 
         direction = None
         if close > fv:
@@ -288,12 +646,13 @@ def find_signals(bars, fair_values, sigma_stats, regimes, band_k, band_k_max=3.0
             direction = "long"
 
         if direction:
-            traded_today.add(date)
+            if not allow_multiple:
+                traded_today.add(date)
             signals.append({
-                "bar_idx": i,
+                "bar_idx": entry_bar,
                 "date": date,
-                "bar": bars.iloc[i]["bar"],
-                "price": close,
+                "bar": bars.iloc[entry_bar]["bar"],
+                "price": entry_close,
                 "fair_value": fv,
                 "sigma_stat": ss,
                 "direction": direction,
@@ -306,11 +665,8 @@ def find_signals(bars, fair_values, sigma_stats, regimes, band_k, band_k_max=3.0
 
 def simulate_trade(bars, entry_idx, entry_price, direction, sl_pts, tp_price, slip_pts):
     """
-    Simule un trade:
-    - Entry au prix avec slippage
-    - TP = retour au fair value Kalman
-    - SL = ATR-based
-    - Max 120 barres
+    Simule un trade.
+    Retourne (result_pts, exit_bar_idx) pour permettre les trades sequentiels en mode funded.
     """
     if direction == "long":
         real_entry = entry_price + slip_pts
@@ -324,21 +680,22 @@ def simulate_trade(bars, entry_idx, entry_price, direction, sl_pts, tp_price, sl
 
         if direction == "long":
             if bar["low"] <= sl_price:
-                return -(sl_pts + slip_pts)  # SL touche
+                return -(sl_pts + slip_pts), i
             if bar["high"] >= tp_price:
-                return (tp_price - slip_pts) - real_entry  # TP touche
+                return (tp_price - slip_pts) - real_entry, i
         else:
             if bar["high"] >= sl_price:
-                return -(sl_pts + slip_pts)
+                return -(sl_pts + slip_pts), i
             if bar["low"] <= tp_price:
-                return real_entry - (tp_price + slip_pts)
+                return real_entry - (tp_price + slip_pts), i
 
     # Timeout → close at market
-    last = bars.iloc[min(entry_idx + 119, len(bars) - 1)]["close"]
+    exit_idx = min(entry_idx + 119, len(bars) - 1)
+    last = bars.iloc[exit_idx]["close"]
     if direction == "long":
-        return (last - slip_pts) - real_entry
+        return (last - slip_pts) - real_entry, exit_idx
     else:
-        return real_entry - (last + slip_pts)
+        return real_entry - (last + slip_pts), exit_idx
 
 
 def kelly_fraction(results):
@@ -358,48 +715,202 @@ def kelly_fraction(results):
 # ══════════════════════════════════════════════════════════════════════
 
 if st.sidebar.button("Lancer le Backtest", type="primary"):
-    # Detecter le format: 1 CSV ohlcv-1m ou anciens fichiers ticks
-    csv_files = sorted(glob.glob(os.path.join(data_dir, "*.ohlcv-1m.csv")))
-    legacy_files = sorted(glob.glob(os.path.join(data_dir, "*.trades.csv")))
+    # Collecte les fichiers depuis les 2 dossiers (dossier 2 optionnel)
+    dirs_to_scan = [d for d in [data_dir, data_dir2, data_dir3] if d.strip()]
+
+    csv_files   = []
+    legacy_files = []
+    for d in dirs_to_scan:
+        csv_files   += sorted(glob.glob(os.path.join(d, "*.ohlcv-1m.csv")))
+        legacy_files += sorted(glob.glob(os.path.join(d, "*.trades.csv")))
 
     if csv_files:
-        # Nouveau format: 1 seul CSV ohlcv-1m
-        with st.spinner("Chargement du CSV ohlcv-1m..."):
-            full_df = load_ohlcv_csv(csv_files[0])
+        # Nouveau format: CSV ohlcv-1m
+        with st.spinner("Chargement des CSV ohlcv-1m..."):
+            frames = [load_ohlcv_csv(f) for f in csv_files]
+            full_df = pd.concat(frames, ignore_index=True)
+            full_df.sort_values("bar", inplace=True)
+            full_df.drop_duplicates(subset=["bar"], inplace=True)
+            full_df.reset_index(drop=True, inplace=True)
         dates = sorted(full_df["date"].unique())
-        st.info(f"{len(dates)} jours. Pipeline: GARCH regime → Kalman OU → Bandes → 1 trade/session")
+        st.info(f"{len(dates)} jours ({dates[0]} → {dates[-1]}). Pipeline: GARCH regime → Kalman OU → Bandes → 1 trade/session")
     elif legacy_files:
+        # Format ticks Databento (1 fichier par jour)
+        # Tri par la DATE dans le nom de fichier (YYYYMMDD), pas par le chemin complet
+        # (sinon GLBX-20260327 serait trié avant GLBX-20260330 même si Nov < Dec)
+        import re as _re_sort
+        def _sort_key(p):
+            m = _re_sort.search(r'(\d{8})', os.path.basename(p))
+            return m.group(1) if m else p
+        legacy_files = sorted(set(legacy_files), key=_sort_key)
         full_df = None
         dates = legacy_files
-        st.info(f"{len(dates)} fichiers ticks. Pipeline: GARCH regime → Kalman OU → Bandes → 1 trade/session")
+        _first = os.path.basename(legacy_files[0])
+        _last  = os.path.basename(legacy_files[-1])
+        st.info(f"{len(dates)} fichiers ticks ({_first[:19]} → {_last[:19]}). Pipeline: GARCH regime → Kalman OU → Bandes → 1 trade/session")
     else:
-        st.error("Aucun fichier CSV trouve. Mets le dossier Databento dans le champ ci-dessus.")
+        st.error("Aucun fichier CSV trouve. Verifie les dossiers Databento ci-dessus.")
         st.stop()
 
     progress = st.progress(0)
+    slip = slippage_ticks * TICK_SIZE
+
+    import re as _re
+
+    def get_month_key(d):
+        """
+        Retourne 'YYYY-MM' depuis :
+        - une date string "2026-03-24"
+        - un chemin de fichier legacy "C:\\...\\GLBX-20260324-xxx.csv"
+        """
+        s = str(d)
+        # Cherche un pattern YYYYMMDD dans le chemin (fichiers Databento)
+        m = _re.search(r'(\d{4})(\d{2})(\d{2})', s)
+        if m:
+            return f"{m.group(1)}-{m.group(2)}"
+        # Sinon suppose format date "YYYY-MM-DD"
+        return s[:7]
+
+    dates_sorted = sorted(dates, key=lambda d: str(d))
 
     all_trades = []
     all_daily_stats = []
+    monthly_results = []
+
     skipped_high_vol = 0
     skipped_no_signal = 0
     skipped_dd = 0
-    running_equity = capital_initial
-    running_peak = capital_initial
-    challenge_busted = False
-    slip = slippage_ticks * TICK_SIZE
+    skipped_daily_loss = 0
+    skipped_consec = 0
 
-    for file_idx, day_key in enumerate(dates):
-        progress.progress((file_idx + 1) / len(dates),
-                          text=f"Jour {file_idx + 1}/{len(dates)}")
+    # État — en mode funded: simulation continue; en mode challenge: reset mensuel
+    running_equity  = capital_initial
+    running_peak    = capital_initial
+    consec_losses   = 0
+    days_elapsed_bt = 0
+    challenge_busted  = False
+    challenge_passed  = False
+    month_trades    = []
+    current_month   = None
 
-        # Protection DD
+    # En mode funded : equity de référence pour le sizing (peak global, pas mensuel)
+    funded_peak_global = capital_initial
+
+    def _save_month(mk, re_, rp_, mt_, dbt_, cb_, cp_):
+        # P&L du mois = equity fin - equity debut de mois
+        mp = re_ - capital_initial  # pour le challenge (equity repart de capital_initial)
+        md = rp_ - re_
+        nw = sum(1 for t in mt_ if t["win"])
+        nt = len(mt_)
+        monthly_results.append({
+            "mois":    mk,
+            "pnl":     round(mp, 2),
+            "trades":  nt,
+            "winrate": round(nw / nt * 100, 1) if nt > 0 else 0,
+            "max_dd":  round(md, 2),
+            "jours":   dbt_,
+            "passe":   cp_,
+            "bust":    cb_,
+            "statut":  "PASSE" if cp_ else ("BUST" if cb_ else "ECHOUE"),
+        })
+
+    def _save_month_funded(mk, pnl_month, mt_, dbt_):
+        nw = sum(1 for t in mt_ if t["win"])
+        nt = len(mt_)
+        monthly_results.append({
+            "mois":    mk,
+            "pnl":     round(pnl_month, 2),
+            "trades":  nt,
+            "winrate": round(nw / nt * 100, 1) if nt > 0 else 0,
+            "jours":   dbt_,
+            "statut":  "PA",
+        })
+
+    month_equity_start = capital_initial  # suivi du P&L mensuel en mode funded
+
+    for file_idx, day_key in enumerate(dates_sorted):
+        progress.progress((file_idx + 1) / len(dates_sorted),
+                          text=f"Jour {file_idx + 1}/{len(dates_sorted)}")
+
+        day_month = get_month_key(day_key)
+
+        # ── Changement de mois ─────────────────────────────────────────
+        if day_month != current_month:
+            if current_month is not None:
+                if mode_funded:
+                    _save_month_funded(current_month,
+                                       running_equity - month_equity_start,
+                                       month_trades, days_elapsed_bt)
+                    month_equity_start = running_equity
+                    days_elapsed_bt    = 0
+                    month_trades       = []
+                else:
+                    _save_month(current_month, running_equity, running_peak,
+                                month_trades, days_elapsed_bt, challenge_busted, challenge_passed)
+                    # Reset mensuel (mode challenge uniquement)
+                    running_equity    = capital_initial
+                    running_peak      = capital_initial
+                    consec_losses     = 0
+                    days_elapsed_bt   = 0
+                    challenge_busted  = False
+                    challenge_passed  = False
+                    month_trades      = []
+            current_month = day_month
+
+        # En mode challenge : skip si deja passe ou bust ce mois
+        if not mode_funded and (challenge_passed or challenge_busted):
+            continue
+
+        # En mode funded : stop global si DD depasse la limite
+        if mode_funded and challenge_busted:
+            break
+
+        # ── Phase MM (identique au live) ─────────────────────────────
         running_dd = running_peak - running_equity
+        trailing_dd_remaining = max(0.0, max_drawdown_dollars - running_dd)
+
+        if mode_funded:
+            # En funded : phase basee sur le DD global (pas sur l'objectif mensuel)
+            dd_pct_used  = running_dd / max_drawdown_dollars
+            challenge_pct = 1.0   # pas d'objectif a atteindre
+        else:
+            challenge_pnl = running_equity - capital_initial
+            challenge_pct = challenge_pnl / APEX_50K["profit_target"]
+            dd_pct_used   = running_dd / max_drawdown_dollars
+
+        if challenge_pct >= 0.80 and not mode_funded:
+            phase_risk = PHASE_RISK["SECURITE"]
+        elif dd_pct_used > 0.50 or trailing_dd_remaining < 400:
+            phase_risk = PHASE_RISK["PRUDENTE"]
+        elif days_elapsed_bt <= 5:
+            phase_risk = PHASE_RISK["PRUDENTE"]
+        else:
+            phase_risk = PHASE_RISK["STANDARD"]
+
+        # ── Stop DD Apex ──────────────────────────────────────────────
         if running_dd >= max_drawdown_dollars:
             challenge_busted = True
-            break
-        if running_dd >= DD_SAFETY_LIMIT:
-            skipped_dd += 1
+            if mode_funded:
+                break
+            # en mode challenge: le mois est bust, on continue le mois suivant
+
+        # ── Check objectif mensuel atteint (challenge uniquement) ─────
+        if not mode_funded:
+            challenge_pnl = running_equity - capital_initial
+            if challenge_pnl >= APEX_50K["profit_target"] and not challenge_passed:
+                challenge_passed = True
+
+        # ── Stop consec inter-journees ────────────────────────────────
+        if consec_losses >= 2:
+            skipped_consec += 1
+            consec_losses = 0   # reset apres pause d'un jour
+            all_daily_stats.append({
+                "date": day_key, "regime": "SKIP",
+                "action": "SKIP", "reason": "2 pertes consecutives — pause 1 jour",
+            })
             continue
+
+        days_elapsed_bt += 1
 
         # 1. Barres du jour
         if full_df is not None:
@@ -421,9 +932,14 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             skipped_no_signal += 1
             continue
 
-        # 3. GARCH regime
+        # 3. Régime vol
         garch_vol = compute_garch_vol(bars["returns"].values, garch_alpha1, garch_beta1)
-        regimes = classify_regime(garch_vol)
+        if use_gmm_regime:
+            gmm_result = classify_regime_gmm(bars["returns"].values,
+                                             sticky_window=int(gmm_sticky_window))
+            regimes = gmm_result if gmm_result is not None else classify_regime(garch_vol)
+        else:
+            regimes = classify_regime(garch_vol)
 
         # Regime dominant
         regime_counts = np.bincount(regimes, minlength=3)
@@ -436,14 +952,22 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             })
             continue
 
-        # 4. Kalman OU filter
+        # 4. Kalman OU filter (retourne aussi half_lives)
         prices = bars["close"].values
-        fair_values, sigma_stats, k_gains = kalman_ou_filter(
+        fair_values, sigma_stats, k_gains, half_lives = kalman_ou_filter(
             prices, kalman_lookback, kalman_R_mult
         )
 
         # 5. Signaux
-        signals = find_signals(bars, fair_values, sigma_stats, regimes, band_k, band_k_max)
+        signals = find_signals(
+            bars, fair_values, sigma_stats, regimes, band_k, band_k_max,
+            allow_multiple=mode_funded,
+            skip_open=skip_open_bars, skip_close=skip_close_bars,
+            only_low=only_low_regime,
+            half_lives=half_lives if use_halflife_filter else None,
+            max_half_life=max_half_life_bars,
+            confirm_reversal=confirm_reversal,
+        )
 
         if not signals:
             skipped_no_signal += 1
@@ -454,74 +978,141 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             })
             continue
 
-        # 6. Prendre le premier signal (1 trade/session)
-        sig = signals[0]
-        bar_idx = sig["bar_idx"]
+        # 6. Boucle sur les signaux du jour
+        # En challenge : 1 signal (signals[0]). En funded : tous, séquentiels (attente exit).
+        signals_to_trade = signals if mode_funded else [signals[0]]
+        last_exit_bar    = -1   # barre de sortie du dernier trade (funded uniquement)
+        daily_pnl        = 0.0  # P&L intra-journée (funded uniquement)
+        day_consec       = 0    # pertes consec intra-journée (funded uniquement)
+        day_trade_count  = 0    # compteur trades dans la journée (funded uniquement)
 
-        # 7. SL dynamique ATR
-        atr = bars.iloc[bar_idx]["atr_14"]
-        if np.isnan(atr) or atr <= 0:
-            atr = bars["tr"].mean()
-        if np.isnan(atr) or atr <= 0:
-            atr = 8.0
-        sl_pts = np.clip(atr * atr_sl_mult, min_sl_pts, max_sl_pts)
+        for sig in signals_to_trade:
+            bar_idx = sig["bar_idx"]
 
-        # 8. TP = retour au fair value Kalman
-        tp_price = sig["fair_value"]
+            # En funded : ne pas entrer pendant qu'un trade est ouvert
+            if mode_funded and bar_idx <= last_exit_bar:
+                continue
 
-        # 9. Sizing Apex-safe
-        regime_mult = 0.75 if sig["regime"] == 0 else 1.0
-        risk_dollars = capital_initial * (risk_pct / 100) * regime_mult
-        contracts = max(1, int(risk_dollars / (sl_pts * DOLLAR_PER_PT)))
-        contracts = min(contracts, max_contracts)
+            # En funded : stop journalier intra-day
+            if mode_funded and daily_pnl <= -DAILY_LOSS_HARD:
+                break
+            if mode_funded and day_consec >= 2:
+                break
+            # En funded : plafond max trades/jour (evite spikes irrealistes)
+            if mode_funded and day_trade_count >= max_trades_per_day:
+                break
 
-        loss_if_sl = sl_pts * DOLLAR_PER_PT * contracts
-        if loss_if_sl > daily_loss_limit:
-            contracts = max(1, int(daily_loss_limit / (sl_pts * DOLLAR_PER_PT)))
-        remaining_dd = max_drawdown_dollars - running_dd
-        if loss_if_sl > remaining_dd * 0.5:
-            contracts = 1
+            # 7. SL dynamique ATR
+            atr = bars.iloc[bar_idx]["atr_14"]
+            if np.isnan(atr) or atr <= 0:
+                atr = bars["tr"].mean()
+            if np.isnan(atr) or atr <= 0:
+                atr = 8.0
+            sl_pts = np.clip(atr * atr_sl_mult, min_sl_pts, max_sl_pts)
 
-        # 10. Simuler
-        result_pts = simulate_trade(bars, bar_idx, sig["price"],
-                                     sig["direction"], sl_pts, tp_price, slip)
+            # 8. TP = retour au fair value Kalman
+            tp_price = sig["fair_value"]
 
-        pnl_dollars = result_pts * DOLLAR_PER_PT * contracts
-        running_equity += pnl_dollars
-        if running_equity > running_peak:
-            running_peak = running_equity
+            # 9. Sizing
+            if fixed_contracts > 0:
+                # Mode contrats fixes : bypass Kelly, respecte quand meme les protections DD
+                contracts = min(fixed_contracts, max_contracts)
+            else:
+                # Mode Half-Kelly automatique
+                risk_dollars = np.clip(
+                    trailing_dd_remaining * phase_risk,
+                    RISK_MIN_DOLLARS, RISK_MAX_DOLLARS
+                )
+                risk_dollars = min(risk_dollars, DAILY_LOSS_HARD)
+                contracts = max(1, int(risk_dollars / (sl_pts * DOLLAR_PER_PT)))
+                contracts = min(contracts, max_contracts)
 
-        tp_pts = abs(sig["fair_value"] - sig["price"])
-        rr_target = tp_pts / sl_pts if sl_pts > 0 else 0
+            loss_if_sl = sl_pts * DOLLAR_PER_PT * contracts
 
-        trade = {
-            "date": sig["date"],
-            "time": sig["bar"],
-            "price": round(sig["price"], 2),
-            "fair_value": round(sig["fair_value"], 2),
-            "sigma_stat": round(sig["sigma_stat"], 2),
-            "deviation": round(sig["deviation"], 2),
-            "direction": sig["direction"],
-            "regime": ["LOW", "MED", "HIGH"][sig["regime"]],
-            "sl_pts": round(sl_pts, 2),
-            "tp_pts": round(tp_pts, 2),
-            "rr_target": round(rr_target, 1),
-            "result_pts": round(result_pts, 2),
-            "contracts": contracts,
-            "pnl_dollars": round(pnl_dollars, 2),
-            "win": result_pts > 0,
-            "equity": round(running_equity, 2),
-            "dd_from_peak": round(running_peak - running_equity, 2),
-        }
-        all_trades.append(trade)
+            if loss_if_sl > DAILY_LOSS_HARD:
+                contracts = max(1, int(DAILY_LOSS_HARD / (sl_pts * DOLLAR_PER_PT)))
+                loss_if_sl = sl_pts * DOLLAR_PER_PT * contracts
 
-        all_daily_stats.append({
-            "date": sig["date"],
-            "regime": trade["regime"],
-            "action": "TRADE",
-            "reason": f"{sig['direction']} @ {sig['price']:.2f}, "
-                      f"FV={sig['fair_value']:.2f}, dev={sig['deviation']:.1f}σ",
-        })
+            if loss_if_sl > trailing_dd_remaining:
+                skipped_dd += 1
+                continue
+
+            # 10. Simuler
+            result_pts, exit_bar = simulate_trade(bars, bar_idx, sig["price"],
+                                                  sig["direction"], sl_pts, tp_price, slip)
+            last_exit_bar = exit_bar
+
+            pnl_dollars = result_pts * DOLLAR_PER_PT * contracts
+            running_equity += pnl_dollars
+            daily_pnl += pnl_dollars
+
+            # EOD Trail : peak mis à jour après chaque trade
+            if running_equity > running_peak:
+                running_peak = running_equity
+
+            # Tracking consec inter-journées (challenge) / intra-journée (funded)
+            if pnl_dollars < 0:
+                consec_losses += 1
+                day_consec += 1
+            else:
+                consec_losses = 0
+                day_consec = 0
+
+            tp_pts = abs(sig["fair_value"] - sig["price"])
+            rr_target = tp_pts / sl_pts if sl_pts > 0 else 0
+
+            trade = {
+                "date": sig["date"],
+                "time": sig["bar"],
+                "price": round(sig["price"], 2),
+                "fair_value": round(sig["fair_value"], 2),
+                "sigma_stat": round(sig["sigma_stat"], 2),
+                "deviation": round(sig["deviation"], 2),
+                "direction": sig["direction"],
+                "regime": ["LOW", "MED", "HIGH"][sig["regime"]],
+                "sl_pts": round(sl_pts, 2),
+                "tp_pts": round(tp_pts, 2),
+                "rr_target": round(rr_target, 1),
+                "result_pts": round(result_pts, 2),
+                "contracts": contracts,
+                "pnl_dollars": round(pnl_dollars, 2),
+                "win": result_pts > 0,
+                "equity": round(running_equity, 2),
+                "dd_from_peak": round(running_peak - running_equity, 2),
+            }
+            all_trades.append(trade)
+            month_trades.append(trade)
+            day_trade_count += 1
+
+            all_daily_stats.append({
+                "date": sig["date"],
+                "regime": trade["regime"],
+                "action": "TRADE",
+                "reason": f"{sig['direction']} @ {sig['price']:.2f}, "
+                          f"FV={sig['fair_value']:.2f}, dev={sig['deviation']:.1f}σ",
+            })
+
+            # Verifier objectif mensuel (challenge uniquement)
+            if not mode_funded and running_equity - capital_initial >= APEX_50K["profit_target"]:
+                challenge_passed = True
+                break
+
+            # En funded : stop si DD global atteint après ce trade
+            if mode_funded:
+                running_dd_check = running_peak - running_equity
+                if running_dd_check >= max_drawdown_dollars:
+                    challenge_busted = True
+                    break
+
+    # ── Sauvegarder le dernier mois apres la boucle ───────────────────
+    if current_month is not None:
+        if mode_funded:
+            _save_month_funded(current_month,
+                               running_equity - month_equity_start,
+                               month_trades, days_elapsed_bt)
+        else:
+            _save_month(current_month, running_equity, running_peak,
+                        month_trades, days_elapsed_bt, challenge_busted, challenge_passed)
 
     progress.empty()
 
@@ -536,39 +1127,109 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     trades_df = pd.DataFrame(all_trades)
     daily_df = pd.DataFrame(all_daily_stats)
 
-    # Challenge Apex
-    st.markdown("---")
-    if challenge_busted:
-        st.error(f"**CHALLENGE BUST** — DD >= ${max_drawdown_dollars}")
-    else:
-        max_dd_actual = trades_df["dd_from_peak"].max()
-        dd_pct = max_dd_actual / max_drawdown_dollars * 100
-        st.subheader("Challenge Apex")
-        ca1, ca2, ca3, ca4 = st.columns(4)
-        ca1.metric("DD max autorise", f"${max_drawdown_dollars:,}")
-        ca2.metric("DD max atteint", f"${max_dd_actual:,.0f}", delta=f"{dd_pct:.0f}% du max")
-        ca3.metric("Marge restante", f"${max_drawdown_dollars - max_dd_actual:,.0f}")
-        ca4.metric("Skip protection DD", skipped_dd)
-        if dd_pct < 50:
-            st.success(f"DD sous controle ({dd_pct:.0f}%)")
-        elif dd_pct < 75:
-            st.warning(f"DD a surveiller ({dd_pct:.0f}%)")
+    # ── Onglets resultats ─────────────────────────────────────────────
+    tab1_label = "💰 Funded PA" if mode_funded else "📅 Bilan Mensuel"
+    tab1, tab2, tab3, tab4 = st.tabs([tab1_label, "📈 Resultats", "🔧 Pipeline", "📉 Charts"])
+
+    monthly_df    = pd.DataFrame(monthly_results)
+    final_pnl     = trades_df["pnl_dollars"].sum()
+    max_dd_actual = trades_df["dd_from_peak"].max()
+    dd_pct        = max_dd_actual / max_drawdown_dollars * 100
+
+    with tab1:
+        if mode_funded:
+            st.markdown("<p class='section-title'>Funded PA — Simulation continue (pas de reset mensuel)</p>", unsafe_allow_html=True)
+
+            n_months  = len(monthly_df)
+            avg_pnl   = monthly_df["pnl"].mean()
+            best_m    = monthly_df.loc[monthly_df["pnl"].idxmax(), "mois"] if n_months > 0 else "—"
+            worst_m   = monthly_df.loc[monthly_df["pnl"].idxmin(), "mois"] if n_months > 0 else "—"
+            pos_months = (monthly_df["pnl"] > 0).sum()
+
+            fa1, fa2, fa3, fa4, fa5 = st.columns(5)
+            fa1.metric("P&L total (4-5 mois)", f"${final_pnl:+,.0f}")
+            fa2.metric("DD max global", f"${max_dd_actual:,.0f}",
+                       delta=f"{dd_pct:.0f}% du max $2 000",
+                       delta_color="inverse" if dd_pct > 50 else "normal")
+            fa3.metric("Mois positifs", f"{pos_months} / {n_months}")
+            fa4.metric("P&L moyen / mois", f"${avg_pnl:+,.0f}")
+            fa5.metric("Contrats max PA", f"{max_contracts} MNQ")
+
+            if challenge_busted:
+                st.error(f"BUST — DD global depasse ${max_drawdown_dollars:,} → compte coupe")
+            elif dd_pct > 50:
+                st.warning(f"DD {dd_pct:.0f}% du max — attention au risque de bust")
+            else:
+                st.success(f"Compte intact — DD max ${max_dd_actual:,.0f} / ${max_drawdown_dollars:,}")
+
+            # Tableau mensuel funded
+            def color_pnl_funded(val):
+                try:
+                    return "color: #00ff88" if float(val) >= 0 else "color: #ff3366"
+                except Exception:
+                    return ""
+
+            monthly_display = monthly_df.rename(columns={
+                "mois": "Mois", "pnl": "P&L ($)", "trades": "Trades",
+                "winrate": "WR %", "jours": "Jours trades", "statut": "Mode"
+            })[["Mois", "P&L ($)", "Trades", "WR %", "Jours trades"]]
+
+            st.dataframe(
+                monthly_display.style.applymap(color_pnl_funded, subset=["P&L ($)"]),
+                use_container_width=True, hide_index=True
+            )
+
         else:
-            st.error(f"DD dangereux ({dd_pct:.0f}%)")
+            st.markdown("<p class='section-title'>Challenge Apex — Fenetre 1 mois calendaire (reset mensuel)</p>", unsafe_allow_html=True)
 
-    # Pipeline
-    st.markdown("---")
-    st.subheader("Pipeline")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Jours analyses", len(dates))
-    c2.metric("Skip HIGH vol", skipped_high_vol)
-    c3.metric("Skip pas de signal", skipped_no_signal)
-    st.success(f"**{len(trades_df)} trades** sur {len(dates)} jours "
-               f"(Kalman OU, k={band_k}, 1/session)")
+            n_months    = len(monthly_df)
+            n_passed    = (monthly_df["statut"] == "PASSE").sum()
+            n_failed    = (monthly_df["statut"] == "ECHOUE").sum()
+            n_busted    = (monthly_df["statut"] == "BUST").sum()
+            pass_rate   = n_passed / n_months * 100 if n_months > 0 else 0
+            avg_days    = monthly_df[monthly_df["passe"]]["jours"].mean() if n_passed > 0 else float("nan")
 
-    # Metriques
-    st.markdown("---")
-    st.subheader("Resultats")
+            mb1, mb2, mb3, mb4, mb5 = st.columns(5)
+            mb1.metric("Mois simules", n_months)
+            mb2.metric("PASSES", n_passed,
+                       delta=f"{pass_rate:.0f}% taux de reussite", delta_color="normal")
+            mb3.metric("ECHOUES", n_failed, delta_color="inverse")
+            mb4.metric("BUST", n_busted, delta_color="inverse")
+            mb5.metric("Jours moy pour passer", f"{avg_days:.1f}" if not pd.isna(avg_days) else "N/A")
+
+            if pass_rate >= 70:
+                st.success(f"Taux de reussite {pass_rate:.0f}% — edge robuste pour l'eval Apex")
+            elif pass_rate >= 50:
+                st.warning(f"Taux de reussite {pass_rate:.0f}% — acceptable mais optimiser les parametres")
+            else:
+                st.error(f"Taux de reussite {pass_rate:.0f}% — revoir le sizing ou les conditions d'entree")
+
+            def color_statut(val):
+                if val == "PASSE":  return "background-color: #1a3a1a; color: #00ff88"
+                if val == "BUST":   return "background-color: #3a1a1a; color: #ff3366"
+                return "background-color: #2a2a1a; color: #ffd600"
+
+            monthly_display = monthly_df.rename(columns={
+                "mois": "Mois", "pnl": "P&L ($)", "trades": "Trades",
+                "winrate": "WR %", "max_dd": "DD max ($)", "jours": "Jours trades", "statut": "Statut"
+            })[["Mois", "P&L ($)", "Trades", "WR %", "DD max ($)", "Jours trades", "Statut"]]
+
+            st.dataframe(
+                monthly_display.style.applymap(color_statut, subset=["Statut"]),
+                use_container_width=True, hide_index=True
+            )
+
+            ca1, ca2, ca3, ca4, ca5 = st.columns(5)
+            ca1.metric("P&L dernier mois", f"${running_equity - capital_initial:+,.0f}",
+                       delta=f"{(running_equity - capital_initial)/APEX_50K['profit_target']*100:.0f}% objectif")
+            ca2.metric("DD max", f"${max_dd_actual:,.0f}",
+                       delta=f"{dd_pct:.0f}% du max $2 000",
+                       delta_color="inverse" if dd_pct > 50 else "normal")
+            ca3.metric("DD autorise", f"${max_drawdown_dollars:,}", delta="EOD Trail")
+            ca4.metric("Jours trades (dernier mois)", days_elapsed_bt)
+            ca5.metric("Daily stop interne", f"${DAILY_LOSS_HARD:.0f}", delta="80% de $1 000/j")
+
+    # ── Calculs communs (utilises dans tab2 et tab4) ───────────────────
     results = trades_df["result_pts"].values
     pnl = trades_df["pnl_dollars"].values
     wins = results[results > 0]
@@ -584,11 +1245,37 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     profit_factor = gross_profit / gross_loss
     kelly_full, kelly_half = kelly_fraction(results)
 
-    # Sharpe sur returns JOURNALIERS (jours sans trade = 0)
+    # Sharpe sur returns JOURNALIERS — inclut les jours sans trade (= 0)
+    # Fix : convertir l'index date → DatetimeIndex avant reindex (sinon mismatch silencieux)
     daily_pnl = trades_df.groupby("date")["pnl_dollars"].sum()
-    all_bdays = pd.bdate_range(trades_df["date"].min(), trades_df["date"].max())
-    daily_ret = daily_pnl.reindex(all_bdays, fill_value=0) / capital_initial
+    daily_pnl.index = pd.to_datetime(daily_pnl.index)
+    date_min = pd.to_datetime(trades_df["date"].min())
+    date_max = pd.to_datetime(trades_df["date"].max())
+    all_bdays = pd.bdate_range(date_min, date_max)
+    daily_ret = daily_pnl.reindex(all_bdays, fill_value=0.0) / capital_initial
+    n_bdays = len(all_bdays)
+    # ── Sharpe journalier (référence uniquement — biaisé par stops asymétriques) ──
     sharpe = (daily_ret.mean() / daily_ret.std() * np.sqrt(252)) if daily_ret.std() > 0 else 0
+
+    # ── Sharpe RÉEL — corrigé pour les trades intraday corrélés ──────────────────
+    # Formule : mean(R) / std(R) × √(252 / avg_trades_par_jour)
+    # R = result_pts / sl_pts  →  normalise par le risque réel de chaque trade
+    # Annualise par sessions indépendantes, pas par nombre de trades
+    r_series = trades_df["result_pts"] / trades_df["sl_pts"].replace(0, np.nan)
+    r_series = r_series.dropna()
+    avg_tpd = max(1.0, len(trades_df) / max(1, n_bdays))   # trades par jour (business)
+    sharpe_real = (r_series.mean() / r_series.std() * np.sqrt(252 / avg_tpd)) if r_series.std() > 0 else 0
+
+    # ── Stress-test : +3× slippage sur chaque trade ───────────────────────────
+    pnl_stress = trades_df["pnl_dollars"] - trades_df["contracts"] * DOLLAR_PER_PT * slippage_ticks * TICK_SIZE * 2
+    r_stress = (trades_df["result_pts"] - slippage_ticks * TICK_SIZE * 2) / trades_df["sl_pts"].replace(0, np.nan)
+    r_stress = r_stress.dropna()
+    sharpe_stress = (r_stress.mean() / r_stress.std() * np.sqrt(252 / avg_tpd)) if r_stress.std() > 0 else 0
+
+    # ── Sortino réel (downside R uniquement) ─────────────────────────────────
+    r_down = r_series[r_series < 0]
+    sortino_std = r_down.std() if len(r_down) > 1 else r_series.std()
+    sortino = (r_series.mean() / sortino_std * np.sqrt(252 / avg_tpd)) if sortino_std > 0 else 0
 
     equity = capital_initial + np.cumsum(pnl)
     equity = np.insert(equity, 0, capital_initial)
@@ -597,24 +1284,62 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     max_dd = drawdown.min()
     total_return = (equity[-1] - capital_initial) / capital_initial * 100
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Trades", n_total)
-    c1.metric("W / L", f"{n_wins} / {len(losses)}")
-    c2.metric("Winrate", f"{winrate:.1%}")
-    c2.metric("Profit Factor", f"{profit_factor:.2f}")
-    c3.metric("Esperance", f"{expectancy:.1f} pts")
-    c3.metric("R:R moyen", f"{trades_df['rr_target'].mean():.1f}")
-    c4.metric("Gain moyen", f"{avg_win:.1f} pts")
-    c4.metric("Perte moy.", f"{avg_loss:.1f} pts")
-    c5.metric("Max Drawdown", f"{max_dd:.1f}%")
-    c5.metric("P&L total", f"${pnl.sum():,.0f}")
-    c5.metric("Sharpe Ratio", f"{sharpe:.2f}")
+    annual_return = daily_ret.mean() * 252
+    calmar = annual_return / abs(max_dd / 100) if max_dd != 0 else 0
 
-    # Kelly
-    st.markdown("---")
-    ck1, ck2 = st.columns(2)
+    n_pos_days = (daily_ret > 0).sum()
+    n_neg_days = (daily_ret < 0).sum()
+    n_zero_days = (daily_ret == 0).sum()
+
+    with tab2:
+        st.markdown("<p class='section-title'>Performance globale</p>", unsafe_allow_html=True)
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Trades", n_total)
+        c1.metric("W / L", f"{n_wins} / {len(losses)}")
+        c2.metric("Winrate", f"{winrate:.1%}")
+        c2.metric("Profit Factor", f"{profit_factor:.2f}")
+        c3.metric("Esperance", f"{expectancy:.1f} pts")
+        c3.metric("R:R moyen", f"{trades_df['rr_target'].mean():.1f}")
+        c4.metric("Gain moyen", f"{avg_win:.1f} pts")
+        c4.metric("Perte moy.", f"{avg_loss:.1f} pts")
+        c5.metric("Max Drawdown", f"{max_dd:.1f}%")
+        c5.metric("P&L total", f"${pnl.sum():,.0f}")
+
+        st.markdown("<p class='section-title'>Métriques de risque ajustées</p>", unsafe_allow_html=True)
+        r1, r2, r3, r4, r5 = st.columns(5)
+        r1.metric("Sharpe brut", f"{sharpe:.2f}",
+                  delta="biaisé — ignorer",
+                  delta_color="off")
+        r2.metric("Sharpe réel", f"{sharpe_real:.2f}",
+                  delta=f"R-normalisé · {avg_tpd:.1f} trades/jour",
+                  delta_color="normal" if 1.0 <= sharpe_real <= 3.0 else "inverse")
+        r3.metric("Sharpe stress (live)", f"{sharpe_stress:.2f}",
+                  delta="+3× slippage · estimation live",
+                  delta_color="normal" if sharpe_stress >= 1.0 else "inverse")
+        r4.metric("Sortino réel", f"{sortino:.2f}",
+                  delta="vol. négative seule",
+                  delta_color="normal" if sortino > 1.2 else "inverse")
+        r5.metric("Jours +/0/−", f"{n_pos_days}/{n_zero_days}/{n_neg_days}",
+                  delta=f"{n_bdays} j. business | Calmar {calmar:.1f}")
+
+        cible_ok = 1.0 <= sharpe_real <= 2.5
+        stress_ok = sharpe_stress >= 0.8
+        if cible_ok and stress_ok:
+            st.success(
+                f"**Edge confirmé** — Sharpe réel {sharpe_real:.2f} (cible 1.2–1.5) | "
+                f"Stress live {sharpe_stress:.2f} | {avg_tpd:.1f} trades/jour corrigé"
+            )
+        elif not cible_ok:
+            st.warning(
+                f"**Sharpe réel {sharpe_real:.2f} hors cible** — "
+                f"{'trop élevé → probable overfitting' if sharpe_real > 2.5 else 'trop faible → edge insuffisant'}. "
+                f"Cible : 1.2–1.5"
+            )
+
+        st.markdown("<p class='section-title'>Kelly Criterion</p>", unsafe_allow_html=True)
+        ck1, ck2 = st.columns(2)
     with ck1:
-        st.markdown("### Kelly Criterion")
+        st.markdown("<p class='section-title'>Kelly Criterion</p>", unsafe_allow_html=True)
         st.metric("Kelly optimal", f"{kelly_full:.1%}")
         st.metric("Demi-Kelly", f"{kelly_half:.1%}")
         avg_sl = trades_df["sl_pts"].mean()
@@ -640,9 +1365,18 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
                                 yaxis_title="g(f)", **DARK)
             st.plotly_chart(fig_k, use_container_width=True)
 
-    # Equity curve
-    st.markdown("---")
-    fig_eq = make_subplots(rows=2, cols=1, shared_xaxes=True,
+    with tab3:
+        st.markdown("<p class='section-title'>Filtres pipeline</p>", unsafe_allow_html=True)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Jours analyses", len(dates))
+        c2.metric("Skip HIGH vol", skipped_high_vol)
+        c3.metric("Skip pas de signal", skipped_no_signal)
+        c4.metric("Skip 2 pertes consec", skipped_consec)
+        st.info(f"**{len(trades_df)} trades** sur {len(dates)} jours — Apex 50K EOD | Daily $1 000 | DD $2 000 | Half-Kelly")
+
+    with tab4:
+        st.markdown("<p class='section-title'>Equity curve</p>", unsafe_allow_html=True)
+        fig_eq = make_subplots(rows=2, cols=1, shared_xaxes=True,
                             row_heights=[0.7, 0.3],
                             subplot_titles=["Equity ($)", "Drawdown (%)"])
     fig_eq.add_trace(go.Scatter(
@@ -666,7 +1400,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     st.plotly_chart(fig_eq, use_container_width=True)
 
     # Distribution P&L
-    st.markdown("### Distribution P&L")
+    st.markdown("<p class='section-title'>Distribution P&L</p>", unsafe_allow_html=True)
     colors = [GREEN if r > 0 else RED for r in results]
     fig_d = go.Figure()
     fig_d.add_trace(go.Bar(

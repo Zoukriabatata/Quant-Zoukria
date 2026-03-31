@@ -20,6 +20,34 @@ def save_progress(completed: set):
 
 st.set_page_config(page_title="Quant Maths", page_icon="QM", layout="wide")
 
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+[data-testid="stAppViewContainer"] { background: #060606; }
+[data-testid="stSidebar"] { background: #0a0a0a; border-right: 1px solid #1a1a1a; }
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stToolbar"] { display: none; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #3CC4B7; border-radius: 2px; }
+[data-testid="stSidebarNav"] { padding: 0.5rem 0; }
+[data-testid="stSidebarNavLink"] {
+    display: block; padding: 0.6rem 1.2rem; margin: 2px 8px;
+    border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem; letter-spacing: 0.08em; color: #555 !important;
+    text-decoration: none !important; transition: background 0.15s, color 0.15s;
+    border: 1px solid transparent;
+}
+[data-testid="stSidebarNavLink"]:hover {
+    background: #111 !important; color: #ccc !important; border-color: #1a1a1a;
+}
+[data-testid="stSidebarNavLink"][aria-current="page"] {
+    background: rgba(60,196,183,0.08) !important;
+    color: #3CC4B7 !important; border-color: rgba(60,196,183,0.2);
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 def render_math_markdown(text):
     """Render markdown with LaTeX support.
@@ -118,8 +146,11 @@ MODULES = {
     "05_hidden_markov_models.md": ("05", "HMM", "Regime de marche (theorie)", 2),
     "05b_regime_switching.md": ("05b", "Regime Switch", "QUAND trader (live)", 2),
     "05c_hawkes.md": ("05c", "Hawkes", "Microstructure orderflow", 2),
+    "05d_gmm_regime.md": ("05d", "GMM Sticky", "Identifier les vrais regimes", 2),
     "06_kalman_filter.md": ("06", "Kalman Filter", "Signal propre", 3),
     "06b_kalman_mean_reversion.md": ("06b", "Kalman MR", "Mean reversion trading", 3),
+    "06c_halflife_ou.md": ("06c", "Demi-vie OU", "Filtrer les signaux lents", 3),
+    "06d_confirmation_reversal.md": ("06d", "Confirmation", "Timing d'entree optimal", 3),
     "07_pipeline_integration.md": ("07", "Pipeline", "Tout connecter", 4),
 }
 
@@ -137,8 +168,11 @@ VIDEO_LINKS = {
     "05_hidden_markov_models.md": ("https://youtu.be/Bru4Mkr601Q", "#51 Hidden Markov Models"),
     "05b_regime_switching.md": ("https://youtu.be/mais1dsB_1g", "#72/74 Markov Regime Switching Bot"),
     "05c_hawkes.md": ("https://youtu.be/BotPHbWFRUA", "#94 Hawkes Processes"),
+    "05d_gmm_regime.md": ("https://youtu.be/Bru4Mkr601Q", "#51 Hidden Markov Models + #72/74 Regime Switching"),
     "06_kalman_filter.md": ("https://youtu.be/zVJY_oaVh-0", "#92 Kalman Filter"),
     "06b_kalman_mean_reversion.md": ("https://youtu.be/BuPil7nXvMU", "#95 Trading Mean Reversion with Kalman Filters"),
+    "06c_halflife_ou.md": ("https://youtu.be/BuPil7nXvMU", "#95 Trading Mean Reversion — Half-life OU"),
+    "06d_confirmation_reversal.md": ("https://youtu.be/mais1dsB_1g", "#72 Markov Regime Switching Bot — Timing"),
 }
 
 # ── State ───────────────────────────────────────────────────────────

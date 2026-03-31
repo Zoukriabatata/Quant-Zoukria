@@ -1,52 +1,221 @@
 """
 Live Kalman OU Mean Reversion — MNQ
-IBKR TWS → barres 1 min → Kalman fair value → bandes OU
-→ Signal quand prix hors bande → alerte → trade sur Apex
+Alpaca → QQQ barres 1 min → Kalman fair value → bandes OU
+→ Signal quand prix hors bande → alerte → trade MNQ sur Apex
+(QQQ correlation ~99% avec MNQ — meme direction, 0 delai, gratuit)
 
 Usage: streamlit run live_kalman.py
-Prerequis: TWS ouvert avec API activee (port 7497)
+Prerequis: Cle API Alpaca gratuite sur alpaca.markets
 """
 
 import os
 import time
-import asyncio
+import calendar
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as st_components
 import plotly.graph_objects as go
-from datetime import datetime, timezone
-
-# Fix event loop pour ib_insync + Streamlit
-try:
-    asyncio.get_event_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
+from datetime import datetime, timezone, timedelta, date
 
 try:
-    from ib_insync import IB, Future, util
-    HAS_IB = True
+    import yfinance as yf
+    HAS_YF = True
 except ImportError:
-    HAS_IB = False
+    HAS_YF = False
 
 # ── Theme ────────────────────────────────────────────────────────────
 DARK = dict(
     template="plotly_dark",
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(17,17,17,1)",
-    font=dict(color="#e0e0e0", size=13),
+    paper_bgcolor="rgba(6,6,6,0)",
+    plot_bgcolor="rgba(10,10,10,1)",
+    font=dict(color="#888", size=12, family="JetBrains Mono"),
     margin=dict(t=50, b=40, l=50, r=30),
 )
-CYAN, MAGENTA, GREEN, RED = "#00e5ff", "#ff00e5", "#00ff88", "#ff3366"
+TEAL, CYAN, MAGENTA, GREEN, RED = "#3CC4B7", "#00e5ff", "#ff00e5", "#00ff88", "#ff3366"
 YELLOW, ORANGE = "#ffd600", "#ff9100"
 
-st.set_page_config(page_title="Live Kalman OU", page_icon="KO", layout="wide")
-st.title("Live Kalman OU — MNQ")
+st.set_page_config(page_title="Live Kalman OU", page_icon="⚡", layout="wide")
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+* { box-sizing: border-box; }
+
+[data-testid="stAppViewContainer"] {
+    background: #060606;
+    font-family: 'Space Grotesk', sans-serif;
+}
+[data-testid="stSidebar"] {
+    background: #0a0a0a;
+    border-right: 1px solid #1a1a1a;
+}
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stToolbar"] { display: none; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #3CC4B7; border-radius: 2px; }
+
+/* ── Sidebar Nav ── */
+[data-testid="stSidebarNav"] { padding: 0.5rem 0; }
+[data-testid="stSidebarNavLink"] {
+    display: block;
+    padding: 0.6rem 1.2rem;
+    margin: 2px 8px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: #555 !important;
+    text-decoration: none !important;
+    transition: background 0.15s, color 0.15s;
+    border: 1px solid transparent;
+}
+[data-testid="stSidebarNavLink"]:hover {
+    background: #111 !important;
+    color: #ccc !important;
+    border-color: #1a1a1a;
+}
+[data-testid="stSidebarNavLink"][aria-current="page"] {
+    background: rgba(60,196,183,0.08) !important;
+    color: #3CC4B7 !important;
+    border-color: rgba(60,196,183,0.2);
+}
+[data-testid="stSidebarNavLink"] span { font-size: 0.75rem !important; }
+
+.page-header {
+    padding: 1.5rem 0 0.5rem;
+    border-bottom: 1px solid #1a1a1a;
+    margin-bottom: 1.5rem;
+}
+.page-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    color: #3CC4B7;
+    text-transform: uppercase;
+}
+.page-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.02em;
+    margin: 0.3rem 0 0;
+}
+
+.signal-box {
+    text-align: center;
+    padding: 2.5rem 2rem;
+    border-radius: 12px;
+    margin: 1rem 0;
+    border: 1px solid;
+    position: relative;
+    overflow: hidden;
+}
+.signal-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+}
+.signal-box.long::before  { background: linear-gradient(90deg, #00ff88, transparent); }
+.signal-box.short::before { background: linear-gradient(90deg, #ff3366, transparent); }
+.signal-box.none::before  { background: linear-gradient(90deg, #ffd600, transparent); }
+.signal-text {
+    font-size: 4rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    font-family: 'JetBrains Mono', monospace;
+}
+.signal-sub {
+    font-size: 0.85rem;
+    color: #555;
+    margin-top: 0.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.08em;
+}
+
+.stat-row {
+    display: flex;
+    gap: 0;
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 1rem 0;
+}
+.stat-cell {
+    flex: 1;
+    padding: 1rem;
+    text-align: center;
+    border-right: 1px solid #1a1a1a;
+}
+.stat-cell:last-child { border-right: none; }
+.stat-cell:hover { background: #0f0f0f; }
+.stat-num {
+    font-size: 1.4rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: -0.02em;
+}
+.stat-lbl {
+    font-size: 0.6rem;
+    color: #444;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 0.2rem;
+}
+
+.exec-block {
+    background: #0a0a0a;
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin: 0.8rem 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+}
+.exec-row { display: flex; gap: 2rem; flex-wrap: wrap; }
+.exec-key { color: #3CC4B7; font-weight: 700; min-width: 80px; }
+.exec-val { color: #ccc; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div class="page-header">
+    <div class="page-tag">LIVE · QQQ → MNQ · APEX 50K EOD</div>
+    <div class="page-title">Live Kalman OU</div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Sidebar ──────────────────────────────────────────────────────────
 st.sidebar.header("Kalman OU")
-band_k = st.sidebar.number_input("Bande k (sigma)", value=1.0, min_value=0.3, max_value=3.0, step=0.1)
+band_k = st.sidebar.number_input("Bande k (sigma)", value=1.5, min_value=0.3, max_value=3.0, step=0.1)
 kalman_lookback = st.sidebar.number_input("Lookback (barres)", value=120, min_value=30, step=10)
 kalman_R_mult = st.sidebar.number_input("R multiplier", value=5.0, min_value=0.5, step=0.5)
+
+st.sidebar.markdown("---")
+st.sidebar.header("Filtres signal (Quant Guild)")
+use_gmm_live = st.sidebar.toggle(
+    "GMM Sticky Regime (Lec 51/72)",
+    value=True,
+    help="Filtre le signal par régime LOW uniquement via GMM 3-états sticky"
+)
+confirm_reversal_live = st.sidebar.toggle(
+    "Confirmation reversion (Lec 72)",
+    value=True,
+    help="Signal valide seulement si la barre en cours est déjà plus proche du FV que la précédente"
+)
+use_hl_live = st.sidebar.toggle(
+    "Filtre demi-vie OU (Lec 92/95)",
+    value=True,
+    help="N'affiche le signal que si la reversion est assez rapide (demi-vie < seuil)"
+)
+max_hl_live = st.sidebar.number_input(
+    "Demi-vie max (barres)", value=60, min_value=10, max_value=300, step=10,
+    help="60 barres = ~1h pour revenir à 50% de l'écart"
+) if use_hl_live else 9999
 
 st.sidebar.markdown("---")
 st.sidebar.header("Risk")
@@ -54,10 +223,180 @@ sl_atr_mult = st.sidebar.number_input("SL = ATR x", value=1.5, step=0.1)
 max_sl = st.sidebar.number_input("SL max (pts)", value=15.0, step=1.0)
 
 st.sidebar.markdown("---")
-st.sidebar.header("IBKR")
-ib_host = st.sidebar.text_input("Host", value="127.0.0.1")
-ib_port = st.sidebar.number_input("Port", value=7497, step=1)
-refresh_sec = st.sidebar.number_input("Refresh (sec)", value=30, min_value=10, step=5)
+st.sidebar.header("Challenge Apex 50K EOD")
+
+# ── Regles Apex 50K EOD (fixes) ──────────────────────────────────────
+APEX_50K = {
+    "capital":        50_000,
+    "profit_target":  3_000,   # objectif du challenge
+    "trailing_dd":    2_000,   # drawdown trailing EOD max (Apex 50K EOD Trail)
+    "daily_loss":     1_000,   # perte max par jour
+    "max_contracts":  60,      # 60 micro (MNQ) pendant l'eval
+    "max_contracts_pa": 40,    # 40 micro en Performance Account
+    "trading_days":   22,      # objectif 1 mois — mais Min Days To Pass = 1
+    "consistency_pa": 0.50,    # regle PA : aucun jour > 50% du profit total
+}
+
+# Calendrier — fenetre = date de debut du challenge → fin du mois calendaire
+_today = date.today()
+
+challenge_start = st.sidebar.date_input(
+    "Date de debut du challenge",
+    value=_today,
+    help="Le jour ou tu as active ton compte Apex. La fenetre se termine le dernier jour de CE mois."
+)
+challenge_start = pd.Timestamp(challenge_start).date()
+
+# Fin de fenetre = dernier jour calendaire du mois de debut
+_window_year  = challenge_start.year
+_window_month = challenge_start.month
+_month_last_day = calendar.monthrange(_window_year, _window_month)[1]
+_month_end = date(_window_year, _window_month, _month_last_day)
+
+# Jours business depuis le debut du challenge jusqu'a aujourd'hui (inclus)
+_bdays_done = len(pd.bdate_range(
+    start=challenge_start.strftime("%Y-%m-%d"),
+    end=_today.strftime("%Y-%m-%d")
+))
+# Jours business restants (demain → fin du mois de debut)
+_tomorrow = (_today + timedelta(days=1)).strftime("%Y-%m-%d")
+_bdays_left = len(pd.bdate_range(
+    start=_tomorrow,
+    end=_month_end.strftime("%Y-%m-%d")
+)) if _today < _month_end else 0
+
+_bdays_total = _bdays_done + _bdays_left
+# Jours calendaires restants (pour l'affichage)
+_cal_days_left = max(0, (_month_end - _today).days)
+
+days_elapsed = _bdays_done
+days_remaining_override = st.sidebar.number_input(
+    "Jours tradables restants (auto)", value=_bdays_left,
+    min_value=0, max_value=23, step=1,
+    help="Jours business restants jusqu'a fin du mois de ton challenge. Modifie si besoin."
+)
+
+st.sidebar.markdown("---")
+
+# ── Import CSV Rithmic/Apex (optionnel) ──────────────────────────────
+def parse_rithmic_csv(uploaded):
+    """
+    Parse l'export CSV de Rithmic Trader (historique des trades).
+    Colonnes attendues (noms Rithmic) : Date, P/L, Buy/Sell ou similaire.
+    Retourne : pnl_total_challenge, pnl_today, consec_losses, trades_today,
+               trailing_dd_used, peak_equity, df_trades
+    """
+    try:
+        df = pd.read_csv(uploaded)
+        df.columns = df.columns.str.strip().str.lower()
+
+        # Normaliser les colonnes — Rithmic a plusieurs formats selon la version
+        col_map = {}
+        for c in df.columns:
+            if "p/l" in c or "pnl" in c or "profit" in c:
+                col_map["pnl"] = c
+            if "date" in c and "time" not in c:
+                col_map["date"] = c
+            if "time" in c and "date" not in c:
+                col_map["time"] = c
+
+        if "pnl" not in col_map:
+            return None, "Colonne P/L introuvable. Exporte depuis Rithmic : Trade History → Export CSV."
+
+        df["_pnl"] = pd.to_numeric(df[col_map["pnl"]], errors="coerce").fillna(0)
+
+        # Date
+        if "date" in col_map:
+            df["_date"] = pd.to_datetime(df[col_map["date"]], errors="coerce")
+        else:
+            df["_date"] = pd.Timestamp(_today)
+
+        df = df.dropna(subset=["_date"])
+        df = df[df["_date"].dt.date >= challenge_start]  # seulement depuis debut challenge
+
+        if df.empty:
+            return None, f"Aucun trade depuis le {challenge_start} dans ce fichier."
+
+        # Metriques challenge
+        pnl_total = df["_pnl"].sum()
+
+        today_mask = df["_date"].dt.date == _today
+        pnl_today_csv = df.loc[today_mask, "_pnl"].sum()
+        trades_today_csv = today_mask.sum()
+
+        # Trailing DD (max peak → current depuis le debut du challenge)
+        cumulative = df["_pnl"].cumsum()
+        peak_series = cumulative.cummax()
+        drawdowns = peak_series - cumulative
+        trailing_dd_csv = drawdowns.max()
+
+        # Pertes consecutives (dernieres N lignes)
+        consec = 0
+        for p in reversed(df["_pnl"].tolist()):
+            if p < 0:
+                consec += 1
+            else:
+                break
+
+        return {
+            "pnl_total":     round(pnl_total, 2),
+            "pnl_today":     round(pnl_today_csv, 2),
+            "trades_today":  int(trades_today_csv),
+            "consec_losses": consec,
+            "trailing_dd":   round(trailing_dd_csv, 2),
+            "df":            df[["_date", "_pnl"]].rename(columns={"_date": "Date", "_pnl": "P&L ($)"}),
+        }, None
+    except Exception as e:
+        return None, f"Erreur lecture CSV : {e}"
+
+with st.sidebar.expander("Importer CSV Rithmic (auto-track)", expanded=False):
+    st.caption("Rithmic Trader Pro → Account → Trade History → Export CSV")
+    uploaded_csv = st.file_uploader("CSV export Rithmic", type=["csv"], label_visibility="collapsed")
+
+_csv_data = None
+if uploaded_csv is not None:
+    _csv_data, _csv_err = parse_rithmic_csv(uploaded_csv)
+    if _csv_err:
+        st.sidebar.warning(f"CSV : {_csv_err}")
+    else:
+        st.sidebar.success(
+            f"CSV charge — P&L challenge : ${_csv_data['pnl_total']:+,.0f} | "
+            f"Aujourd'hui : ${_csv_data['pnl_today']:+,.0f}"
+        )
+
+# Valeurs : CSV si disponible, sinon saisie manuelle
+_default_pnl_today   = float(_csv_data["pnl_today"])   if _csv_data else 0.0
+_default_consec      = int(_csv_data["consec_losses"])  if _csv_data else 0
+_default_trades      = int(_csv_data["trades_today"])   if _csv_data else 0
+_default_total       = float(_csv_data["pnl_total"])    if _csv_data else 0.0
+_default_dd          = float(_csv_data["trailing_dd"])  if _csv_data else 0.0
+
+# ── Challenge progress (apres CSV pour que les defaults CSV fonctionnent) ─
+challenge_pnl_total = st.sidebar.number_input(
+    "P&L total challenge ($)",
+    value=_default_total, step=50.0,
+    help="Cumul de tous tes trades depuis le 1er jour du challenge. Auto si CSV charge."
+)
+trailing_dd_used = st.sidebar.number_input(
+    "Trailing DD utilise ($)",
+    value=_default_dd, min_value=0.0, max_value=float(APEX_50K["trailing_dd"]), step=50.0,
+    help="Perte max depuis ton plus haut balance. Auto si CSV charge."
+)
+
+st.sidebar.subheader("Aujourd'hui")
+pnl_today = st.sidebar.number_input("P&L aujourd'hui ($)", value=_default_pnl_today, step=25.0,
+    help="Positif si gain, negatif si perte. Auto si CSV charge.")
+consec_losses = st.sidebar.number_input("Pertes consecutives", value=_default_consec,
+    min_value=0, max_value=5, step=1,
+    help="Auto si CSV charge.")
+trades_today = st.sidebar.number_input("Nb trades pris aujourd'hui", value=_default_trades,
+    min_value=0, step=1,
+    help="Auto si CSV charge.")
+
+st.sidebar.markdown("---")
+st.sidebar.header("Source données")
+st.sidebar.caption("QQQ via yfinance — gratuit, ~1-2 min delai")
+refresh_sec = st.sidebar.number_input("Refresh (sec)", value=30, min_value=15, step=5)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -65,11 +404,12 @@ refresh_sec = st.sidebar.number_input("Refresh (sec)", value=30, min_value=10, s
 # ══════════════════════════════════════════════════════════════════════
 
 def kalman_ou_filter(prices, lookback, R_mult=5.0):
-    """Kalman OU → fair_value, sigma_stat, K."""
+    """Kalman OU → fair_value, sigma_stat, K, half_life."""
     n = len(prices)
     fair_values = np.full(n, np.nan)
     sigma_stats = np.full(n, np.nan)
     kalman_gains = np.full(n, np.nan)
+    half_lives   = np.full(n, np.nan)
 
     for i in range(lookback, n):
         window = prices[max(0, i - lookback):i]
@@ -81,6 +421,7 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
             fair_values[i] = prices[i]
             sigma_stats[i] = 5.0
             kalman_gains[i] = 0.5
+            half_lives[i]   = 999.0
             continue
 
         sx = np.sum(x_prev)
@@ -93,6 +434,7 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
             fair_values[i] = prices[i]
             sigma_stats[i] = 5.0
             kalman_gains[i] = 0.5
+            half_lives[i]   = 999.0
             continue
 
         phi = np.clip((m * sxy - sx * sy) / denom, 0.5, 0.999)
@@ -101,6 +443,7 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
         residuals = x_curr - (phi * x_prev + c)
         sigma = max(np.std(residuals), 1.0)
         sigma_stat = sigma / np.sqrt(max(2 * (1 - phi), 0.001))
+        hl = -np.log(2) / np.log(phi) if phi > 0 else 999.0
 
         Q = sigma ** 2 * (1 - phi ** 2)
         R = sigma ** 2 * R_mult
@@ -117,8 +460,74 @@ def kalman_ou_filter(prices, lookback, R_mult=5.0):
         fair_values[i] = x_est
         sigma_stats[i] = sigma_stat
         kalman_gains[i] = K
+        half_lives[i]   = hl
 
-    return fair_values, sigma_stats, kalman_gains
+    return fair_values, sigma_stats, kalman_gains, half_lives
+
+
+def classify_regime_gmm(returns, sticky_window=5):
+    """
+    Régime 3-états via GMM sur |returns| avec transitions sticky.
+    Ref: Quant Guild Lecture 51 + 72/74
+    Retourne tableau : 0=LOW, 1=MED, 2=HIGH
+    """
+    try:
+        from sklearn.mixture import GaussianMixture
+    except ImportError:
+        return None
+    n = len(returns)
+    X = np.abs(returns).reshape(-1, 1)
+    gmm = GaussianMixture(n_components=3, covariance_type="full",
+                          n_init=5, random_state=42, max_iter=200)
+    gmm.fit(X)
+    raw_labels = gmm.predict(X)
+    means = gmm.means_.flatten()
+    order = np.argsort(means)
+    remap = {order[i]: i for i in range(3)}
+    regimes = np.array([remap[l] for l in raw_labels])
+    # Sticky LOW
+    non_low_streak = 0
+    smoothed = regimes.copy()
+    for i in range(1, n):
+        if smoothed[i - 1] == 0:
+            if regimes[i] != 0:
+                non_low_streak += 1
+                if non_low_streak < sticky_window:
+                    smoothed[i] = 0
+                else:
+                    non_low_streak = 0
+            else:
+                non_low_streak = 0
+        else:
+            non_low_streak = 0
+    return smoothed
+
+
+def clean_price_spikes(df, spike_mult=6.0):
+    """
+    Supprime les barres avec un prix aberrant (bad tick IBKR).
+    Methode : si le close s'ecarte de plus de spike_mult * rolling_std
+    de la mediane glissante sur 20 barres → remplace par NaN puis forward-fill.
+    """
+    closes = df["close"].values.astype(float).copy()
+    n = len(closes)
+    window = 20
+
+    for i in range(window, n):
+        local = closes[max(0, i - window):i]
+        median = np.median(local)
+        std = np.std(local)
+        if std < 1e-6:
+            continue
+        if abs(closes[i] - median) > spike_mult * std:
+            closes[i] = np.nan
+
+    # Forward-fill les NaN
+    s = pd.Series(closes)
+    s = s.ffill().bfill()
+    df = df.copy()
+    df["close"] = s.values
+    return df
 
 
 def compute_atr(highs, lows, closes, period=14):
@@ -131,194 +540,531 @@ def compute_atr(highs, lows, closes, period=14):
     return pd.Series(tr).rolling(period, min_periods=1).mean().values
 
 
-@st.cache_resource
-def connect_ib(host, port):
-    """Connecte a TWS/IB Gateway."""
-    ib = IB()
+def fetch_bars_yf(days=3):
+    """Recupere les barres 1 min de QQQ via yfinance (~1-2 min de delai, gratuit)."""
     try:
-        ib.connect(host, port, clientId=10, timeout=10)
-        return ib
+        df = yf.Ticker("QQQ").history(period=f"{days}d", interval="1m", auto_adjust=True)
+        if df is None or df.empty:
+            return None
+        df = df.reset_index()
+        ts_col = "Datetime" if "Datetime" in df.columns else df.columns[0]
+        df.rename(columns={ts_col: "bar", "Open": "open", "High": "high",
+                            "Low": "low", "Close": "close", "Volume": "volume"}, inplace=True)
+        df["bar"] = pd.to_datetime(df["bar"], utc=True)
+        return df[["bar", "open", "high", "low", "close", "volume"]].sort_values("bar").reset_index(drop=True)
     except Exception as e:
+        st.error(f"Erreur yfinance : {e}")
         return None
 
 
-def fetch_bars_ibkr(ib, lookback_minutes=180):
-    """Recupere les barres historiques 1 min de MNQ via IBKR."""
-    # Contrat MNQ continuous
-    contract = Future("MNQ", exchange="CME")
-    ib.qualifyContracts(contract)
-
-    duration = f"{lookback_minutes * 60} S"
-    bars = ib.reqHistoricalData(
-        contract,
-        endDateTime="",
-        durationStr=duration,
-        barSizeSetting="1 min",
-        whatToShow="TRADES",
-        useRTH=False,
-        formatDate=1,
-    )
-
-    if not bars:
-        return None
-
-    df = util.df(bars)
-    df.rename(columns={"date": "bar"}, inplace=True)
-    return df
+def refresh_bars_yf(existing_df):
+    """Mise a jour incrementale : recupere la journee en cours."""
+    try:
+        df = yf.Ticker("QQQ").history(period="1d", interval="1m", auto_adjust=True)
+        if df is None or df.empty:
+            return existing_df
+        df = df.reset_index()
+        ts_col = "Datetime" if "Datetime" in df.columns else df.columns[0]
+        df.rename(columns={ts_col: "bar", "Open": "open", "High": "high",
+                            "Low": "low", "Close": "close", "Volume": "volume"}, inplace=True)
+        df["bar"] = pd.to_datetime(df["bar"], utc=True)
+        new_df = df[["bar", "open", "high", "low", "close", "volume"]]
+        combined = pd.concat([existing_df, new_df], ignore_index=True)
+        return combined.drop_duplicates(subset=["bar"]).sort_values("bar").reset_index(drop=True)
+    except Exception:
+        return existing_df
 
 
 # ══════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
 
-if not HAS_IB:
-    st.error("pip install ib_insync")
+if not HAS_YF:
+    st.error("pip install yfinance")
     st.stop()
 
-st.markdown("**Prerequis:** TWS ouvert avec API activee (port 7497)")
+st.markdown("**Source:** QQQ via yfinance (gratuit) → signal MNQ sur Apex")
 
-if st.button("Demarrer", type="primary"):
+col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 4])
+if col_btn1.button("Demarrer", type="primary"):
+    st.session_state["live_running"] = True
+    st.session_state.pop("bars_cache", None)
 
-    # 1. Connexion IBKR
-    with st.spinner("Connexion a TWS..."):
-        ib = connect_ib(ib_host, ib_port)
+if col_btn2.button("Arreter"):
+    st.session_state["live_running"] = False
+    st.session_state.pop("bars_cache", None)
 
-    if ib is None or not ib.isConnected():
-        st.error("Impossible de se connecter a TWS. Verifie que TWS est ouvert "
-                 "et que 'Enable ActiveX and Socket Clients' est coche.")
-        st.stop()
+if not st.session_state.get("live_running"):
+    st.stop()
 
-    st.success("Connecte a TWS")
+# ── Chargement des barres ─────────────────────────────────────────────
+is_first_load = "bars_cache" not in st.session_state
 
-    # 2. Charger les barres historiques
-    with st.spinner("Chargement des barres MNQ..."):
-        bars_df = fetch_bars_ibkr(ib, lookback_minutes=kalman_lookback + 60)
+if is_first_load:
+    with st.spinner("Chargement des barres QQQ..."):
+        bars_df = fetch_bars_yf(days=3)
 
     if bars_df is None or len(bars_df) < kalman_lookback:
         st.error(f"Pas assez de barres ({len(bars_df) if bars_df is not None else 0}). "
-                 f"Le marche est peut-etre ferme.")
-        ib.disconnect()
+                 f"Le marche est peut-etre ferme (QQQ trade 9h30-16h00 ET).")
+        st.session_state["live_running"] = False
         st.stop()
 
-    st.info(f"{len(bars_df)} barres chargees")
+    st.session_state["bars_cache"] = bars_df
+    st.success(f"Connecte — {len(bars_df)} barres QQQ chargees")
+else:
+    existing = st.session_state["bars_cache"]
+    bars_df = refresh_bars_yf(existing)
+    st.session_state["bars_cache"] = bars_df
 
-    # 3. Kalman
-    prices = bars_df["close"].values.astype(float)
-    highs = bars_df["high"].values.astype(float)
-    lows = bars_df["low"].values.astype(float)
+# ── Nettoyage spikes avant Kalman ─────────────────────────────────────
+bars_df = clean_price_spikes(bars_df, spike_mult=6.0)
 
-    fair_values, sigma_stats, k_gains = kalman_ou_filter(prices, kalman_lookback, kalman_R_mult)
-    atr = compute_atr(highs, lows, prices)
+# ── Kalman ───────────────────────────────────────────────────────────
+prices = bars_df["close"].values.astype(float)
+highs = bars_df["high"].values.astype(float)
+lows = bars_df["low"].values.astype(float)
 
-    # Derniere barre
-    last_idx = len(prices) - 1
-    last_price = prices[last_idx]
-    fv = fair_values[last_idx]
-    ss = sigma_stats[last_idx]
-    kg = k_gains[last_idx]
-    last_atr = atr[last_idx]
+fair_values, sigma_stats, k_gains, half_lives = kalman_ou_filter(prices, kalman_lookback, kalman_R_mult)
+atr = compute_atr(highs, lows, prices)
 
-    if np.isnan(fv) or np.isnan(ss):
-        st.error("Kalman pas encore calibre.")
-        ib.disconnect()
-        st.stop()
+last_idx = len(prices) - 1
+last_price = prices[last_idx]
+fv = fair_values[last_idx]
+ss = sigma_stats[last_idx]
+kg = k_gains[last_idx]
+last_atr = atr[last_idx]
+last_hl = half_lives[last_idx]
 
-    upper = fv + band_k * ss
-    lower = fv - band_k * ss
-    sl_pts = min(last_atr * sl_atr_mult, max_sl)
-    tp_pts = abs(last_price - fv)
+if np.isnan(fv) or np.isnan(ss):
+    st.error("Kalman pas encore calibre.")
+    st.stop()
 
-    # Deconnecter IBKR (on a les donnees)
-    ib.disconnect()
+# ── Filtres signal avancés (Quant Guild Lec 51/72/74/92/95) ──────────
+# Calcul des returns pour GMM
+returns_arr = bars_df["close"].pct_change().fillna(0).values
 
-    # ── SIGNAL ───────────────────────────────────────────────────────
-    st.markdown("---")
-    deviation = (last_price - fv) / ss if ss > 0 else 0
+# Régime actuel via GMM sticky ou fallback
+signal_regime_ok = True
+current_regime_label = "N/A"
+if use_gmm_live:
+    gmm_regimes = classify_regime_gmm(returns_arr, sticky_window=5)
+    if gmm_regimes is not None:
+        cur_regime = gmm_regimes[last_idx]
+        regime_names = {0: "LOW", 1: "MED", 2: "HIGH"}
+        current_regime_label = regime_names.get(cur_regime, "?")
+        signal_regime_ok = (cur_regime == 0)  # uniquement LOW
+    else:
+        current_regime_label = "GMM N/A"
 
-    if last_price > upper:
+# Filtre demi-vie OU
+hl_ok = (not use_hl_live) or (not np.isnan(last_hl) and last_hl <= max_hl_live)
+
+# Confirmation reversion : la dernière barre est-elle plus proche du FV que l'avant-dernière ?
+reversal_ok = True
+if confirm_reversal_live and last_idx > 0 and not np.isnan(fair_values[last_idx - 1]):
+    prev_dev = abs(prices[last_idx - 1] - fair_values[last_idx - 1])
+    curr_dev = abs(last_price - fv)
+    reversal_ok = (curr_dev < prev_dev)
+
+# Signal final après filtres
+filters_pass = signal_regime_ok and hl_ok and reversal_ok
+
+# ── Detection donnees perimees (delay IBKR paper) ─────────────────────
+try:
+    last_bar_ts = pd.to_datetime(bars_df["bar"].iloc[-1], utc=True)
+    data_age_min = (datetime.now(timezone.utc) - last_bar_ts.to_pydatetime()).total_seconds() / 60
+except Exception:
+    data_age_min = 0.0
+
+DATA_STALE_WARN = 5    # orange si > 5 min
+DATA_STALE_ERROR = 20  # rouge si > 20 min (delay IBKR paper = 15 min)
+
+upper = fv + band_k * ss
+lower = fv - band_k * ss
+sl_pts = min(last_atr * sl_atr_mult, max_sl)
+tp_pts = abs(last_price - fv)
+
+# ══════════════════════════════════════════════════════════════════════
+# CHALLENGE APEX 50K EOD — MONEY MANAGEMENT
+# Basé sur backtest : WR=42%, PF=2, ratio win/loss=2.75
+# Kelly fraction = WR - (1-WR)/ratio = 0.42 - 0.58/2.75 = 21%
+# Half-Kelly utilisé = 10% du trailing DD restant par trade
+# ══════════════════════════════════════════════════════════════════════
+st.markdown("---")
+MNQ_POINT = 2.0  # 1 point MNQ = $2
+
+# ── Calculs challenge ─────────────────────────────────────────────────
+trailing_dd_remaining = APEX_50K["trailing_dd"] - trailing_dd_used
+days_remaining        = max(1, days_remaining_override)  # jours business restants ce mois
+pnl_needed            = max(0.0, APEX_50K["profit_target"] - challenge_pnl_total)
+daily_needed          = pnl_needed / days_remaining
+losses_today          = max(0.0, -pnl_today)   # pertes du jour (positif)
+
+# ── Determination de la phase ─────────────────────────────────────────
+# Phase SECURITE : 80%+ de l'objectif atteint → proteger le gain
+# Phase PRUDENTE : premiers 5 jours OU >50% du DD utilise → taille mini
+# Phase PUSH     : derniers 5 jours ET <80% objectif ET DD intact → taille max
+# Phase STANDARD : tous les autres cas → taille normale
+
+dd_pct_used = trailing_dd_used / APEX_50K["trailing_dd"]   # 0→1
+challenge_pct_done = challenge_pnl_total / APEX_50K["profit_target"]
+
+# Pas de limite de trades imposee par Apex — on trade tant que le signal existe
+# et que les stops internes (daily loss, consecutive losses, DD) ne sont pas atteints
+if challenge_pct_done >= 0.80:
+    phase = "SECURITE"
+    phase_color = CYAN
+    risk_pct_dd = 0.04   # 4% du DD restant → ultra-conservateur
+    phase_desc = "80%+ atteint — taille mini, protege le gain"
+elif dd_pct_used > 0.50 or trailing_dd_remaining < 400:
+    phase = "PRUDENTE"
+    phase_color = YELLOW
+    risk_pct_dd = 0.05   # 5% du DD restant
+    phase_desc = "DD > 50% utilise — taille reduite, qualite avant tout"
+elif days_remaining <= 5 and challenge_pct_done < 0.80:
+    phase = "PUSH"
+    phase_color = ORANGE
+    risk_pct_dd = 0.15   # 15% du DD restant
+    phase_desc = "Derniers jours — taille augmentee si signal fort"
+elif days_elapsed <= 5:
+    phase = "PRUDENTE"
+    phase_color = YELLOW
+    risk_pct_dd = 0.05
+    phase_desc = "Debut du challenge — taille mini, apprends le marche"
+else:
+    phase = "STANDARD"
+    phase_color = GREEN
+    risk_pct_dd = 0.10   # 10% du DD restant = Half-Kelly
+    phase_desc = "Execution mecanique — risque 10% du DD restant par trade"
+
+# ── Calcul du risque et des contrats ─────────────────────────────────
+risk_per_trade = max(80.0, min(trailing_dd_remaining * risk_pct_dd, 600.0))
+sl_dollars_per_contract = sl_pts * MNQ_POINT
+nb_contracts = max(1, int(risk_per_trade / sl_dollars_per_contract)) if sl_dollars_per_contract > 0 else 1
+nb_contracts = min(nb_contracts, APEX_50K["max_contracts"])
+total_risk_trade  = nb_contracts * sl_dollars_per_contract
+total_tp_trade    = nb_contracts * tp_pts * MNQ_POINT
+
+# Daily hard stops
+# Regle Apex EOD 50K : $1 000/jour fixe
+# On stop a $800 pour garder $200 de marge (evite de toucher exactement la limite)
+daily_loss_hard   = min(APEX_50K["daily_loss"] * 0.80, trailing_dd_remaining * 0.32)
+
+# ── EOD check ────────────────────────────────────────────────────────
+now_utc = datetime.now(timezone.utc)
+eod_utc = now_utc.replace(hour=21, minute=45, second=0, microsecond=0)
+past_eod = now_utc.time() > eod_utc.time()
+near_eod = (not past_eod) and (now_utc.hour == 21 and now_utc.minute >= 30)
+if past_eod:
+    mins_to_eod = 0
+else:
+    mins_to_eod = max(0, int((eod_utc - now_utc).total_seconds() / 60))
+
+# ── Autorisation de trader ───────────────────────────────��────────────
+# Pas de limite de trades Apex — on stop uniquement sur DD, daily loss, consec, EOD
+block_daily_loss = losses_today >= daily_loss_hard
+block_consec     = consec_losses >= 2
+block_dd         = trailing_dd_remaining <= 100
+block_eod        = past_eod or near_eod
+can_trade = not any([block_daily_loss, block_consec, block_dd, block_eod])
+
+# ══════════════════════════════════════════════════════════════════════
+# AFFICHAGE CHALLENGE
+# ══════════════════════════════════════════════════════════════════════
+st.markdown("""<div style='font-family:JetBrains Mono,monospace;font-size:0.65rem;letter-spacing:0.2em;color:#3CC4B7;text-transform:uppercase;margin:1.5rem 0 0.8rem'>CHALLENGE APEX 50K EOD TRAIL</div>""", unsafe_allow_html=True)
+
+# ── Ligne 1 : Progression challenge ──────────────────────────────────
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric(
+    "Objectif",
+    f"${challenge_pnl_total:+,.0f} / ${APEX_50K['profit_target']:,}",
+    delta=f"{challenge_pct_done*100:.0f}% atteint",
+    delta_color="normal"
+)
+c2.metric(
+    f"Mois en cours ({_today.strftime('%b %Y')})",
+    f"Jour {days_elapsed} / {_bdays_total}",
+    delta=f"{days_remaining} jours restants ce mois",
+    delta_color="inverse" if days_remaining <= 3 else "normal"
+)
+c3.metric(
+    "A faire / jour",
+    f"${daily_needed:.0f}",
+    delta="objectif journalier"
+)
+c4.metric(
+    "Trailing DD restant",
+    f"${trailing_dd_remaining:,.0f}",
+    delta=f"{dd_pct_used*100:.0f}% utilise",
+    delta_color="inverse" if dd_pct_used > 0.3 else "normal"
+)
+c5.metric(
+    f"Phase : {phase}",
+    f"{risk_pct_dd*100:.0f}% DD / trade",
+    delta=phase_desc
+)
+
+# Barre progression objectif
+st.markdown(f"**Progression objectif : {challenge_pct_done*100:.0f}%**")
+st.progress(min(challenge_pct_done, 1.0))
+
+# Barre trailing DD
+st.markdown(f"**Trailing drawdown utilise : {dd_pct_used*100:.0f}%** (max ${APEX_50K['trailing_dd']:,} EOD)")
+st.progress(min(dd_pct_used, 1.0))
+
+# ── Alerte fenetre mensuelle ──────────────────────────────────────────
+_month_name = f"{challenge_start.strftime('%d %b')} → {_month_end.strftime('%d %b %Y')}"
+if challenge_pct_done >= 1.0:
+    st.success(f"CHALLENGE PASSE — Objectif ${APEX_50K['profit_target']:,} atteint ce mois !")
+elif days_remaining == 0:
+    st.error(
+        f"FIN DE MOIS ({_month_name}) — Objectif non atteint "
+        f"(${challenge_pnl_total:+,.0f} / ${APEX_50K['profit_target']:,}). "
+        f"Le challenge repart de zero le 1er du mois prochain."
+    )
+elif days_remaining <= 3:
+    daily_needed_push = pnl_needed / days_remaining if days_remaining > 0 else pnl_needed
+    st.error(
+        f"URGENCE — {days_remaining} jour(s) restant(s) en {_month_name}. "
+        f"Il faut ${pnl_needed:.0f} en {days_remaining} jours "
+        f"(${daily_needed_push:.0f}/jour). Phase PUSH activee si DD intact."
+    )
+elif days_remaining <= 5:
+    st.warning(
+        f"{days_remaining} jours business restants en {_month_name}. "
+        f"Encore ${pnl_needed:.0f} a faire — "
+        f"${daily_needed:.0f}/jour necessaires."
+    )
+
+# ── Ligne 2 : Regles du jour ──────────────────────────────────────────
+st.markdown(f"#### Regles d'aujourd'hui — Phase <span style='color:{phase_color};font-weight:bold'>{phase}</span>", unsafe_allow_html=True)
+r1, r2, r3, r4, r5 = st.columns(5)
+
+r1.metric("Risque / trade", f"${risk_per_trade:.0f}",
+          delta=f"{risk_pct_dd*100:.0f}% du DD restant")
+r2.metric(f"Contrats x{nb_contracts}",
+          f"SL ${total_risk_trade:.0f} / TP ${total_tp_trade:.0f}",
+          delta=f"SL = {sl_pts:.1f} pts")
+r3.metric("Daily loss stop", f"${daily_loss_hard:.0f}",
+          delta=f"-${losses_today:.0f} aujourd'hui",
+          delta_color="inverse" if losses_today > 0 else "off")
+r4.metric("Trades aujourd'hui", f"{trades_today}",
+          delta=f"{consec_losses} pertes consec.",
+          delta_color="inverse" if consec_losses >= 1 else "off")
+
+# EOD
+paris_offset = 2
+eod_paris = f"{(21 + paris_offset) % 24:02d}:45"
+if past_eod:
+    r5.metric("EOD", "FERME", delta="Flat obligatoire", delta_color="inverse")
+elif near_eod:
+    r5.metric("EOD", f"{mins_to_eod} min", delta="FERME TES POSITIONS !", delta_color="inverse")
+else:
+    r5.metric("EOD (flat)", eod_paris + " Paris", delta=f"dans {mins_to_eod} min")
+
+# ── Status GO / STOP ──────────────────────────────────────────────────
+if block_dd:
+    st.error("ARRET TOTAL — Trailing drawdown critique (<$100 restant). Ne trade plus ce compte.")
+elif block_eod and past_eod:
+    st.error("SESSION FERMEE — Apres 21h45 UTC. Verifie que tu es flat sur Apex.")
+elif block_eod and near_eod:
+    st.warning("FERME TES POSITIONS — Moins de 15 min avant EOD obligatoire (21h45 UTC).")
+elif block_daily_loss:
+    st.error(f"STOP DU JOUR — Daily loss atteinte (${losses_today:.0f} / ${daily_loss_hard:.0f}). Ne trade plus aujourd'hui.")
+elif block_consec:
+    st.error("STOP DU JOUR — 2 pertes consecutives. Regle absolue : arrete maintenant.")
+else:
+    st.success(f"GO — Phase {phase} | Risque ${risk_per_trade:.0f} | {nb_contracts} contrat(s) MNQ | Daily loss restant : ${daily_loss_hard - losses_today:.0f}")
+
+# ── SIGNAL ───────────────────────────────────────────────────────────
+st.markdown("---")
+deviation = (last_price - fv) / ss if ss > 0 else 0
+
+# Guard : deviation > 4σ = probable bad tick residuel → ignorer
+MAX_VALID_DEVIATION = 4.0
+data_error = abs(deviation) > MAX_VALID_DEVIATION
+
+if data_error:
+    signal = "PAS DE SIGNAL"
+    signal_color = YELLOW
+    entry = sl = tp = None
+elif last_price > upper:
+    if filters_pass:
         signal = "SHORT"
         signal_color = RED
-        entry = last_price
-        sl = entry + sl_pts
-        tp = fv
-    elif last_price < lower:
+    else:
+        signal = "ATTENDRE"
+        signal_color = YELLOW
+    entry = last_price
+    sl = entry + sl_pts
+    tp = fv
+elif last_price < lower:
+    if filters_pass:
         signal = "LONG"
         signal_color = GREEN
-        entry = last_price
-        sl = entry - sl_pts
-        tp = fv
     else:
-        signal = "PAS DE SIGNAL"
+        signal = "ATTENDRE"
         signal_color = YELLOW
-        entry = sl = tp = None
+    entry = last_price
+    sl = entry - sl_pts
+    tp = fv
+else:
+    signal = "PAS DE SIGNAL"
+    signal_color = YELLOW
+    entry = sl = tp = None
 
-    st.markdown(f"### Signal: <span style='color:{signal_color};font-size:2.5em'>"
-                f"{signal}</span>", unsafe_allow_html=True)
+# ── Alerte son sur changement de signal ──────────────────────────────
+prev_signal = st.session_state.get("prev_signal", "PAS DE SIGNAL")
+signal_changed = (signal != prev_signal) and (signal in ("LONG", "SHORT"))
+st.session_state["prev_signal"] = signal
 
-    # Metriques
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Prix MNQ", f"{last_price:,.2f}")
-    m2.metric("Fair Value", f"{fv:,.2f}")
-    m3.metric("Deviation", f"{deviation:+.2f}σ")
-    m4.metric("Bande haute", f"{upper:,.2f}")
-    m5.metric("Bande basse", f"{lower:,.2f}")
+if signal_changed:
+    # Frequence differente selon direction
+    freq = 880 if signal == "SHORT" else 440  # SHORT = aigu, LONG = grave
+    beep_js = f"""
+    <script>
+    (function() {{
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        function beep(freq, duration, vol) {{
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = freq;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(vol, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + duration);
+        }}
+        beep({freq}, 0.4, 0.5);
+        setTimeout(function() {{ beep({freq}, 0.4, 0.4); }}, 500);
+        setTimeout(function() {{ beep({freq}, 0.6, 0.5); }}, 1000);
+    }})();
+    </script>
+    """
+    st_components.html(beep_js, height=0)
 
-    if entry:
-        st.markdown("---")
-        st.markdown("### Execution sur Apex")
-        e1, e2, e3, e4 = st.columns(4)
-        e1.metric("Entry", f"{entry:,.2f}")
-        e2.metric("Stop Loss", f"{sl:,.2f}", delta=f"{sl_pts:.1f} pts")
-        e3.metric("Take Profit", f"{tp:,.2f}", delta=f"{tp_pts:.1f} pts")
-        e4.metric("R:R", f"{tp_pts/sl_pts:.1f}" if sl_pts > 0 else "N/A")
+# ── Alertes donnees ───────────────────────────────────────────────────
+if data_error:
+    st.error(f"BAD TICK — deviation {deviation:+.1f}σ > {MAX_VALID_DEVIATION}σ. Signal IGNORE.")
+elif data_age_min > DATA_STALE_ERROR:
+    st.error(f"DONNEES PERIMEES — {data_age_min:.0f} min. Verifie yfinance.")
+elif data_age_min > DATA_STALE_WARN:
+    st.warning(f"Donnees en retard de {data_age_min:.0f} min.")
 
-    # ── CHART ────────────────────────────────────────────────────────
-    st.markdown("---")
-    show_bars = min(120, len(prices))
-    chart_prices = prices[-show_bars:]
-    chart_fv = fair_values[-show_bars:]
-    chart_upper = chart_fv + band_k * sigma_stats[-show_bars:]
-    chart_lower = chart_fv - band_k * sigma_stats[-show_bars:]
+# ── Signal principal (grand affichage) ───────────────────────────────
+_sig_bg = {"LONG": "rgba(0,255,136,0.06)", "SHORT": "rgba(255,51,102,0.06)"}.get(signal, "rgba(255,214,0,0.04)")
+_sig_border = signal_color
+_sig_cls = {"LONG": "long", "SHORT": "short"}.get(signal, "none")
+
+# Indicateurs filtres
+_hl_str = f"{last_hl:.0f}b" if not np.isnan(last_hl) else "N/A"
+_reg_icon = "✓" if signal_regime_ok else "✗"
+_hl_icon  = "✓" if hl_ok else "✗"
+_rev_icon = "✓" if reversal_ok else "✗"
+_filter_detail = (
+    f"Régime {current_regime_label} {_reg_icon} &nbsp;·&nbsp; "
+    f"Demi-vie {_hl_str} {_hl_icon} &nbsp;·&nbsp; "
+    f"Reversion {_rev_icon}"
+)
+
+st.markdown(f"""
+<div class="signal-box {_sig_cls}" style="background:{_sig_bg};border-color:{_sig_border}22">
+    <div class="signal-text" style="color:{signal_color}">{signal}</div>
+    <div class="signal-sub">QQQ → MNQ &nbsp;·&nbsp; Deviation: {deviation:+.2f}σ &nbsp;·&nbsp; Data: {data_age_min:.0f} min</div>
+    <div class="signal-sub" style="margin-top:4px;font-size:0.7rem;color:#444">{_filter_detail}</div>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Metriques prix ────────────────────────────────────────────────────
+m1, m2, m3, m4, m5 = st.columns(5)
+m1.metric("Prix QQQ", f"{last_price:,.2f}")
+m2.metric("Fair Value", f"{fv:,.2f}")
+m3.metric("Deviation", f"{deviation:+.2f}σ")
+m4.metric("Bande haute", f"{upper:,.2f}")
+m5.metric("Bande basse", f"{lower:,.2f}")
+
+# ── Execution ─────────────────────────────────────────────────────────
+if entry:
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color:#888;font-size:0.8rem;letter-spacing:0.1em'>EXECUTION SUR APEX — {nb_contracts} CONTRAT(S) MNQ</p>", unsafe_allow_html=True)
+    e1, e2, e3, e4, e5 = st.columns(5)
+    e1.metric("Entry", f"{entry:,.2f}")
+    e2.metric("Stop Loss", f"{sl:,.2f}", delta=f"{sl_pts:.1f} pts")
+    e3.metric("Take Profit", f"{tp:,.2f}", delta=f"{tp_pts:.1f} pts")
+    e4.metric("R:R", f"{tp_pts/sl_pts:.1f}" if sl_pts > 0 else "N/A")
+    e5.metric("Risque trade", f"${total_risk_trade:.0f}", delta=f"+${total_tp_trade:.0f} si TP")
+
+    if not can_trade:
+        st.error("NE PAS TRADER — voir les regles du jour ci-dessus")
+
+# ── CHART ────────────────────────────────────────────────────────────
+st.markdown("---")
+show_bars = min(120, len(prices))
+chart_prices = prices[-show_bars:]
+chart_fv = fair_values[-show_bars:]
+chart_upper = chart_fv + band_k * sigma_stats[-show_bars:]
+chart_lower = chart_fv - band_k * sigma_stats[-show_bars:]
+
+paris_offset = 2  # UTC+2 CEST
+try:
+    bar_times = bars_df["bar"].iloc[-show_bars:].reset_index(drop=True)
+    x_range = list(
+        pd.to_datetime(bar_times, utc=True)
+        .map(lambda t: (t + pd.Timedelta(hours=paris_offset)).strftime("%H:%M"))
+    )
+except Exception:
     x_range = list(range(show_bars))
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=x_range, y=chart_prices, mode="lines",
-        line=dict(color="white", width=1.5), name="Prix"
-    ))
-    fig.add_trace(go.Scatter(
-        x=x_range, y=chart_fv, mode="lines",
-        line=dict(color=CYAN, width=2), name="Fair Value"
-    ))
-    fig.add_trace(go.Scatter(
-        x=x_range, y=chart_upper, mode="lines",
-        line=dict(color=RED, width=1, dash="dash"), name=f"Upper ({band_k}σ)"
-    ))
-    fig.add_trace(go.Scatter(
-        x=x_range, y=chart_lower, mode="lines",
-        line=dict(color=GREEN, width=1, dash="dash"), name=f"Lower ({band_k}σ)",
-        fill="tonexty", fillcolor="rgba(0,229,255,0.05)"
-    ))
+fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=x_range, y=chart_prices, mode="lines",
+    line=dict(color="white", width=1.5), name="Prix"
+))
+fig.add_trace(go.Scatter(
+    x=x_range, y=chart_fv, mode="lines",
+    line=dict(color=CYAN, width=2), name="Fair Value"
+))
+fig.add_trace(go.Scatter(
+    x=x_range, y=chart_upper, mode="lines",
+    line=dict(color=RED, width=1, dash="dash"), name=f"Upper ({band_k}σ)"
+))
+fig.add_trace(go.Scatter(
+    x=x_range, y=chart_lower, mode="lines",
+    line=dict(color=GREEN, width=1, dash="dash"), name=f"Lower ({band_k}σ)",
+    fill="tonexty", fillcolor="rgba(0,229,255,0.05)"
+))
 
-    if entry:
-        fig.add_hline(y=entry, line_dash="solid", line_color=signal_color, opacity=0.5,
-                      annotation_text=f"{signal} @ {entry:,.2f}")
-        fig.add_hline(y=sl, line_dash="dot", line_color=RED, opacity=0.3,
-                      annotation_text=f"SL {sl:,.2f}")
-        fig.add_hline(y=tp, line_dash="dot", line_color=GREEN, opacity=0.3,
-                      annotation_text=f"TP {tp:,.2f}")
+if entry:
+    fig.add_hline(y=entry, line_dash="solid", line_color=signal_color, opacity=0.5,
+                  annotation_text=f"{signal} @ {entry:,.2f}")
+    fig.add_hline(y=sl, line_dash="dot", line_color=RED, opacity=0.3,
+                  annotation_text=f"SL {sl:,.2f}")
+    fig.add_hline(y=tp, line_dash="dot", line_color=GREEN, opacity=0.3,
+                  annotation_text=f"TP {tp:,.2f}")
 
-    fig.update_layout(
-        title=f"MNQ — Kalman OU (lookback={kalman_lookback}, k={band_k}σ)",
-        xaxis_title="Barres (1 min)",
-        yaxis_title="Prix",
-        height=500,
-        **DARK
-    )
-    st.plotly_chart(fig, use_container_width=True)
+fig.update_layout(
+    title=f"MNQ — Kalman OU (lookback={kalman_lookback}, k={band_k}σ)",
+    xaxis_title="Heure (Paris)",
+    yaxis_title="Prix",
+    height=500,
+    xaxis=dict(tickangle=-45, nticks=20, showgrid=True, gridcolor="rgba(255,255,255,0.1)"),
+    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.1)"),
+    **DARK
+)
+st.plotly_chart(fig, use_container_width=True)
 
-    st.caption(f"ATR(14) = {last_atr:.2f} pts | SL = {sl_pts:.1f} pts | "
-               f"Kalman K = {kg:.3f} | "
-               f"Update: {datetime.now(timezone.utc).strftime('%H:%M:%S')} UTC")
+now_paris = datetime.now(timezone.utc)
+paris_time = now_paris.strftime("%H:%M:%S") + f" UTC → {(now_paris.hour + paris_offset) % 24:02d}:{now_paris.strftime('%M:%S')} Paris"
+st.caption(f"{len(bars_df)} barres | ATR(14) = {last_atr:.2f} pts | SL = {sl_pts:.1f} pts | "
+           f"Kalman K = {kg:.3f} | Update: {paris_time}")
 
-    st.info(f"Prochain refresh dans {refresh_sec}s. Clique 'Demarrer' pour actualiser.")
+# ── Countdown + auto-refresh ──────────────────────────────────────────
+countdown = st.empty()
+for remaining in range(int(refresh_sec), 0, -1):
+    countdown.info(f"Prochain refresh dans **{remaining}s**...")
+    time.sleep(1)
+countdown.empty()
+st.rerun()
