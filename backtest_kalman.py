@@ -39,8 +39,9 @@ YELLOW, ORANGE = "#ffd600", "#ff9100"
 
 st.set_page_config(page_title="Backtest Kalman OU", page_icon="📊", layout="wide")
 
-# ── Session state — auto-optimiseur ───────────────────────────────────────
-for _k, _v in [('_opt_bk', 2.0), ('_opt_sl', 0.75), ('_opt_conf', True)]:
+# ── Session state ─────────────────────────────────────────────────────────
+for _k, _v in [('_opt_bk', 2.0), ('_opt_sl', 0.75), ('_opt_conf', True),
+               ('_run_bt', False), ('_kalman_cache', {})]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
@@ -619,6 +620,9 @@ def kelly_fraction(results):
 # ══════════════════════════════════════════════════════════════════════
 
 if st.sidebar.button("Lancer le Backtest", type="primary"):
+    st.session_state['_run_bt'] = True
+
+if st.session_state.get('_run_bt', False):
 
     with st.spinner(f"Chargement MNQ M1 CSV ({csv_years} an{'s' if csv_years > 1 else ''})..."):
         full_df, _err = load_mnq_csv(CSV_PATH, csv_years)
@@ -788,7 +792,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             )
 
         # ── Cache pour l'auto-optimiseur ──────────────────────────────
-        _daily_kalman_cache[str(day_key)] = {
+        _daily_kalman_cache[str(day_key)] = st.session_state['_kalman_cache'][str(day_key)] = {
             "bars": bars, "fair_values": fair_values,
             "sigma_stats": sigma_stats, "regimes": regimes,
         }
@@ -1301,43 +1305,50 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             st.caption(f"Grille : band_k ∈ [1.0 1.2 1.5 1.8 2.0 2.5] × SL ∈ [0.50 0.75 1.00 1.50] × Confirm [ON OFF] = 48 combos")
 
         if _run_optim:
-            _pb = st.progress(0, text="Recherche en cours…")
-            _grid = [(bk, sl, cf)
-                     for bk in [1.0, 1.2, 1.5, 1.8, 2.0, 2.5]
-                     for sl in [0.5, 0.75, 1.0, 1.5]
-                     for cf in [True, False]]
-            _best_score, _best = -999.0, None
-            for _ci, (_bk, _sl, _cf) in enumerate(_grid):
-                _pb.progress((_ci + 1) / len(_grid),
-                             text=f"band_k={_bk}σ · SL={_sl}σ · conf={'✓' if _cf else '✗'} …")
-                _sc, _wr, _pf, _n = _quick_backtest(
-                    _daily_kalman_cache, _bk, _sl, _cf,
-                    slip, tp_ratio, float(band_k_max), float(min_sl_pts),
-                    max_trades_per_day, skip_open_bars, skip_close_bars, float(max_sigma_stat),
-                )
-                if _sc > _best_score:
-                    _best_score, _best = _sc, (_bk, _sl, _cf, _wr, _pf, _n)
-            _pb.empty()
-            if _best and _best_score > -990:
-                st.session_state['_opt_bk']   = _best[0]
-                st.session_state['_opt_sl']   = _best[1]
-                st.session_state['_opt_conf'] = _best[2]
-                st.success(
-                    f"✅ Meilleurs paramètres : band_k=**{_best[0]}σ** · SL=**{_best[1]}σ** · "
-                    f"Confirm=**{'ON' if _best[2] else 'OFF'}** "
-                    f"→ WR {_best[3]:.1%} · PF {_best[4]:.2f} · {_best[5]} trades"
-                )
-                st.rerun()
+            _cache = st.session_state.get('_kalman_cache', {})
+            if not _cache:
+                st.error("Lance d'abord le backtest avant d'optimiser.")
             else:
-                st.error("Aucune combinaison avec suffisamment de trades (≥10). Vérifie les données.")
+                _pb = st.progress(0, text="Recherche en cours…")
+                _grid = [(bk, sl, cf)
+                         for bk in [1.0, 1.2, 1.5, 1.8, 2.0, 2.5]
+                         for sl in [0.5, 0.75, 1.0, 1.5]
+                         for cf in [True, False]]
+                _best_score, _best = -999.0, None
+                for _ci, (_bk, _sl, _cf) in enumerate(_grid):
+                    _pb.progress((_ci + 1) / len(_grid),
+                                 text=f"band_k={_bk}σ · SL={_sl}σ · conf={'✓' if _cf else '✗'} …")
+                    _sc, _wr, _pf, _n = _quick_backtest(
+                        _cache, _bk, _sl, _cf,
+                        slip, tp_ratio, float(band_k_max), float(min_sl_pts),
+                        max_trades_per_day, skip_open_bars, skip_close_bars, float(max_sigma_stat),
+                    )
+                    if _sc > _best_score:
+                        _best_score, _best = _sc, (_bk, _sl, _cf, _wr, _pf, _n)
+                _pb.empty()
+                if _best and _best_score > -990:
+                    st.session_state['_opt_bk']   = _best[0]
+                    st.session_state['_opt_sl']   = _best[1]
+                    st.session_state['_opt_conf'] = _best[2]
+                    st.success(
+                        f"✅ Meilleurs paramètres : band_k=**{_best[0]}σ** · SL=**{_best[1]}σ** · "
+                        f"Confirm=**{'ON' if _best[2] else 'OFF'}** "
+                        f"→ WR {_best[3]:.1%} · PF {_best[4]:.2f} · {_best[5]} trades"
+                    )
+                    st.rerun()
+                else:
+                    st.error("Aucune combinaison avec suffisamment de trades (≥10).")
 
         # ── Comparaison multi-config ──────────────────────────────────────
         st.markdown("---")
         st.markdown("**📊 Comparaison multi-config** — teste toutes les configurations et affiche un tableau comparatif.")
         _run_cmp = st.button("📊 Lancer la comparaison", use_container_width=False)
 
-        if _run_cmp or st.session_state.get('_cmp_done'):
-            if _run_cmp:
+        if _run_cmp:
+            _cache2 = st.session_state.get('_kalman_cache', {})
+            if not _cache2:
+                st.error("Lance d'abord le backtest avant de comparer.")
+            else:
                 _pb2 = st.progress(0, text="Comparaison en cours…")
                 _all_grid = [(bk, sl, cf)
                              for bk in [1.0, 1.2, 1.5, 1.8, 2.0, 2.5, 3.0]
@@ -1348,12 +1359,11 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
                     _pb2.progress((_ci + 1) / len(_all_grid),
                                   text=f"{_ci+1}/{len(_all_grid)} — band_k={_bk} SL={_sl} conf={'✓' if _cf else '✗'}")
                     _sc, _wr, _pf, _n = _quick_backtest(
-                        _daily_kalman_cache, _bk, _sl, _cf,
+                        _cache2, _bk, _sl, _cf,
                         slip, tp_ratio, float(band_k_max), float(min_sl_pts),
                         max_trades_per_day, skip_open_bars, skip_close_bars, float(max_sigma_stat),
                     )
                     if _n >= 10:
-                        _exp = (_wr * (_pf * _sl * 10) - (1 - _wr) * (_sl * 10)) if _pf < 9 else 0
                         _wr_be = 1 / (1 + (_bk / _sl)) if _sl > 0 else 0.5
                         _cmp_rows.append({
                             "band_k": _bk, "SL": _sl, "Confirm": "✓" if _cf else "✗",
@@ -1367,42 +1377,38 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
                 st.session_state['_cmp_rows'] = _cmp_rows
                 st.session_state['_cmp_done'] = True
 
-            _cmp_rows = st.session_state.get('_cmp_rows', [])
-            if _cmp_rows:
-                _display_cols = ["band_k", "SL", "Confirm", "Trades", "WR", "WR≥BE", "PF", "Score"]
-                _cmp_df = pd.DataFrame(_cmp_rows)[_display_cols]
+        if st.session_state.get('_cmp_done') and st.session_state.get('_cmp_rows'):
+            _cmp_rows = st.session_state['_cmp_rows']
+            _display_cols = ["band_k", "SL", "Confirm", "Trades", "WR", "WR≥BE", "PF", "Score"]
+            _cmp_df = pd.DataFrame(_cmp_rows)[_display_cols]
 
-                def _style_cmp(row):
-                    idx = row.name
-                    if idx == 0:
-                        return [f"background-color:#1a3a2a;color:#3CC4B7;font-weight:700"] * len(row)
-                    if idx <= 2:
-                        return [f"background-color:#0f2a1a"] * len(row)
-                    if row["PF"] < "1.00" or row["WR≥BE"] == "✗":
-                        return [f"color:#444"] * len(row)
-                    return [""] * len(row)
+            def _style_cmp(row):
+                idx = row.name
+                if idx == 0:
+                    return ["background-color:#1a3a2a;color:#3CC4B7;font-weight:700"] * len(row)
+                if idx <= 2:
+                    return ["background-color:#0f2a1a"] * len(row)
+                if row["WR≥BE"] == "✗":
+                    return ["color:#444"] * len(row)
+                return [""] * len(row)
 
-                st.dataframe(
-                    _cmp_df.style.apply(_style_cmp, axis=1),
-                    use_container_width=True, height=400,
-                )
-
-                st.markdown("**Appliquer une configuration :**")
-                _top_labels = [
-                    f"#{i+1} — band_k={r['_bk']}σ · SL={r['_sl']}σ · Confirm={'ON' if r['_cf'] else 'OFF'} → WR {r['WR']} PF {r['PF']}"
-                    for i, r in enumerate(_cmp_rows[:10])
-                ]
-                _choice = st.selectbox("Sélectionne une config à appliquer", _top_labels, index=0)
-                if st.button("✅ Appliquer la config sélectionnée", type="primary"):
-                    _ci = _top_labels.index(_choice)
-                    _chosen = _cmp_rows[_ci]
-                    st.session_state['_opt_bk']   = _chosen['_bk']
-                    st.session_state['_opt_sl']   = _chosen['_sl']
-                    st.session_state['_opt_conf'] = _chosen['_cf']
-                    st.session_state['_cmp_done'] = False
-                    st.rerun()
-            else:
-                st.warning("Aucune configuration avec ≥10 trades trouvée.")
+            st.dataframe(_cmp_df.style.apply(_style_cmp, axis=1),
+                         use_container_width=True, height=400)
+            st.markdown("**Appliquer une configuration :**")
+            _top_labels = [
+                f"#{i+1} — band_k={r['_bk']}σ · SL={r['_sl']}σ · Confirm={'ON' if r['_cf'] else 'OFF'}"
+                f" → WR {r['WR']} PF {r['PF']}"
+                for i, r in enumerate(_cmp_rows[:10])
+            ]
+            _choice = st.selectbox("Config à appliquer", _top_labels, index=0)
+            if st.button("✅ Appliquer la config sélectionnée", type="primary"):
+                _ci = _top_labels.index(_choice)
+                _chosen = _cmp_rows[_ci]
+                st.session_state['_opt_bk']   = _chosen['_bk']
+                st.session_state['_opt_sl']   = _chosen['_sl']
+                st.session_state['_opt_conf'] = _chosen['_cf']
+                st.session_state['_cmp_done'] = False
+                st.rerun()
 
     # ── TAB 3 : Pipeline ──────────────────────────────────────────────
     with tab3:
