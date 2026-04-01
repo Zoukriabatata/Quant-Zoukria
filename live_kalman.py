@@ -25,6 +25,12 @@ try:
 except ImportError:
     HAS_YF = False
 
+try:
+    from statsmodels.tsa.stattools import adfuller as _adfuller
+    HAS_STATSMODELS = True
+except ImportError:
+    HAS_STATSMODELS = False
+
 # ── Theme ────────────────────────────────────────────────────────────
 DARK = dict(
     template="plotly_dark",
@@ -139,6 +145,12 @@ max_sigma_stat = st.sidebar.number_input(
     "σ_stat max (filtre vol)", value=15.0, min_value=0.0, max_value=100.0, step=1.0,
     help="Skip si σ_stat > seuil. Marché trending → mean reversion peu fiable. 0 = désactivé."
 )
+adf_pvalue_live = st.sidebar.number_input(
+    "ADF p-value max (Lec 93)", value=0.10, min_value=0.0, max_value=1.0, step=0.05,
+    help="Gate stationnarité : skip si ADF p > seuil → racine unitaire → OU invalide. 0 = désactivé."
+) if HAS_STATSMODELS else 0.0
+if not HAS_STATSMODELS:
+    st.sidebar.caption("⚠ statsmodels manquant — ADF désactivé.")
 
 st.sidebar.markdown("---")
 st.sidebar.header("Risk")
@@ -436,6 +448,26 @@ def run_kalman_live(prices, lookback, noise_scale):
     return fair_values, sigma_stats, kalman_gains, half_lives, last_phi, last_mu
 
 
+def compute_regime(highs, lows, closes, lookback=40, ewm_span=8):
+    """Régime 3 états LOW=0 MED=1 HIGH=2 — EWM range/close sticky (Lec 72/74)."""
+    vol    = (highs - lows) / np.maximum(closes, 1e-9)
+    smooth = pd.Series(vol).ewm(span=ewm_span, min_periods=3).mean()
+    roll_lo = smooth.rolling(lookback, min_periods=10).quantile(0.33)
+    roll_hi = smooth.rolling(lookback, min_periods=10).quantile(0.67)
+    regime  = np.zeros(len(closes), dtype=int)
+    state   = 0
+    for i in range(len(closes)):
+        if np.isnan(roll_lo.iloc[i]) or np.isnan(roll_hi.iloc[i]):
+            regime[i] = state
+            continue
+        s = smooth.iloc[i]
+        new_state = 2 if s >= roll_hi.iloc[i] else (1 if s >= roll_lo.iloc[i] else 0)
+        if new_state != state and i > 0 and regime[i - 1] == new_state:
+            state = new_state
+        regime[i] = state
+    return regime
+
+
 def clean_price_spikes(df, spike_mult=6.0):
     """
     Supprime les barres avec un prix aberrant (bad tick IBKR).
@@ -562,14 +594,18 @@ def _live():
     lows = bars_df["low"].values.astype(float)
 
     fair_values, sigma_stats, k_gains, half_lives, last_phi, last_mu = run_kalman_live(prices, kalman_lookback, kalman_R_mult)
-    atr = compute_atr(highs, lows, prices)
+    atr     = compute_atr(highs, lows, prices)
+    regimes = compute_regime(highs, lows, prices)
 
     last_idx = len(prices) - 1
     last_price = prices[last_idx]
     fv = fair_values[last_idx]
     ss = sigma_stats[last_idx]
     kg = k_gains[last_idx]
-    last_atr = atr[last_idx]
+    last_atr    = atr[last_idx]
+    last_regime = int(regimes[last_idx])
+    regime_name  = {0: "LOW", 1: "MED", 2: "HIGH"}[last_regime]
+    regime_color = {0: GREEN, 1: YELLOW, 2: RED}[last_regime]
 
     if np.isnan(fv) or np.isnan(ss):
         st.error("Kalman pas encore calibre.")
@@ -600,7 +636,20 @@ def _live():
     # Filtre max trades/jour
     trades_ok = trades_today < max_trades_per_day
 
-    filters_pass = reversal_ok and vol_ok and dev_ok and in_session and trades_ok
+    # ADF stationarity gate (Lec 93)
+    adf_ok   = True
+    adf_pval = np.nan
+    if HAS_STATSMODELS and adf_pvalue_live > 0 and kalman_lookback > 0:
+        window_adf = prices[max(0, last_idx - kalman_lookback): last_idx]
+        if len(window_adf) >= 20:
+            try:
+                adf_pval = float(_adfuller(window_adf, maxlag=1, autolag=None)[1])
+                adf_ok   = adf_pval <= adf_pvalue_live
+            except Exception:
+                pass
+
+    regime_ok    = last_regime < 2  # HIGH → skip
+    filters_pass = reversal_ok and vol_ok and dev_ok and in_session and trades_ok and adf_ok and regime_ok
 
     # ── Detection donnees perimees ─────────────────────────────────────
     try:
@@ -897,9 +946,15 @@ def _live():
     _vol_icon  = "✓" if vol_ok      else "✗"
     _sess_icon = "✓" if in_session  else "✗"
     _trd_icon  = "✓" if trades_ok   else "✗"
+    _adf_icon  = "✓" if adf_ok      else "✗"
+    _reg_icon  = "✓" if regime_ok   else "✗"
+    _adf_label = (f"ADF {_adf_icon} p={adf_pval:.3f}" if not np.isnan(adf_pval)
+                  else ("ADF —" if not HAS_STATSMODELS or adf_pvalue_live == 0 else f"ADF {_adf_icon}"))
     _filter_detail = (
         f"Reversion {_rev_icon} &nbsp;·&nbsp; Vol {_vol_icon} "
         f"&nbsp;·&nbsp; Session {_sess_icon} &nbsp;·&nbsp; Trades {trades_today}/{max_trades_per_day} {_trd_icon}"
+        f"&nbsp;·&nbsp; {_adf_label} &nbsp;·&nbsp; "
+        f"Regime <span style='color:{regime_color};font-weight:600'>{regime_name}</span> {_reg_icon}"
     )
 
     st.markdown(f"""
@@ -981,6 +1036,19 @@ def _live():
         shared_xaxes=True,
         vertical_spacing=0.03,
     )
+
+    # ── Regime background coloring ─────────────────────────────────────────────
+    chart_regimes = regimes[-show_bars:]
+    _reg_fill = {0: "rgba(0,255,136,0.045)", 1: "rgba(255,204,0,0.055)", 2: "rgba(255,51,102,0.075)"}
+    _seg_start = 0
+    for _i in range(1, len(chart_regimes) + 1):
+        if _i == len(chart_regimes) or chart_regimes[_i] != chart_regimes[_seg_start]:
+            _rc = _reg_fill[int(chart_regimes[_seg_start])]
+            _x0 = x_vals[_seg_start]
+            _x1 = x_vals[min(_i, len(x_vals) - 1)]
+            fig.add_vrect(x0=_x0, x1=_x1, fillcolor=_rc, layer="below", line_width=0)
+            if _i < len(chart_regimes):
+                _seg_start = _i
 
     # ── Panneau 1 : Prix + Kalman ───────────────────────────────────────────────────
     # Fill entre les bandes

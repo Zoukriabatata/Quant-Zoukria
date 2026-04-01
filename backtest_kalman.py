@@ -1150,10 +1150,57 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             x=trades_df["date"].astype(str).tolist(), y=drawdown[1:], mode="lines",
             line=dict(color=RED, width=1.5), fill="tozeroy", fillcolor="rgba(255,51,102,0.12)"
         ), row=2, col=1)
+        # Regime background coloring (LOW=vert, MED=jaune, HIGH=rouge)
+        if use_regime_filter and regimes is not None and len(bars) == len(regimes):
+            _bar_dates = bars["date"].astype(str).tolist()
+            _reg_fills_bt = {0: "rgba(0,255,136,0.04)", 1: "rgba(255,204,0,0.05)", 2: "rgba(255,51,102,0.08)"}
+            _seg_start = 0
+            for _i in range(1, len(regimes) + 1):
+                if _i == len(regimes) or regimes[_i] != regimes[_seg_start]:
+                    _rc = _reg_fills_bt[int(regimes[_seg_start])]
+                    _x0 = _bar_dates[_seg_start]
+                    _x1 = _bar_dates[min(_i, len(_bar_dates) - 1)]
+                    fig_eq.add_vrect(x0=_x0, x1=_x1, fillcolor=_rc, layer="below", line_width=0)
+                    if _i < len(regimes):
+                        _seg_start = _i
         fig_eq.update_layout(height=500, showlegend=False, **DARK)
         fig_eq.update_yaxes(title_text="$", row=1, col=1)
         fig_eq.update_yaxes(title_text="%", row=2, col=1)
         st.plotly_chart(fig_eq, use_container_width=True)
+
+        # ── IS / OOS equity curves (Lec 97) ───────────────────────────
+        if oos_pct > 0 and len(trades_df) >= 20:
+            st.markdown("<p class='section-title'>Equity IS vs OOS (Lec 97)</p>", unsafe_allow_html=True)
+            all_trade_dates_c = sorted(trades_df["date"].unique())
+            n_oos_c  = max(1, int(len(all_trade_dates_c) * oos_pct / 100))
+            oos_dates_c = set(all_trade_dates_c[-n_oos_c:])
+            split_date_str = str(all_trade_dates_c[-n_oos_c])
+
+            tdf_is_c  = trades_df[~trades_df["date"].isin(oos_dates_c)].reset_index(drop=True)
+            tdf_oos_c = trades_df[trades_df["date"].isin(oos_dates_c)].reset_index(drop=True)
+
+            eq_is  = np.concatenate([[capital_initial],
+                                     np.cumsum(tdf_is_c["pnl_dollars"].values) + capital_initial])
+            eq_oos = np.concatenate([[eq_is[-1]],
+                                     np.cumsum(tdf_oos_c["pnl_dollars"].values) + eq_is[-1]])
+
+            fig_iso = go.Figure()
+            fig_iso.add_trace(go.Scatter(
+                x=tdf_is_c["date"].astype(str).tolist(), y=eq_is[1:],
+                mode="lines", line=dict(color=TEAL, width=2), name=f"IS ({100-oos_pct}%)",
+            ))
+            fig_iso.add_trace(go.Scatter(
+                x=tdf_oos_c["date"].astype(str).tolist(), y=eq_oos[1:],
+                mode="lines", line=dict(color=ORANGE, width=2), name=f"OOS ({oos_pct}%)",
+            ))
+            fig_iso.add_vline(x=split_date_str, line_dash="dash",
+                              line_color="rgba(255,255,255,0.3)",
+                              annotation_text=f" Split IS/OOS — {split_date_str}",
+                              annotation_font=dict(color="#555", size=10))
+            fig_iso.update_layout(height=350, **DARK,
+                                  legend=dict(orientation="h", y=1.02, x=0))
+            fig_iso.update_yaxes(title_text="Equity ($)")
+            st.plotly_chart(fig_iso, use_container_width=True)
 
         # Distribution P&L par trade
         st.markdown("<p class='section-title'>Distribution P&L</p>", unsafe_allow_html=True)
@@ -1370,3 +1417,65 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
   </span></div>
 </div>
 """, unsafe_allow_html=True)
+
+        # ── Validation Alpha — Random Entry (Lec 96) ──────────────────
+        st.markdown("---")
+        st.markdown("<p class='section-title'>Validation Alpha — Random Entry (Lec 96)</p>",
+                    unsafe_allow_html=True)
+        st.caption(
+            "1 000 simulations avec entrées aléatoires dans la même session, mêmes SL/TP. "
+            "Si ton P&L réel > 95e percentile → edge statistiquement confirmé."
+        )
+        if st.button("Lancer validation alpha", type="secondary"):
+            rng_a   = np.random.default_rng(0)
+            n_rand  = 1000
+            avg_sl  = trades_df["sl_pts"].mean() if "sl_pts" in trades_df.columns else (sl_sigma_mult * trades_df["sigma_stat"].mean())
+            avg_tp  = trades_df["tp_pts"].mean()  if "tp_pts"  in trades_df.columns else avg_sl * (1 / sl_sigma_mult)
+            n_t     = len(trades_df)
+            wr_rand = 0.5  # entrées aléatoires → ~50% WR si SL≈TP
+
+            rand_pnls = []
+            for _ in range(n_rand):
+                wins   = rng_a.binomial(n_t, wr_rand)
+                losses = n_t - wins
+                pnl_r  = (wins * avg_tp - losses * avg_sl) * DOLLAR_PER_PT * mc_contracts
+                rand_pnls.append(pnl_r)
+            rand_pnls = np.array(rand_pnls)
+
+            pct_real  = float(np.mean(rand_pnls <= final_pnl) * 100)
+            p95       = float(np.percentile(rand_pnls, 95))
+
+            fig_alpha = go.Figure()
+            fig_alpha.add_trace(go.Histogram(
+                x=rand_pnls, nbinsx=50,
+                marker_color="rgba(100,100,100,0.6)", name="Random entries"
+            ))
+            fig_alpha.add_vline(x=final_pnl, line_color=TEAL, line_width=2,
+                                annotation_text=f"  Ton P&L réel ${final_pnl:+,.0f}",
+                                annotation_font=dict(color=TEAL, size=12))
+            fig_alpha.add_vline(x=p95, line_color=YELLOW, line_dash="dash",
+                                annotation_text=f"  P95 ${p95:+,.0f}",
+                                annotation_font=dict(color=YELLOW, size=11))
+            fig_alpha.add_vline(x=0, line_color="rgba(255,255,255,0.2)", line_dash="dot")
+            fig_alpha.update_layout(
+                height=300, xaxis_title="P&L simulé ($)",
+                showlegend=False, **DARK
+            )
+            st.plotly_chart(fig_alpha, use_container_width=True)
+
+            if pct_real >= 95:
+                st.success(
+                    f"Edge confirmé — ton P&L réel (${final_pnl:+,.0f}) "
+                    f"est au {pct_real:.0f}e percentile des entrées aléatoires. "
+                    f"Probabilité < 5% que ce soit du hasard."
+                )
+            elif pct_real >= 80:
+                st.warning(
+                    f"Edge probable — {pct_real:.0f}e percentile. "
+                    f"Pas encore statistiquement robuste (cible ≥ 95e)."
+                )
+            else:
+                st.error(
+                    f"Pas d'edge détecté — {pct_real:.0f}e percentile seulement. "
+                    f"Ton P&L n'est pas significativement différent d'entrées aléatoires."
+                )
