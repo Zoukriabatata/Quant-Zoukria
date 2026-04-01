@@ -39,6 +39,11 @@ YELLOW, ORANGE = "#ffd600", "#ff9100"
 
 st.set_page_config(page_title="Backtest Kalman OU", page_icon="📊", layout="wide")
 
+# ── Session state — auto-optimiseur ───────────────────────────────────────
+for _k, _v in [('_opt_bk', 2.0), ('_opt_sl', 0.75), ('_opt_conf', True)]:
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
 def _inject_css(raw_css: str) -> None:
     import re as _re
     css = _re.sub(r'/\*.*?\*/', '', raw_css, flags=_re.DOTALL)
@@ -134,7 +139,7 @@ kalman_lookback = st.sidebar.number_input(
     help="Fenêtre AR(1) pour calibrer φ, μ, σ. 120 barres = 2h en 1m."
 )
 band_k = st.sidebar.number_input(
-    "Bande k min (σ)", value=2.0, min_value=0.3, max_value=4.0, step=0.1,
+    "Bande k min (σ)", key='_opt_bk', min_value=0.3, max_value=4.0, step=0.1,
     help="Entrée quand |prix - FV| > k × σ_stat. 2.0 = entrées plus extrêmes → meilleur WR."
 )
 band_k_max = st.sidebar.number_input(
@@ -154,7 +159,7 @@ noise_scale = round(0.1 + 19.9 * (_noise_lever / 100) ** 2, 3)
 st.sidebar.caption(f"noise_scale effectif = {noise_scale:.2f}")
 confirm_reversal = st.sidebar.toggle(
     "Confirmation reversion (Lec 72)",
-    value=True,
+    key='_opt_conf',
     help="N'entrer qu'à la barre i+1 si elle est déjà plus proche du FV que la barre signal.\n"
          "Réduit les faux signaux au prix de moins de trades."
 )
@@ -179,7 +184,7 @@ use_regime_filter = st.sidebar.toggle(
 st.sidebar.markdown("---")
 st.sidebar.header("Risk")
 sl_sigma_mult = st.sidebar.slider(
-    "SL = k × σ_kalman", min_value=0.25, max_value=3.0, value=0.75, step=0.25,
+    "SL = k × σ_kalman", key='_opt_sl', min_value=0.25, max_value=3.0, step=0.25,
     help="Stop = sl_sigma × σ_stat au-delà de l'entrée. 0.75 avec band_k=1.5 → R:R=2:1."
 )
 min_sl_pts = st.sidebar.number_input("SL min (pts)", value=4.0, step=0.5)
@@ -452,6 +457,44 @@ def run_kalman(closes, lookback, noise_scale):
     return fair_values, sigma_stats
 
 
+def _quick_backtest(cache, bk, sl_sig, conf_rev, slip, tp_r, bk_max,
+                    min_sl, max_td, skip_o, skip_c, max_ss):
+    """Grid-search eval — no Apex overhead, returns composite score."""
+    wins, losses = [], []
+    for day_data in cache.values():
+        sigs, _ = find_signals(
+            day_data["bars"], day_data["fair_values"], day_data["sigma_stats"],
+            bk, bk_max,
+            skip_open=skip_o, skip_close=skip_c,
+            confirm_reversal=conf_rev, max_sigma_stat=float(max_ss),
+            adf_pvalue_threshold=0.0, regimes=day_data["regimes"],
+        )
+        last_exit, day_td = -1, 0
+        for sig in sigs:
+            if sig["bar_idx"] <= last_exit or day_td >= max_td:
+                continue
+            sl_pts  = max(float(min_sl), sl_sig * sig["sigma_stat"])
+            tp_price = sig["price"] + tp_r * (sig["fair_value"] - sig["price"])
+            result_pts, exit_bar = simulate_trade(
+                day_data["bars"], sig["bar_idx"], sig["price"],
+                sig["direction"], sl_pts, tp_price, slip,
+            )
+            last_exit = exit_bar
+            day_td   += 1
+            if result_pts > 0:
+                wins.append(result_pts)
+            else:
+                losses.append(abs(result_pts))
+    n = len(wins) + len(losses)
+    if n < 10:
+        return -999.0, 0.0, 0.0, n
+    wr = len(wins) / n
+    pf = sum(wins) / sum(losses) if losses else 9.9
+    exp = (sum(wins) - sum(losses)) / n
+    score = 0.5 * (pf - 1) + 0.3 * wr + 0.2 * min(max(exp / 10, -1), 1)
+    return score, wr, pf, n
+
+
 def find_signals(bars, fair_values, sigma_stats, band_k, band_k_max,
                  skip_open=0, skip_close=0, confirm_reversal=False, max_sigma_stat=0.0,
                  adf_pvalue_threshold=0.0, lookback=120, regimes=None):
@@ -606,6 +649,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     all_daily_stats = []
     monthly_results = []
 
+    _daily_kalman_cache = {}  # pour l'auto-optimiseur
     skipped_no_signal = 0
     skipped_adf_total = 0
     skipped_dd        = 0
@@ -742,6 +786,12 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             regimes = compute_regime(
                 bars["high"].values, bars["low"].values, bars["close"].values
             )
+
+        # ── Cache pour l'auto-optimiseur ──────────────────────────────
+        _daily_kalman_cache[str(day_key)] = {
+            "bars": bars, "fair_values": fair_values,
+            "sigma_stats": sigma_stats, "regimes": regimes,
+        }
 
         # ── Signaux ───────────────────────────────────────────────────
         signals, n_adf_skip = find_signals(
@@ -1240,6 +1290,46 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
                     "",
                 ]
             st.code("\n".join(_txt), language=None)
+
+        # ── Auto-optimiseur ──────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("**🤖 Auto-optimiseur** — grid search sur 48 combinaisons de paramètres, applique les meilleurs automatiquement.")
+        _col_btn, _col_info = st.columns([1, 3])
+        with _col_btn:
+            _run_optim = st.button("🔄 Optimiser et relancer", type="primary", use_container_width=True)
+        with _col_info:
+            st.caption(f"Grille : band_k ∈ [1.0 1.2 1.5 1.8 2.0 2.5] × SL ∈ [0.50 0.75 1.00 1.50] × Confirm [ON OFF] = 48 combos")
+
+        if _run_optim:
+            _pb = st.progress(0, text="Recherche en cours…")
+            _grid = [(bk, sl, cf)
+                     for bk in [1.0, 1.2, 1.5, 1.8, 2.0, 2.5]
+                     for sl in [0.5, 0.75, 1.0, 1.5]
+                     for cf in [True, False]]
+            _best_score, _best = -999.0, None
+            for _ci, (_bk, _sl, _cf) in enumerate(_grid):
+                _pb.progress((_ci + 1) / len(_grid),
+                             text=f"band_k={_bk}σ · SL={_sl}σ · conf={'✓' if _cf else '✗'} …")
+                _sc, _wr, _pf, _n = _quick_backtest(
+                    _daily_kalman_cache, _bk, _sl, _cf,
+                    slip, tp_ratio, float(band_k_max), float(min_sl_pts),
+                    max_trades_per_day, skip_open_bars, skip_close_bars, float(max_sigma_stat),
+                )
+                if _sc > _best_score:
+                    _best_score, _best = _sc, (_bk, _sl, _cf, _wr, _pf, _n)
+            _pb.empty()
+            if _best and _best_score > -990:
+                st.session_state['_opt_bk']   = _best[0]
+                st.session_state['_opt_sl']   = _best[1]
+                st.session_state['_opt_conf'] = _best[2]
+                st.success(
+                    f"✅ Meilleurs paramètres : band_k=**{_best[0]}σ** · SL=**{_best[1]}σ** · "
+                    f"Confirm=**{'ON' if _best[2] else 'OFF'}** "
+                    f"→ WR {_best[3]:.1%} · PF {_best[4]:.2f} · {_best[5]} trades"
+                )
+                st.rerun()
+            else:
+                st.error("Aucune combinaison avec suffisamment de trades (≥10). Vérifie les données.")
 
     # ── TAB 3 : Pipeline ──────────────────────────────────────────────
     with tab3:
