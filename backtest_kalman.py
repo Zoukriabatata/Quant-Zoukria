@@ -40,6 +40,11 @@ YELLOW, ORANGE = "#ffd600", "#ff9100"
 st.set_page_config(page_title="Backtest Kalman OU", page_icon="📊", layout="wide")
 
 # ── Session state ─────────────────────────────────────────────────────────
+# Appliquer les valeurs en attente de l'optimiseur AVANT que les widgets se créent
+for _src, _dst in [('_pending_bk', '_opt_bk'), ('_pending_sl', '_opt_sl'), ('_pending_conf', '_opt_conf')]:
+    if _src in st.session_state:
+        st.session_state[_dst] = st.session_state.pop(_src)
+
 for _k, _v in [('_opt_bk', 2.0), ('_opt_sl', 0.75), ('_opt_conf', True),
                ('_run_bt', False), ('_kalman_cache', {})]:
     if _k not in st.session_state:
@@ -1332,9 +1337,9 @@ if st.session_state.get('_run_bt', False):
                         _best_score, _best = _sc, (_bk, _sl, _cf, _wr, _pf, _n)
                 _pb.empty()
                 if _best and _best_score > -990:
-                    st.session_state['_opt_bk']   = _best[0]
-                    st.session_state['_opt_sl']   = _best[1]
-                    st.session_state['_opt_conf'] = _best[2]
+                    st.session_state['_pending_bk']   = _best[0]
+                    st.session_state['_pending_sl']   = _best[1]
+                    st.session_state['_pending_conf'] = _best[2]
                     st.success(
                         f"✅ Meilleurs paramètres : band_k=**{_best[0]}σ** · SL=**{_best[1]}σ** · "
                         f"Confirm=**{'ON' if _best[2] else 'OFF'}** "
@@ -1409,9 +1414,9 @@ if st.session_state.get('_run_bt', False):
             if st.button("✅ Appliquer la config sélectionnée", type="primary"):
                 _ci = _top_labels.index(_choice)
                 _chosen = _cmp_rows[_ci]
-                st.session_state['_opt_bk']   = _chosen['_bk']
-                st.session_state['_opt_sl']   = _chosen['_sl']
-                st.session_state['_opt_conf'] = _chosen['_cf']
+                st.session_state['_pending_bk']   = _chosen['_bk']
+                st.session_state['_pending_sl']   = _chosen['_sl']
+                st.session_state['_pending_conf'] = _chosen['_cf']
                 st.session_state['_cmp_done'] = False
                 st.rerun()
 
