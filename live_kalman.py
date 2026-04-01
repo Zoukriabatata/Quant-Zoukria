@@ -124,10 +124,12 @@ band_k_max = st.sidebar.number_input(
     "Bande k max (σ)", value=4.0, min_value=0.5, max_value=10.0, step=0.5,
     help="Ignore si déviation > k_max (évite les gaps/spikes extrêmes)."
 )
-kalman_R_mult = st.sidebar.number_input(
-    "Noise scale (confiance modèle)", min_value=0.1, max_value=20.0, value=5.0, step=0.5,
-    help="R = σ² × noise_scale. Élevé = fait confiance au modèle OU, lisse."
+_noise_lever = st.sidebar.slider(
+    "Noise lever — 0% suit prix · 100% suit modèle OU", min_value=0, max_value=100, value=62, step=1,
+    help="0% = Kalman très adaptatif | 100% = fait confiance au modèle OU. 62% ≈ noise_scale 5.0."
 )
+kalman_R_mult = round(0.1 + 19.9 * (_noise_lever / 100) ** 2, 3)
+st.sidebar.caption(f"noise_scale effectif = {kalman_R_mult:.2f}")
 confirm_reversal_live = st.sidebar.toggle(
     "Confirmation reversion (Lec 72/95)",
     value=True,
@@ -428,7 +430,10 @@ def run_kalman_live(prices, lookback, noise_scale):
         kalman_gains[i] = K
         half_lives[i]   = hl
 
-    return fair_values, sigma_stats, kalman_gains, half_lives
+    # Retourne aussi phi/mu du dernier bar pour le forecast OU
+    last_phi = kal.phi if kal is not None else np.nan
+    last_mu  = kal.mu  if kal is not None else np.nan
+    return fair_values, sigma_stats, kalman_gains, half_lives, last_phi, last_mu
 
 
 def clean_price_spikes(df, spike_mult=6.0):
@@ -556,7 +561,7 @@ def _live():
     highs = bars_df["high"].values.astype(float)
     lows = bars_df["low"].values.astype(float)
 
-    fair_values, sigma_stats, k_gains, half_lives = run_kalman_live(prices, kalman_lookback, kalman_R_mult)
+    fair_values, sigma_stats, k_gains, half_lives, last_phi, last_mu = run_kalman_live(prices, kalman_lookback, kalman_R_mult)
     atr = compute_atr(highs, lows, prices)
 
     last_idx = len(prices) - 1
@@ -1013,6 +1018,18 @@ def _live():
                     line=dict(color="#060606", width=1.5)),
         name="Now", showlegend=False,
     ), row=1, col=1)
+
+    # ── 5-step OU forecast (kts.py Lec 95) ──────────────────────────
+    if not np.isnan(last_phi) and not np.isnan(last_mu):
+        forecast_y = [last_mu + last_phi ** k * (fv - last_mu) for k in range(1, 6)]
+        forecast_x = [f"→{k}" for k in range(1, 6)]
+        fig.add_trace(go.Scatter(
+            x=forecast_x, y=forecast_y, mode="markers+lines",
+            marker=dict(color=TEAL, size=6, symbol="diamond",
+                        line=dict(color="#060606", width=1)),
+            line=dict(color=TEAL, width=1, dash="dot"),
+            name="OU Forecast", opacity=0.7,
+        ), row=1, col=1)
 
     # Lignes d'execution si signal actif
     if entry is not None:

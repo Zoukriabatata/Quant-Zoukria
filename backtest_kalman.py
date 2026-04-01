@@ -20,6 +20,11 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+try:
+    from statsmodels.tsa.stattools import adfuller as _adfuller
+    HAS_STATSMODELS = True
+except ImportError:
+    HAS_STATSMODELS = False
 
 # ── Theme ─────────────────────────────────────────────────────────────
 DARK = dict(
@@ -136,14 +141,17 @@ band_k_max = st.sidebar.number_input(
     "Bande k max (σ)", value=4.0, min_value=0.5, max_value=10.0, step=0.5,
     help="Ignore si déviation > k_max (évite les crashes/gaps extrêmes)"
 )
-noise_scale = st.sidebar.slider(
-    "Noise lever (confiance modèle OU vs prix)", min_value=0.1, max_value=20.0, value=5.0, step=0.1,
+_noise_lever = st.sidebar.slider(
+    "Noise lever — 0% suit prix · 100% suit modèle OU", min_value=0, max_value=100, value=62, step=1,
     help=(
-        "R = σ² × noise_scale — contrôle l'adaptabilité du Kalman (kts.py Roman Paolucci).\n"
-        "Faible (0.1) = suit les prix de près → très adaptatif → sensible au bruit.\n"
-        "Élevé (20) = fait confiance au modèle OU → lisse → lent à s'adapter."
+        "Mapping exponentiel kts.py Roman Paolucci Lec 95 : "
+        "0% = Kalman très adaptatif (suit les prix) | "
+        "100% = fait confiance au modèle OU (lisse, lent). "
+        "62% ≈ noise_scale 5.0 (ancien défaut)."
     )
 )
+noise_scale = round(0.1 + 19.9 * (_noise_lever / 100) ** 2, 3)
+st.sidebar.caption(f"noise_scale effectif = {noise_scale:.2f}")
 confirm_reversal = st.sidebar.toggle(
     "Confirmation reversion (Lec 72)",
     value=True,
@@ -154,6 +162,18 @@ max_sigma_stat = st.sidebar.number_input(
     "σ_stat max (filtre vol)", value=15.0, min_value=0.0, max_value=100.0, step=1.0,
     help="Skip si σ_stat > seuil. σ_stat élevé = marché trending/volatile → mean reversion peu fiable. "
          "0 = désactivé."
+)
+adf_pvalue = st.sidebar.number_input(
+    "ADF p-value max (Lec 93)", value=0.10, min_value=0.0, max_value=1.0, step=0.05,
+    help="Gate stationnarité : skip si ADF p > seuil → série avec racine unitaire → OU invalide. "
+         "0.10 = seuil standard. 0 = désactivé."
+) if HAS_STATSMODELS else 0.0
+if not HAS_STATSMODELS:
+    st.sidebar.caption("⚠ statsmodels manquant — ADF désactivé. `pip install statsmodels`")
+use_regime_filter = st.sidebar.toggle(
+    "Filtre régime Markov (Lec 72/74)", value=False,
+    help="Skip les signaux en régime HIGH (marché volatile). "
+         "LOW=vert, MED=jaune, HIGH=rouge. Basé sur range/close EWM."
 )
 
 st.sidebar.markdown("---")
@@ -189,6 +209,16 @@ skip_close_bars = st.sidebar.number_input(
 max_trades_per_day = st.sidebar.number_input(
     "Max trades/jour", value=2, min_value=1, max_value=10, step=1,
     help="Apex DLL $1k/jour appliqué dans les 2 modes."
+)
+
+st.sidebar.markdown("---")
+st.sidebar.header("Validation OOS (Lec 97)")
+oos_pct = st.sidebar.select_slider(
+    "% données OOS (holdout final)",
+    options=[0, 10, 20, 30],
+    value=20,
+    help="Réserve les N% derniers jours comme out-of-sample. "
+         "Si Sharpe_OOS < 0.5 × Sharpe_IS → overfitting. 0 = désactivé."
 )
 
 st.sidebar.markdown("---")
@@ -285,6 +315,40 @@ def filter_session(df, start_h, start_m, end_h, end_m):
     t_min = df["bar"].dt.hour * 60 + df["bar"].dt.minute
     mask  = (t_min >= start_h * 60 + start_m) & (t_min < end_h * 60 + end_m)
     return df[mask].reset_index(drop=True)
+
+
+def compute_regime(highs, lows, closes, lookback=40, ewm_span=8):
+    """
+    Régime de marché 3 états — LOW=0, MED=1, HIGH=2 (Lec 72/74).
+    Basé sur la volatilité normalisée (range/close) avec lissage EWM.
+    Transitions sticky : un seul bar haut-vol ne change pas le régime.
+    Retourne : array int (0/1/2) de la même longueur que closes.
+    """
+    vol = (highs - lows) / np.maximum(closes, 1e-9)
+    smooth = pd.Series(vol).ewm(span=ewm_span, min_periods=3).mean()
+    roll_lo = smooth.rolling(lookback, min_periods=10).quantile(0.33)
+    roll_hi = smooth.rolling(lookback, min_periods=10).quantile(0.67)
+    regime  = np.zeros(len(closes), dtype=int)
+    state   = 0  # état courant (sticky)
+    for i in range(len(closes)):
+        if np.isnan(roll_lo.iloc[i]) or np.isnan(roll_hi.iloc[i]):
+            regime[i] = state
+            continue
+        s = smooth.iloc[i]
+        lo, hi = roll_lo.iloc[i], roll_hi.iloc[i]
+        if s >= hi:
+            new_state = 2
+        elif s >= lo:
+            new_state = 1
+        else:
+            new_state = 0
+        # Transition sticky : confirme le changement seulement si 2 barres consécutives
+        if new_state != state:
+            # On change d'état seulement si on était déjà "à la frontière" au bar précédent
+            if i > 0 and regime[i - 1] == new_state:
+                state = new_state
+        regime[i] = state
+    return regime
 
 
 # ── Kalman OU (exact de kts.py Roman Paolucci) ───────────────────────
@@ -389,16 +453,23 @@ def run_kalman(closes, lookback, noise_scale):
 
 
 def find_signals(bars, fair_values, sigma_stats, band_k, band_k_max,
-                 skip_open=0, skip_close=0, confirm_reversal=False, max_sigma_stat=0.0):
+                 skip_open=0, skip_close=0, confirm_reversal=False, max_sigma_stat=0.0,
+                 adf_pvalue_threshold=0.0, lookback=120, regimes=None):
     """
     Génère les signaux d'entrée mean reversion.
 
     Confirmation reversal (Roman Lec 72) :
       N'entrer qu'à la barre i+1 si elle est déjà plus proche du FV → reversion confirmée.
+
+    ADF gate (Roman Lec 93) :
+      Teste la stationnarité de la fenêtre lookback avant chaque signal.
+      Si ADF p-value > adf_pvalue_threshold → série avec racine unitaire → skip.
     """
-    n         = len(bars)
-    signals   = []
-    valid_end = n - skip_close
+    n           = len(bars)
+    signals     = []
+    skipped_adf = 0
+    valid_end   = n - skip_close
+    closes_arr  = bars["close"].values
 
     for i in range(skip_open, valid_end):
         if np.isnan(fair_values[i]) or np.isnan(sigma_stats[i]):
@@ -409,12 +480,28 @@ def find_signals(bars, fair_values, sigma_stats, band_k, band_k_max,
         if max_sigma_stat > 0 and ss > max_sigma_stat:
             continue
 
-        close     = bars.iloc[i]["close"]
+        # ── Regime filter (Lec 72/74) ─────────────────────────────────
+        if regimes is not None and regimes[i] == 2:  # HIGH → skip
+            continue
+
+        close     = closes_arr[i]
         fv        = fair_values[i]
         deviation = abs(close - fv) / ss
 
         if deviation < band_k or deviation > band_k_max:
             continue
+
+        # ── ADF stationarity gate (Lec 93) ───────────────────────────
+        if HAS_STATSMODELS and adf_pvalue_threshold > 0 and lookback > 0:
+            window = closes_arr[max(0, i - lookback): i]
+            if len(window) >= 20:
+                try:
+                    pval = _adfuller(window, maxlag=1, autolag=None)[1]
+                    if pval > adf_pvalue_threshold:
+                        skipped_adf += 1
+                        continue
+                except Exception:
+                    pass
 
         direction = "short" if close > fv else "long"
 
@@ -424,27 +511,27 @@ def find_signals(bars, fair_values, sigma_stats, band_k, band_k_max,
             if np.isnan(fair_values[i + 1]) or np.isnan(sigma_stats[i + 1]):
                 continue
             ss1      = sigma_stats[i + 1]
-            next_dev = abs(bars.iloc[i + 1]["close"] - fair_values[i + 1]) / ss1 if ss1 > 0 else deviation
+            next_dev = abs(closes_arr[i + 1] - fair_values[i + 1]) / ss1 if ss1 > 0 else deviation
             if next_dev >= deviation:
                 continue
             entry_bar   = i + 1
-            entry_price = bars.iloc[i + 1]["close"]
+            entry_price = closes_arr[i + 1]
         else:
             entry_bar   = i
             entry_price = close
 
         signals.append({
-            "bar_idx":   entry_bar,
-            "date":      bars.iloc[i]["date"],
-            "bar":       bars.iloc[entry_bar]["bar"],
-            "price":     entry_price,
+            "bar_idx":    entry_bar,
+            "date":       bars.iloc[i]["date"],
+            "bar":        bars.iloc[entry_bar]["bar"],
+            "price":      entry_price,
             "fair_value": fv,
             "sigma_stat": ss,
             "direction":  direction,
             "deviation":  deviation,
         })
 
-    return signals
+    return signals, skipped_adf
 
 
 def simulate_trade(bars, entry_idx, entry_price, direction, sl_pts, tp_price, slip_pts):
@@ -520,6 +607,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
     monthly_results = []
 
     skipped_no_signal = 0
+    skipped_adf_total = 0
     skipped_dd        = 0
     skipped_daily     = 0
     skipped_consec    = 0
@@ -648,14 +736,25 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         # ── Kalman OU ─────────────────────────────────────────────────
         fair_values, sigma_stats = run_kalman(bars["close"].values, kalman_lookback, noise_scale)
 
+        # ── Régime Markov (Lec 72/74) ─────────────────────────────────
+        regimes = None
+        if use_regime_filter:
+            regimes = compute_regime(
+                bars["high"].values, bars["low"].values, bars["close"].values
+            )
+
         # ── Signaux ───────────────────────────────────────────────────
-        signals = find_signals(
+        signals, n_adf_skip = find_signals(
             bars, fair_values, sigma_stats,
             band_k, band_k_max,
             skip_open=skip_open_bars, skip_close=skip_close_bars,
             confirm_reversal=confirm_reversal,
             max_sigma_stat=float(max_sigma_stat),
+            adf_pvalue_threshold=float(adf_pvalue),
+            lookback=kalman_lookback,
+            regimes=regimes,
         )
+        skipped_adf_total += n_adf_skip
 
         if not signals:
             skipped_no_signal += 1
@@ -943,6 +1042,52 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             st.error(f"Sharpe réel {sharpe_real:.2f} hors cible — trop faible → edge insuffisant. "
                      f"Cible : 1.2-1.5")
 
+        # ── Validation IS/OOS (Lec 97) ───────────────────────────────
+        if oos_pct > 0 and len(trades_df) >= 20:
+            st.markdown("<p class='section-title'>Validation In-Sample / Out-of-Sample (Lec 97)</p>", unsafe_allow_html=True)
+            all_trade_dates = sorted(trades_df["date"].unique())
+            n_oos_days = max(1, int(len(all_trade_dates) * oos_pct / 100))
+            oos_dates  = set(all_trade_dates[-n_oos_days:])
+            is_dates   = set(all_trade_dates[:-n_oos_days])
+            tdf_is  = trades_df[trades_df["date"].isin(is_dates)]
+            tdf_oos = trades_df[trades_df["date"].isin(oos_dates)]
+
+            def _sharpe_sortino(tdf):
+                if len(tdf) < 5:
+                    return 0.0, 0.0, 0.0, 0
+                dp = tdf.groupby("date")["pnl_dollars"].sum()
+                dp.index = pd.to_datetime(dp.index)
+                bdays = pd.bdate_range(dp.index.min(), dp.index.max())
+                dr = dp.reindex(bdays, fill_value=0) / capital_initial
+                sh = (dr.mean() / dr.std() * np.sqrt(252)) if dr.std() > 0 else 0
+                nr = dr[dr < 0]
+                so = (dr.mean() / nr.std() * np.sqrt(252)) if (len(nr) > 1 and nr.std() > 0) else 0
+                wr = tdf["win"].mean()
+                return round(sh, 2), round(so, 2), round(wr * 100, 1), len(tdf)
+
+            sh_is, so_is, wr_is, n_is   = _sharpe_sortino(tdf_is)
+            sh_oos, so_oos, wr_oos, n_oos = _sharpe_sortino(tdf_oos)
+            ratio = (sh_oos / sh_is) if sh_is > 0 else 0
+
+            oi1, oi2, oi3, oi4 = st.columns(4)
+            oi1.metric(f"Sharpe IS ({100-oos_pct}%)", f"{sh_is:.2f}", delta=f"WR {wr_is:.1f}% · {n_is} trades")
+            oi2.metric(f"Sharpe OOS ({oos_pct}%)", f"{sh_oos:.2f}",
+                       delta=f"WR {wr_oos:.1f}% · {n_oos} trades",
+                       delta_color="normal" if sh_oos > 0 else "inverse")
+            oi3.metric("Ratio OOS/IS", f"{ratio:.2f}",
+                       delta="✓ robuste" if ratio >= 0.7 else ("⚠ limite" if ratio >= 0.4 else "✗ overfitting"),
+                       delta_color="normal" if ratio >= 0.7 else ("off" if ratio >= 0.4 else "inverse"))
+            oi4.metric("Sortino IS / OOS", f"{so_is:.2f} / {so_oos:.2f}")
+
+            if ratio >= 0.7:
+                st.success(f"Ratio OOS/IS = {ratio:.2f} ≥ 0.70 — stratégie robuste, peu d'overfitting.")
+            elif ratio >= 0.4:
+                st.warning(f"Ratio OOS/IS = {ratio:.2f} entre 0.40-0.70 — overfitting partiel. "
+                           f"Teste avec moins de paramètres libres.")
+            else:
+                st.error(f"Ratio OOS/IS = {ratio:.2f} < 0.40 — fort overfitting. "
+                         f"Les paramètres sont sur-ajustés à la période IS.")
+
         # Kelly
         st.markdown("<p class='section-title'>Kelly Criterion</p>", unsafe_allow_html=True)
         k1, k2, k3, k4 = st.columns(4)
@@ -975,6 +1120,11 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         p1.metric("Jours analysés", len(dates_sorted))
         p2.metric("Skip pas de signal", skipped_no_signal)
         p3.metric("Skip 2 pertes consec", skipped_consec)
+        if HAS_STATSMODELS and adf_pvalue > 0:
+            pa1, pa2 = st.columns(2)
+            pa1.metric("Signaux filtrés ADF (Lec 93)", skipped_adf_total,
+                       help="Signaux rejetés car la fenêtre lookback n'est pas stationnaire (ADF p > seuil)")
+            pa2.metric("ADF p-value seuil", f"{adf_pvalue:.2f}")
         st.info(f"**{n_total} trades** sur {len(dates_sorted)} jours | "
                 f"MNQ M1 {csv_years}an{'s' if csv_years > 1 else ''} | Apex 50K EOD | "
                 f"Daily ${DAILY_LOSS_HARD:,} | DD ${max_drawdown_dollars:,} | "
