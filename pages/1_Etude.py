@@ -151,9 +151,12 @@ MODULES = {
     "06c_halflife_ou.md": ("06c", "Demi-vie OU", "Filtrer les signaux lents", 3),
     "06d_confirmation_reversal.md": ("06d", "Confirmation", "Timing d'entree optimal", 3),
     "07_pipeline_integration.md": ("07", "Pipeline", "Tout connecter", 4),
+    "08_kelly_criterion.md": ("08", "Kelly Criterion", "Combien risquer par trade", 4),
+    "09_backtesting_pitfalls.md": ("09", "Backtest Pitfalls", "Pourquoi ton backtest ment", 4),
+    "09b_profitable_vs_tradable.md": ("09b", "Live Tradable", "Pourquoi ca meurt en live", 4),
 }
 
-LEVEL_LABELS = {0: "", 1: "NIVEAU 1", 2: "NIVEAU 2", 3: "NIVEAU 3", 4: "NIVEAU 4"}
+LEVEL_LABELS = {0: "", 1: "NIVEAU 1", 2: "NIVEAU 2", 3: "NIVEAU 3", 4: "NIVEAU 4 — LIVE"}
 LEVEL_COLORS = {0: "#888", 1: "#00e5ff", 2: "#ff00e5", 3: "#ffd600", 4: "#ff3366"}
 
 VIDEO_LINKS = {
@@ -171,6 +174,9 @@ VIDEO_LINKS = {
     "06b_kalman_mean_reversion.md": ("https://youtu.be/BuPil7nXvMU", "#95 Trading Mean Reversion with Kalman Filters"),
     "06c_halflife_ou.md": ("https://youtu.be/BuPil7nXvMU", "#95 Trading Mean Reversion — Half-life OU"),
     "06d_confirmation_reversal.md": ("https://youtu.be/mais1dsB_1g", "#72 Markov Regime Switching Bot — Timing"),
+    "08_kelly_criterion.md": ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/36.%20How%20to%20Trade%20with%20the%20Kelly%20Criterion", "#36 How to Trade with the Kelly Criterion"),
+    "09_backtesting_pitfalls.md": ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2026%20Video%20Lectures/97.%203%20Backtesting%20Pitfalls%20That%20Ruin%20Your%20Strategy", "#97 3 Backtesting Pitfalls That Ruin Your Strategy"),
+    "09b_profitable_vs_tradable.md": ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/77.%20Profitable%20vs%20Tradable%20-%20Why%20Most%20Strategies%20Fail%20Live", "#77 Profitable vs Tradable — Why Most Strategies Fail Live"),
 }
 
 # ── State ───────────────────────────────────────────────────────────
@@ -281,12 +287,16 @@ with col_h1:
 with col_h2:
     if selected in VIDEO_LINKS:
         url, video_title = VIDEO_LINKS[selected]
+        is_yt = "youtu" in url
+        btn_bg  = "#ff0000" if is_yt else "#1a1a1a"
+        btn_txt = "▶ Voir la video" if is_yt else "GH Code source"
+        btn_brd = "" if is_yt else "border:1px solid #333;"
         st.markdown(
             f"<div style='padding-top:18px;'>"
             f"<a href='{url}' target='_blank' style='text-decoration:none;'>"
-            f"<span style='background:#ff0000; color:#fff; padding:8px 16px; "
-            f"border-radius:8px; font-size:13px; font-weight:700;'>"
-            f"▶ Voir la video</span></a></div>",
+            f"<span style='background:{btn_bg}; color:#fff; padding:8px 16px; "
+            f"border-radius:8px; font-size:13px; font-weight:700; {btn_brd}'>"
+            f"{btn_txt}</span></a></div>",
             unsafe_allow_html=True,
         )
         st.caption(f"Quant Guild — {video_title}")
@@ -387,6 +397,38 @@ with tab_l:
                     st.success("Correct ! K = 2/(2+4) = 0.333")
                 else:
                     st.error("X K = P/(P+R) = 2/6 = 0.333")
+
+        elif "kelly" in selected:
+            val = st.number_input("Kelly : WR=60%, R:R=2:1. f* = ? (%)", min_value=0.0, max_value=100.0, step=1.0, key="quiz_kelly")
+            if val > 0:
+                expected = (0.60 * 2 - 0.40) / 2 * 100  # = 40%
+                if abs(val - expected) < 2.0:
+                    st.success(f"Correct ! (0.60×2 - 0.40) / 2 = {expected:.0f}%")
+                else:
+                    st.error(f"X f* = (p×b - (1-p)) / b = (0.6×2 - 0.4) / 2 = {expected:.0f}%")
+
+        elif "pitfall" in selected or "backtest" in selected.lower():
+            val = st.number_input(
+                "Tu as 6 params libres. Combien de trades minimum pour etre significatif ?",
+                min_value=0, step=10, key="quiz_pitfalls"
+            )
+            if val > 0:
+                if abs(val - 300) < 50:
+                    st.success("Correct ! 50 × 6 params = 300 trades minimum.")
+                else:
+                    st.error("X Regle : N > 50 × k_params. Avec 6 params → 300 trades.")
+
+        elif "tradable" in selected or "profitable" in selected.lower():
+            val = st.number_input(
+                "Sharpe IS=1.4, Sharpe OOS=0.9. Ratio de generalisation = ?",
+                min_value=0.0, max_value=2.0, step=0.01, key="quiz_tradable"
+            )
+            if val > 0:
+                expected = 0.9 / 1.4
+                if abs(val - expected) < 0.05:
+                    st.success(f"Correct ! 0.9/1.4 = {expected:.2f} — robuste (> 0.7).")
+                else:
+                    st.error(f"X Ratio = Sharpe_OOS / Sharpe_IS = 0.9/1.4 = {expected:.2f}")
 
     else:
         st.info("Section en cours de redaction.")

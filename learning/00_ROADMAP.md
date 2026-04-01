@@ -49,10 +49,22 @@ NIVEAU 3 — Le signal propre
 |      Prediction, correction, Kalman Gain          |
 +--------------------------------------------------+
 
-NIVEAU 4 — Integration trading
+NIVEAU 4 — Live trading
 +--------------------------------------------------+
 |  07. Pipeline complet                             |
 |      GARCH --> HMM --> Kalman --> Signal           |
++--------------------------------------------------+
+|  08. Kelly Criterion (#36)                        |
+|      "Combien risquer par trade"                  |
+|      Half-Kelly, sizing dynamique, phases Apex    |
++--------------------------------------------------+
+|  09. Backtesting Pitfalls (#97)                   |
+|      "Pourquoi ton backtest ment"                 |
+|      Look-ahead, survivorship, overfitting        |
++--------------------------------------------------+
+|  09b. Profitable vs Tradable (#77)                |
+|       "Pourquoi ca meurt en live"                 |
+|       Slippage, regime change, robustesse         |
 +--------------------------------------------------+
 ```
 
@@ -78,3 +90,6 @@ NIVEAU 4 — Integration trading
 | 05 HMM | Difficile | 3-4h |
 | 06 Kalman | Difficile | 3-4h |
 | 07 Pipeline | Application | 2-3h |
+| 08 Kelly | Moyen | 1-2h |
+| 09 Pitfalls | Moyen | 1-2h |
+| 09b Live | Moyen | 1-2h |
