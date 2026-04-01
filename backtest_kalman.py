@@ -1193,10 +1193,17 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
                 x=tdf_oos_c["date"].astype(str).tolist(), y=eq_oos[1:],
                 mode="lines", line=dict(color=ORANGE, width=2), name=f"OOS ({oos_pct}%)",
             ))
-            fig_iso.add_vline(x=split_date_str, line_dash="dash",
-                              line_color="rgba(255,255,255,0.3)",
-                              annotation_text=f" Split IS/OOS — {split_date_str}",
-                              annotation_font=dict(color="#555", size=10))
+            fig_iso.add_shape(
+                type="line", x0=split_date_str, x1=split_date_str,
+                y0=0, y1=1, xref="x", yref="paper",
+                line=dict(dash="dash", color="rgba(255,255,255,0.3)", width=1),
+            )
+            fig_iso.add_annotation(
+                x=split_date_str, y=0.97, xref="x", yref="paper",
+                text=f"Split IS/OOS — {split_date_str}",
+                showarrow=False, font=dict(color="#777", size=10),
+                xanchor="left",
+            )
             fig_iso.update_layout(height=350, **DARK,
                                   legend=dict(orientation="h", y=1.02, x=0))
             fig_iso.update_yaxes(title_text="Equity ($)")
