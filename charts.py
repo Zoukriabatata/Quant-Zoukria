@@ -11,18 +11,39 @@ from scipy.stats import norm, gaussian_kde
 # ── Shared dark theme ──────────────────────────────────────────────
 DARK = dict(
     template="plotly_dark",
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(17,17,17,1)",
-    font=dict(color="#e0e0e0", size=13),
-    margin=dict(t=50, b=40, l=50, r=30),
+    paper_bgcolor="rgba(6,6,6,0)",
+    plot_bgcolor="rgba(8,8,8,1)",
+    font=dict(color="#888", size=12, family="JetBrains Mono"),
+    margin=dict(t=44, b=36, l=48, r=20),
+    xaxis=dict(
+        gridcolor="rgba(255,255,255,0.04)",
+        linecolor="#1a1a1a",
+        tickfont=dict(color="#444", size=11),
+        title_font=dict(color="#555", size=11),
+        zeroline=False,
+    ),
+    yaxis=dict(
+        gridcolor="rgba(255,255,255,0.04)",
+        linecolor="#1a1a1a",
+        tickfont=dict(color="#444", size=11),
+        title_font=dict(color="#555", size=11),
+        zeroline=False,
+    ),
+    legend=dict(
+        bgcolor="rgba(0,0,0,0)",
+        bordercolor="rgba(255,255,255,0.05)",
+        borderwidth=1,
+        font=dict(color="#555", size=11),
+    ),
 )
-CYAN = "#00e5ff"
+TEAL    = "#3CC4B7"
+CYAN    = "#00e5ff"
 MAGENTA = "#ff00e5"
-GREEN = "#00ff88"
-RED = "#ff3366"
-YELLOW = "#ffd600"
-ORANGE = "#ff9100"
-WHITE_50 = "rgba(255,255,255,0.5)"
+GREEN   = "#00ff88"
+RED     = "#ff3366"
+YELLOW  = "#ffd600"
+ORANGE  = "#ff9100"
+WHITE_50 = "rgba(255,255,255,0.4)"
 
 
 # ===================================================================
