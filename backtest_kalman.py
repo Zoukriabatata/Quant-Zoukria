@@ -40,12 +40,7 @@ YELLOW, ORANGE = "#ffd600", "#ff9100"
 st.set_page_config(page_title="Backtest Kalman OU", page_icon="📊", layout="wide")
 
 # ── Session state ─────────────────────────────────────────────────────────
-# Appliquer les valeurs en attente de l'optimiseur AVANT que les widgets se créent
-for _src, _dst in [('_pending_bk', '_opt_bk'), ('_pending_sl', '_opt_sl'), ('_pending_conf', '_opt_conf')]:
-    if _src in st.session_state:
-        st.session_state[_dst] = st.session_state.pop(_src)
-
-for _k, _v in [('_opt_bk', 2.0), ('_opt_sl', 0.75), ('_opt_conf', True),
+for _k, _v in [('_pref_bk', 2.0), ('_pref_sl', 0.75), ('_pref_conf', True),
                ('_run_bt', False), ('_kalman_cache', {})]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -145,11 +140,11 @@ kalman_lookback = st.sidebar.number_input(
     help="Fenêtre AR(1) pour calibrer φ, μ, σ. 120 barres = 2h en 1m."
 )
 band_k = st.sidebar.number_input(
-    "Bande k min (σ)", value=float(st.session_state.get('_opt_bk', 2.0)),
+    "Bande k min (σ)", value=float(st.session_state.get('_pref_bk', 2.0)),
     min_value=0.3, max_value=4.0, step=0.1,
     help="Entrée quand |prix - FV| > k × σ_stat. 2.0 = entrées plus extrêmes → meilleur WR."
 )
-st.session_state['_opt_bk'] = band_k
+st.session_state['_pref_bk'] = band_k
 band_k_max = st.sidebar.number_input(
     "Bande k max (σ)", value=4.0, min_value=0.5, max_value=10.0, step=0.5,
     help="Ignore si déviation > k_max (évite les crashes/gaps extrêmes)"
@@ -167,11 +162,11 @@ noise_scale = round(0.1 + 19.9 * (_noise_lever / 100) ** 2, 3)
 st.sidebar.caption(f"noise_scale effectif = {noise_scale:.2f}")
 confirm_reversal = st.sidebar.toggle(
     "Confirmation reversion (Lec 72)",
-    value=bool(st.session_state.get('_opt_conf', True)),
+    value=bool(st.session_state.get('_pref_conf', True)),
     help="N'entrer qu'à la barre i+1 si elle est déjà plus proche du FV que la barre signal.\n"
          "Réduit les faux signaux au prix de moins de trades."
 )
-st.session_state['_opt_conf'] = confirm_reversal
+st.session_state['_pref_conf'] = confirm_reversal
 max_sigma_stat = st.sidebar.number_input(
     "σ_stat max (filtre vol)", value=15.0, min_value=0.0, max_value=100.0, step=1.0,
     help="Skip si σ_stat > seuil. σ_stat élevé = marché trending/volatile → mean reversion peu fiable. "
@@ -193,11 +188,11 @@ use_regime_filter = st.sidebar.toggle(
 st.sidebar.markdown("---")
 st.sidebar.header("Risk")
 sl_sigma_mult = st.sidebar.slider(
-    "SL = k × σ_kalman", value=float(st.session_state.get('_opt_sl', 0.75)),
+    "SL = k × σ_kalman", value=float(st.session_state.get('_pref_sl', 0.75)),
     min_value=0.25, max_value=3.0, step=0.25,
     help="Stop = sl_sigma × σ_stat au-delà de l'entrée. 0.75 avec band_k=1.5 → R:R=2:1."
 )
-st.session_state['_opt_sl'] = sl_sigma_mult
+st.session_state['_pref_sl'] = sl_sigma_mult
 min_sl_pts = st.sidebar.number_input("SL min (pts)", value=4.0, step=0.5)
 tp_ratio = st.sidebar.slider(
     "TP ratio (% distance vers FV)", min_value=0.25, max_value=1.0, value=1.0, step=0.05,
@@ -1337,9 +1332,9 @@ if st.session_state.get('_run_bt', False):
                         _best_score, _best = _sc, (_bk, _sl, _cf, _wr, _pf, _n)
                 _pb.empty()
                 if _best and _best_score > -990:
-                    st.session_state['_pending_bk']   = _best[0]
-                    st.session_state['_pending_sl']   = _best[1]
-                    st.session_state['_pending_conf'] = _best[2]
+                    st.session_state['_pref_bk']   = _best[0]
+                    st.session_state['_pref_sl']   = _best[1]
+                    st.session_state['_pref_conf'] = _best[2]
                     st.success(
                         f"✅ Meilleurs paramètres : band_k=**{_best[0]}σ** · SL=**{_best[1]}σ** · "
                         f"Confirm=**{'ON' if _best[2] else 'OFF'}** "
@@ -1414,9 +1409,9 @@ if st.session_state.get('_run_bt', False):
             if st.button("✅ Appliquer la config sélectionnée", type="primary"):
                 _ci = _top_labels.index(_choice)
                 _chosen = _cmp_rows[_ci]
-                st.session_state['_pending_bk']   = _chosen['_bk']
-                st.session_state['_pending_sl']   = _chosen['_sl']
-                st.session_state['_pending_conf'] = _chosen['_cf']
+                st.session_state['_pref_bk']   = _chosen['_bk']
+                st.session_state['_pref_sl']   = _chosen['_sl']
+                st.session_state['_pref_conf'] = _chosen['_cf']
                 st.session_state['_cmp_done'] = False
                 st.rerun()
 
