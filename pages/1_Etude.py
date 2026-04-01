@@ -26,12 +26,27 @@ st.set_page_config(
 )
 
 # ══════════════════════════════════════════════════════════════════════
-# CSS — Design system + transitions
+# CSS — Design system
+# Minifié sur une seule ligne avant injection pour que le parser markdown
+# de Streamlit Cloud ne puisse jamais interpréter > # --- comme markdown.
 # ══════════════════════════════════════════════════════════════════════
-st.markdown("""
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+def _inject_css(raw_css: str) -> None:
+    """Strip comments + collapse whitespace → single line → safe st.markdown injection."""
+    import re as _re
+    css = _re.sub(r'/\*.*?\*/', '', raw_css, flags=_re.DOTALL)  # remove /* comments */
+    css = ' '.join(css.split())                                   # collapse all whitespace
+    st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
+
+# Fonts — lien séparé (pas de CSS à parser)
+st.markdown(
+    '<link rel="preconnect" href="https://fonts.googleapis.com">'
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">',
+    unsafe_allow_html=True,
+)
+
+_inject_css("""
 <style>
 /* ── Base ─────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
@@ -297,20 +312,9 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     margin: 1.2rem 0 0.8rem; display: flex; align-items: center; gap: 10px;
 }
 .charts-header::after { content: ''; flex: 1; height: 1px; background: #141414; }
-</style>
-""", unsafe_allow_html=True)
 
-# @keyframes injecté séparément — les {} imbriqués cassent le parser Streamlit
-# quand ils sont dans le même bloc st.markdown que le reste du CSS
-st.markdown(
-    "<style>"
-    "@keyframes fadeSlide{"
-    "from{opacity:0;transform:translateY(6px)}"
-    "to{opacity:1;transform:translateY(0)}"
-    "}"
-    "</style>",
-    unsafe_allow_html=True,
-)
+@keyframes fadeSlide { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+""")
 
 LEARNING_DIR = Path(__file__).parent.parent / "learning"
 
