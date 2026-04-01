@@ -1113,6 +1113,134 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
                             height=300, **DARK)
         k4.plotly_chart(fig_k, use_container_width=True)
 
+        # ── DIAGNOSTIQUE & CORRECTEUR ─────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("<p class='section-title'>🔬 Diagnostique & Correcteur</p>", unsafe_allow_html=True)
+
+        _diag = []  # (emoji, titre, detail, fix)
+
+        # 1. Espérance
+        if expectancy <= 0:
+            _diag.append(("🔴", "Espérance négative",
+                f"Espérance = {expectancy:.1f} pts/trade — chaque trade détruit du capital en moyenne.",
+                f"Augmente band_k ({band_k} → {band_k+0.5:.1f}σ) · Active Confirm reversal · TP = retour à FV (100%)"))
+        elif expectancy < 3:
+            _diag.append(("🟡", "Espérance marginale",
+                f"Espérance = {expectancy:.1f} pts/trade — trop faible, le slippage live l'efface (vise ≥ 5 pts).",
+                f"Augmente band_k ou améliore le R:R (SL sigma {sl_sigma_mult:.2f} → {sl_sigma_mult+0.25:.2f})"))
+
+        # 2. WR vs breakeven
+        _wr_be = 1 / (1 + rr_mean) if rr_mean > 0 else 0.5
+        if winrate < _wr_be - 0.02:
+            _diag.append(("🔴", "WR sous le seuil de rentabilité",
+                f"WR {winrate:.1%} < {_wr_be:.1%} (seuil pour R:R {rr_mean:.1f}) — perdant mécaniquement.",
+                f"Élargis le SL (sl_sigma {sl_sigma_mult:.2f} → {sl_sigma_mult+0.25:.2f}) pour améliorer le WR · ou augmente band_k pour entrées plus extrêmes"))
+
+        # 3. Profit Factor
+        if profit_factor < 1.0:
+            _diag.append(("🔴", "Profit Factor < 1.0",
+                f"PF {profit_factor:.2f} — les pertes dépassent les gains sur toute la période. Aucun edge.",
+                "Combine : band_k ↑ + Confirm reversal ON + régime Markov activé"))
+        elif profit_factor < 1.5:
+            _diag.append(("🟡", "Profit Factor marginal",
+                f"PF {profit_factor:.2f} — edge trop faible pour survivre au slippage live (vise ≥ 1.5).",
+                "Active filtre régime HIGH · ADF p-value plus strict (0.10 → 0.05)"))
+
+        # 4. Sharpe
+        if sharpe_real < 0:
+            _diag.append(("🔴", "Sharpe négatif",
+                f"Sharpe réel {sharpe_real:.2f} — stratégie sous-performe le cash. Edge absent.",
+                "Revoir complètement : band_k, lookback, noise. Commence par band_k → 2.0σ."))
+        elif sharpe_real < 0.5:
+            _diag.append(("🔴", "Sharpe insuffisant",
+                f"Sharpe réel {sharpe_real:.2f} (cible 1.2-1.5) — edge trop faible pour le funded.",
+                "Augmente band_k + active régime Markov + Confirm reversal"))
+        elif sharpe_real < 1.2:
+            _diag.append(("🟡", "Sharpe sous cible",
+                f"Sharpe réel {sharpe_real:.2f} — prometteur mais insuffisant (cible 1.2-1.5).",
+                "Active filtre régime Markov · ADF p-value → 0.05 · réduis le noise lever"))
+
+        # 5. IS/OOS overfitting
+        _oos_ok = oos_pct > 0 and len(trades_df) >= 20
+        _oos_ratio = ratio if _oos_ok else None
+        if _oos_ratio is not None:
+            if _oos_ratio < 0:
+                _diag.append(("🔴", "Overfitting sévère — OOS inverse l'edge IS",
+                    f"Ratio OOS/IS = {_oos_ratio:.2f}. Le modèle fait l'inverse en OOS : bruit mémorisé, pas d'edge réel.",
+                    "Réduis les paramètres libres. Désactive ADF ou régime. Walk-forward 6m IS / 2m OOS."))
+            elif _oos_ratio < 0.4:
+                _diag.append(("🔴", "Overfitting fort",
+                    f"Ratio OOS/IS = {_oos_ratio:.2f} < 0.40. L'edge disparaît hors de la période d'entraînement.",
+                    "Teste avec OOS = 30%. Fixe band_k à 2.0σ sans optimiser. Moins de filtres."))
+            elif _oos_ratio < 0.7:
+                _diag.append(("🟡", "Overfitting partiel",
+                    f"Ratio OOS/IS = {_oos_ratio:.2f} entre 0.40-0.70 — edge fragile hors-sample.",
+                    "Teste band_k fixe 2.0σ sans optimisation. Réexécute sur sous-périodes de 6 mois."))
+
+        # 6. ADF trop agressif sans amélioration
+        if HAS_STATSMODELS and adf_pvalue > 0 and skipped_adf_total > 0:
+            _total_signals = skipped_adf_total + n_total
+            _adf_pct = skipped_adf_total / _total_signals * 100
+            if _adf_pct > 85:
+                _diag.append(("🟡", "ADF bloque trop de signaux",
+                    f"ADF filtre {skipped_adf_total}/{_total_signals} signaux ({_adf_pct:.0f}%) — les trades restants ne sont pas meilleurs pour autant.",
+                    f"Baisse le seuil ADF ({adf_pvalue} → 0.05) · ou désactive ADF et garde uniquement le régime Markov"))
+            elif _adf_pct > 60 and profit_factor < 1.3:
+                _diag.append(("🟡", "ADF filtre beaucoup sans améliorer l'edge",
+                    f"ADF bloque {_adf_pct:.0f}% des signaux mais PF = {profit_factor:.2f}. Pas d'amélioration visible.",
+                    "Teste avec ADF désactivé pour comparer. Le régime Markov seul est peut-être suffisant."))
+
+        # 7. Fréquence trop basse
+        _tpd = n_total / max(n_bdays, 1)
+        if _tpd < 0.1:
+            _diag.append(("🟡", "Fréquence de trading trop basse",
+                f"{n_total} trades en {n_bdays} jours ({_tpd:.2f}/jour) — statistiques peu fiables, intervalle de confiance large.",
+                f"Baisse band_k ({band_k} → {max(1.0, band_k-0.5):.1f}σ) · élargis la session · ADF p-value → 0.15"))
+
+        # 8. Max Drawdown Apex
+        if max_dd > 4.0:
+            _diag.append(("🔴", "Drawdown dépasse la limite Apex EOD",
+                f"Max DD {max_dd:.1f}% > 4% (limite $2,000 sur Apex 50K EOD). Challenge échoué en live.",
+                "Réduis les contrats · SL sigma plus serré · filtre régime HIGH obligatoire"))
+        elif max_dd > 2.5:
+            _diag.append(("🟡", "Drawdown proche de la limite",
+                f"Max DD {max_dd:.1f}% — le slippage et le stress live peuvent faire dépasser la limite Apex.",
+                "Active le mode PRUDENTE pour les premiers trades · reset mensuel ON"))
+
+        # 9. Kelly nul
+        if kelly_full <= 0:
+            _diag.append(("🔴", "Kelly = 0% — aucun sizing possible",
+                "Kelly nul ou négatif : mathématiquement, aucune mise n'est justifiée sur cette stratégie.",
+                "Résous les problèmes d'edge ci-dessus en premier. Kelly > 0 est le minimum pour trader réel."))
+
+        # ── Render ───────────────────────────────────────────────────────────
+        if not _diag:
+            st.success("✓ Aucun problème détecté — edge présent, robuste et sizeable.")
+        else:
+            for _emoji, _titre, _detail, _fix in _diag:
+                _msg = f"**{_emoji} {_titre}**  \n{_detail}  \n→ {_fix}"
+                if _emoji == "🔴":
+                    st.error(_msg)
+                else:
+                    st.warning(_msg)
+
+            # Bloc texte copy-paste
+            st.markdown("---")
+            st.markdown("**Résumé — copier-coller :**")
+            _txt = [
+                f"DIAGNOSTIQUE BACKTEST — {n_total} trades | {n_bdays}j | WR {winrate:.1%} | PF {profit_factor:.2f} | Sharpe {sharpe_real:.2f}",
+                f"Paramètres : band_k={band_k}σ | noise={_noise_lever}/100 | SL={sl_sigma_mult}σ | TP={tp_ratio:.0%} | ADF={adf_pvalue}",
+                "",
+            ]
+            for _i, (_emoji, _titre, _detail, _fix) in enumerate(_diag, 1):
+                _txt += [
+                    f"{_emoji} Problème {_i} — {_titre}",
+                    f"   Diagnostic : {_detail}",
+                    f"   Correctif  : {_fix}",
+                    "",
+                ]
+            st.code("\n".join(_txt), language=None)
+
     # ── TAB 3 : Pipeline ──────────────────────────────────────────────
     with tab3:
         st.markdown("<p class='section-title'>Filtres pipeline</p>", unsafe_allow_html=True)
