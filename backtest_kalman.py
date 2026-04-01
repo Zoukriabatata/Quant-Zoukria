@@ -1,16 +1,19 @@
 """
-Backtest Kalman OU Mean Reversion — MNQ / Apex 50K EOD Trail
+Backtest Kalman OU Mean Reversion — MNQ M1 CSV / Apex 50K EOD Trail
 Basé sur Roman Paolucci Lec 95 — Trading Mean Reversion with Kalman Filters
 github.com/romanmichaelpaolucci/Quant-Guild-Library
 
+Architecture :
+  Signal : MNQ M1 CSV (Databento, front-month par volume) — 1 an ou 2 ans
+  Execution : MNQ sur Apex ($2/pt direct)
 Pipeline :
   AR(1) calibration rolling → KalmanOU filter (fair value adaptatif)
-  Entrée : |prix - FV| > k × σ_stat
+  Entrée : |prix MNQ - FV| > k × σ_stat
   TP : retour au FV (tp_ratio × distance)
   SL : sl_sigma × σ_stat au-delà de l'entrée
+  P&L : result_pts × $2/pt MNQ × contrats
 """
 
-import glob
 import os
 import numpy as np
 import pandas as pd
@@ -75,17 +78,29 @@ st.markdown("""
 
 st.markdown("""
 <div class="page-header">
-    <div class="page-tag">BACKTEST · DATABENTO MNQ · APEX 50K EOD</div>
-    <div class="page-title">Backtest Kalman OU</div>
+    <div class="page-tag">BACKTEST · MNQ M1 CSV · APEX 50K EOD</div>
+    <div class="page-title">Backtest Kalman OU — MNQ M1</div>
 </div>
 """, unsafe_allow_html=True)
 
+CSV_PATH = r"C:\Users\ryadb\Downloads\data OHLCV M1\glbx-mdp3-20240330-20260329.ohlcv-1m.csv"
+
+if not os.path.exists(CSV_PATH):
+    st.error(f"Fichier CSV introuvable : `{CSV_PATH}`")
+    st.stop()
+
 # ── Sidebar ───────────────────────────────────────────────────────────
-st.sidebar.header("Données")
-data_dir  = st.sidebar.text_input("Dossier CSV Databento (1)", value=r"C:\Users\ryadb\Downloads\data OHLCV M1")
-data_dir2 = st.sidebar.text_input("Dossier CSV Databento (2) — optionnel", value="")
-data_dir3 = st.sidebar.text_input("Dossier CSV Databento (3) — optionnel", value="")
-bar_seconds = st.sidebar.selectbox("Barre (secondes)", [30, 60, 120, 300], index=1)
+st.sidebar.header("Données — MNQ M1 CSV")
+st.sidebar.caption("Databento MNQ 1-min, front-month par volume. Mar 2024 → Mar 2026.")
+
+csv_years = st.sidebar.radio(
+    "Période",
+    options=[1, 2],
+    index=1,
+    format_func=lambda x: f"{x} an{'s' if x > 1 else ''}",
+    help="1 an = avr 2025 → mars 2026 | 2 ans = avr 2024 → mars 2026",
+    horizontal=True,
+)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Kalman OU")
@@ -114,6 +129,11 @@ confirm_reversal = st.sidebar.toggle(
     value=True,
     help="N'entrer qu'à la barre i+1 si elle est déjà plus proche du FV que la barre signal.\n"
          "Réduit les faux signaux au prix de moins de trades."
+)
+max_sigma_stat = st.sidebar.number_input(
+    "σ_stat max (filtre vol)", value=15.0, min_value=0.0, max_value=100.0, step=1.0,
+    help="Skip si σ_stat > seuil. σ_stat élevé = marché trending/volatile → mean reversion peu fiable. "
+         "0 = désactivé."
 )
 
 st.sidebar.markdown("---")
@@ -195,26 +215,42 @@ RISK_MIN_DOLLARS  = 200
 RISK_MAX_DOLLARS  = 800
 DAILY_LOSS_HARD   = APEX_50K["daily_loss"]
 TICK_SIZE         = 0.25
-DOLLAR_PER_PT     = 2.0   # MNQ : $2 par point
+# MNQ direct : 1 point MNQ = $2
+DOLLAR_PER_PT     = 2.0
 
 # ══════════════════════════════════════════════════════════════════════
 # ENGINE — Kalman OU (basé sur kts.py Roman Paolucci Lec 95)
 # ══════════════════════════════════════════════════════════════════════
 
-@st.cache_data
-def load_ohlcv_csv(filepath):
-    """Charge CSV ohlcv-1m Databento, garde le front month par volume."""
-    df = pd.read_csv(filepath,
-                     usecols=["ts_event", "open", "high", "low", "close", "volume", "symbol"])
-    df["bar"] = pd.to_datetime(df["ts_event"], utc=True)
-    df.drop(columns=["ts_event"], inplace=True)
-    df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].astype(float)
-    df["volume"] = df["volume"].astype(int)
+@st.cache_data(ttl=0)
+def load_mnq_csv(csv_path, years):
+    """
+    Charge MNQ M1 depuis CSV Databento.
+    Sélectionne le front-month par volume à chaque barre.
+    years=1 : 12 derniers mois du dataset | years=2 : 24 derniers mois.
+    Retourne (df, erreur_str).
+    """
+    try:
+        df = pd.read_csv(csv_path, usecols=["ts_event", "open", "high", "low", "close", "volume", "symbol"])
+    except Exception as e:
+        return None, str(e)
+    if df.empty:
+        return None, "CSV vide."
+    # Exclure les spreads (symboles contenant '-')
     df = df[~df["symbol"].str.contains("-", na=False)].copy()
-    df.sort_values(["bar", "volume"], ascending=[True, False], inplace=True)
-    df = df.drop_duplicates(subset=["bar"], keep="first")
-    df.drop(columns=["symbol"], inplace=True)
+    # Front-month : pour chaque barre, garder le symbole avec le plus grand volume
+    df = df.sort_values("volume", ascending=False).groupby("ts_event", sort=False).first().reset_index()
+    df["bar"] = pd.to_datetime(df["ts_event"], utc=True)
+    df = df[["bar", "open", "high", "low", "close", "volume"]].copy()
+    df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].astype(float)
+    df["volume"] = df["volume"].fillna(0).astype(int)
+    df.sort_values("bar", inplace=True)
+    df.drop_duplicates(subset=["bar"], inplace=True)
     df.reset_index(drop=True, inplace=True)
+    # Filtre période
+    end_dt   = df["bar"].max()
+    start_dt = end_dt - pd.DateOffset(years=years)
+    df = df[df["bar"] >= start_dt].reset_index(drop=True)
     df["tr"] = np.maximum(
         df["high"] - df["low"],
         np.maximum(abs(df["high"] - df["close"].shift(1)),
@@ -222,42 +258,13 @@ def load_ohlcv_csv(filepath):
     )
     df["returns"] = df["close"].pct_change().fillna(0)
     df["date"] = df["bar"].dt.date
-    return df
+    return df, None
 
 
 def filter_session(df, start_h, start_m, end_h, end_m):
     t_min = df["bar"].dt.hour * 60 + df["bar"].dt.minute
     mask  = (t_min >= start_h * 60 + start_m) & (t_min < end_h * 60 + end_m)
     return df[mask].reset_index(drop=True)
-
-
-def load_single_day(filepath, start_h, start_m, end_h, end_m):
-    df = pd.read_csv(filepath, usecols=["ts_event", "side", "price", "size"])
-    df["ts"]    = pd.to_datetime(df["ts_event"], utc=True)
-    df["price"] = df["price"].astype(float)
-    df["size"]  = df["size"].astype(int)
-    df.drop(columns=["ts_event"], inplace=True)
-    t_min = df["ts"].dt.hour * 60 + df["ts"].dt.minute
-    mask  = (t_min >= start_h * 60 + start_m) & (t_min < end_h * 60 + end_m)
-    return df[mask].sort_values("ts").reset_index(drop=True)
-
-
-def build_bars(df, freq_seconds):
-    df = df.copy()
-    df["bar"] = df["ts"].dt.floor(f"{freq_seconds}s")
-    bars = df.groupby("bar").agg(
-        open=("price","first"), high=("price","max"),
-        low=("price","min"),   close=("price","last"),
-        volume=("size","sum"),
-    ).reset_index()
-    bars["tr"] = np.maximum(
-        bars["high"] - bars["low"],
-        np.maximum(abs(bars["high"] - bars["close"].shift(1)),
-                   abs(bars["low"]  - bars["close"].shift(1)))
-    )
-    bars["returns"] = bars["close"].pct_change().fillna(0)
-    bars["date"]    = bars["bar"].dt.date
-    return bars
 
 
 # ── Kalman OU (exact de kts.py Roman Paolucci) ───────────────────────
@@ -362,7 +369,7 @@ def run_kalman(closes, lookback, noise_scale):
 
 
 def find_signals(bars, fair_values, sigma_stats, band_k, band_k_max,
-                 skip_open=0, skip_close=0, confirm_reversal=False):
+                 skip_open=0, skip_close=0, confirm_reversal=False, max_sigma_stat=0.0):
     """
     Génère les signaux d'entrée mean reversion.
 
@@ -378,6 +385,8 @@ def find_signals(bars, fair_values, sigma_stats, band_k, band_k_max,
             continue
         ss = sigma_stats[i]
         if ss <= 0:
+            continue
+        if max_sigma_stat > 0 and ss > max_sigma_stat:
             continue
 
         close     = bars.iloc[i]["close"]
@@ -461,48 +470,30 @@ def kelly_fraction(results):
 
 if st.sidebar.button("Lancer le Backtest", type="primary"):
 
-    dirs_to_scan  = [d for d in [data_dir, data_dir2, data_dir3] if d.strip()]
-    csv_files     = []
-    legacy_files  = []
-    for d in dirs_to_scan:
-        csv_files    += sorted(glob.glob(os.path.join(d, "*.ohlcv-1m.csv")))
-        legacy_files += sorted(glob.glob(os.path.join(d, "*.trades.csv")))
+    with st.spinner(f"Chargement MNQ M1 CSV ({csv_years} an{'s' if csv_years > 1 else ''})..."):
+        full_df, _err = load_mnq_csv(CSV_PATH, csv_years)
 
-    if csv_files:
-        with st.spinner("Chargement CSV ohlcv-1m..."):
-            frames   = [load_ohlcv_csv(f) for f in csv_files]
-            full_df  = pd.concat(frames, ignore_index=True)
-            full_df.sort_values("bar", inplace=True)
-            full_df.drop_duplicates(subset=["bar"], inplace=True)
-            full_df.reset_index(drop=True, inplace=True)
-        dates = sorted(full_df["date"].unique())
-        st.info(f"{len(dates)} jours ({dates[0]} → {dates[-1]}). "
-                f"Pipeline: AR(1) rolling → KalmanOU → Bandes → Apex 50K EOD")
-    elif legacy_files:
-        import re as _re_sort
-        def _sort_key(p):
-            m = _re_sort.search(r'(\d{8})', os.path.basename(p))
-            return m.group(1) if m else p
-        legacy_files = sorted(set(legacy_files), key=_sort_key)
-        full_df      = None
-        dates        = legacy_files
-        st.info(f"{len(dates)} fichiers ticks. Pipeline: AR(1) rolling → KalmanOU → Bandes → Apex 50K EOD")
-    else:
-        st.error("Aucun fichier CSV trouvé. Vérifie les dossiers ci-dessus.")
+    if _err:
+        st.error(f"Erreur CSV : {_err}")
         st.stop()
+    if full_df is None or full_df.empty:
+        st.error("Aucune donnee. Verifie le chemin CSV.")
+        st.stop()
+
+    dates = sorted(full_df["date"].unique())
+    st.info(
+        f"{len(dates)} jours MNQ M1 ({dates[0]} → {dates[-1]}) | "
+        f"${DOLLAR_PER_PT:.1f}/pt MNQ | "
+        f"Pipeline: AR(1) rolling → KalmanOU → Bandes → Apex 50K EOD"
+    )
 
     progress = st.progress(0)
     slip     = slippage_ticks * TICK_SIZE
 
-    import re as _re
     def get_month_key(d):
-        s = str(d)
-        m = _re.search(r'(\d{4})(\d{2})(\d{2})', s)
-        if m:
-            return f"{m.group(1)}-{m.group(2)}"
-        return s[:7]
+        return str(d)[:7]
 
-    dates_sorted = sorted(dates, key=lambda d: str(d))
+    dates_sorted = sorted(dates)
 
     all_trades      = []
     all_daily_stats = []
@@ -626,18 +617,9 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         days_elapsed += 1
 
         # ── Barres du jour ────────────────────────────────────────────
-        if full_df is not None:
-            day_df = full_df[full_df["date"] == day_key].copy()
-            bars   = filter_session(day_df, session_start_h, session_start_m,
-                                    session_end_h, session_end_m)
-        else:
-            ticks = load_single_day(day_key, session_start_h, session_start_m,
-                                    session_end_h, session_end_m)
-            if len(ticks) < 100:
-                skipped_no_signal += 1
-                continue
-            bars = build_bars(ticks, bar_seconds)
-            del ticks
+        day_df = full_df[full_df["date"] == day_key].copy()
+        bars   = filter_session(day_df, session_start_h, session_start_m,
+                                session_end_h, session_end_m)
 
         if len(bars) < kalman_lookback + 20:
             skipped_no_signal += 1
@@ -652,6 +634,7 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             band_k, band_k_max,
             skip_open=skip_open_bars, skip_close=skip_close_bars,
             confirm_reversal=confirm_reversal,
+            max_sigma_stat=float(max_sigma_stat),
         )
 
         if not signals:
@@ -972,9 +955,11 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         p1.metric("Jours analysés", len(dates_sorted))
         p2.metric("Skip pas de signal", skipped_no_signal)
         p3.metric("Skip 2 pertes consec", skipped_consec)
-        st.info(f"**{n_total} trades** sur {len(dates_sorted)} jours — "
-                f"Apex 50K EOD | Daily ${DAILY_LOSS_HARD:,} | DD ${max_drawdown_dollars:,} | "
-                f"band_k={band_k}σ | noise={noise_scale} | SL={sl_sigma_mult}σ | TP={tp_ratio:.0%}")
+        st.info(f"**{n_total} trades** sur {len(dates_sorted)} jours | "
+                f"MNQ M1 {csv_years}an{'s' if csv_years > 1 else ''} | Apex 50K EOD | "
+                f"Daily ${DAILY_LOSS_HARD:,} | DD ${max_drawdown_dollars:,} | "
+                f"band_k={band_k}σ | noise={noise_scale} | SL={sl_sigma_mult}σ | TP={tp_ratio:.0%} | "
+                f"${DOLLAR_PER_PT:.1f}/pt MNQ/contrat")
 
     # ── TAB 4 : Charts ────────────────────────────────────────────────
     with tab4:
@@ -1055,10 +1040,11 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
         st.markdown("---")
         if expectancy > 0 and profit_factor > 1.5:
             st.success(
-                f"**EDGE CONFIRMÉ** — {winrate:.1%} WR, {expectancy:.1f} pts/trade, "
+                f"**EDGE CONFIRME** — {winrate:.1%} WR, {expectancy:.1f} pts MNQ/trade, "
                 f"PF {profit_factor:.2f}, ½Kelly {kelly_half:.1%}\n\n"
-                f"Signal: Kalman OU (k={band_k}σ) | TP {tp_ratio:.0%} vers FV | "
-                f"SL = {sl_sigma_mult}×σ-kalman\n\n"
+                f"Signal: MNQ Kalman OU (k={band_k}σ) | "
+                f"TP {tp_ratio:.0%} vers FV | SL = {sl_sigma_mult}×σ-kalman | "
+                f"${DOLLAR_PER_PT:.1f}/pt MNQ/contrat\n\n"
                 f"Return: **{total_return:+.1f}%** | Max DD: **{max_dd:.1f}%**"
             )
         elif expectancy > 0:

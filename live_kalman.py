@@ -389,104 +389,93 @@ refresh_sec = st.sidebar.number_input("Refresh (sec)", value=30, min_value=15, s
 # ENGINE
 # ══════════════════════════════════════════════════════════════════════
 
-def kalman_ou_filter(prices, lookback, R_mult=5.0):
-    """Kalman OU → fair_value, sigma_stat, K, half_life."""
-    n = len(prices)
-    fair_values = np.full(n, np.nan)
-    sigma_stats = np.full(n, np.nan)
+def estimate_ar1(closes):
+    """
+    Calibre AR(1) : X_t = c + φ·X_{t-1} + ε
+    Retourne (φ, μ, σ) ou None.
+    Source : kts.py — Roman Paolucci Lec 95
+    """
+    y = np.array(closes, dtype=float)
+    y = y[np.isfinite(y)]
+    if len(y) < 5:
+        return None
+    try:
+        x_lag  = y[:-1]
+        x_curr = y[1:]
+        X      = np.column_stack([np.ones_like(x_lag), x_lag])
+        beta   = np.linalg.lstsq(X, x_curr, rcond=None)[0]
+        c, phi = float(beta[0]), float(beta[1])
+        phi    = np.clip(phi, 0.01, 0.99)
+        resid  = x_curr - (c + phi * x_lag)
+        sigma  = float(np.sqrt(np.mean(resid ** 2)))
+        if sigma <= 0 or not np.isfinite(sigma):
+            sigma = max(float(np.std(y)) * 0.01, 1e-9)
+        mu = c / (1.0 - phi)
+        return phi, mu, sigma
+    except Exception:
+        return None
+
+
+class KalmanOU:
+    """
+    Filtre de Kalman 1D pour processus OU — kts.py Roman Paolucci Lec 95.
+    Unifie backtest et live sur le meme moteur.
+    """
+    def __init__(self, phi, mu, sigma, noise_scale=1.0):
+        self.phi = phi
+        self.mu  = mu
+        self.Q   = sigma ** 2 * max(1.0 - phi ** 2, 1e-6)
+        self.R   = sigma ** 2 * max(noise_scale, 0.01)
+        self.x   = mu
+        self.P   = self.R
+
+    def update(self, z):
+        self.x = self.phi * self.x + (1.0 - self.phi) * self.mu
+        self.P = self.phi ** 2 * self.P + self.Q
+        K      = self.P / (self.P + self.R)
+        self.x = self.x + K * (z - self.x)
+        self.P = (1.0 - K) * self.P
+        return self.x, K
+
+
+def run_kalman_live(prices, lookback, noise_scale):
+    """
+    Kalman OU barre par barre — meme algorithme que backtest_kalman.py.
+    Retourne : fair_values, sigma_stats, kalman_gains, half_lives
+    """
+    n            = len(prices)
+    fair_values  = np.full(n, np.nan)
+    sigma_stats  = np.full(n, np.nan)
     kalman_gains = np.full(n, np.nan)
     half_lives   = np.full(n, np.nan)
+    kal          = None
 
     for i in range(lookback, n):
-        window = prices[max(0, i - lookback):i]
-        x_prev = window[:-1]
-        x_curr = window[1:]
-        m = len(x_prev)
-
-        if np.std(x_prev) < 1e-10 or m < 10:
-            fair_values[i] = prices[i]
-            sigma_stats[i] = 5.0
-            kalman_gains[i] = 0.5
-            half_lives[i]   = 999.0
+        window = prices[i - lookback: i]
+        params = estimate_ar1(window)
+        if params is None:
             continue
+        phi, mu, sigma = params
+        ss = sigma / np.sqrt(max(1.0 - phi ** 2, 1e-6))
+        hl = -np.log(2) / np.log(phi) if phi > 0.001 else 999.0
 
-        sx = np.sum(x_prev)
-        sy = np.sum(x_curr)
-        sxx = np.sum(x_prev ** 2)
-        sxy = np.sum(x_prev * x_curr)
-        denom = m * sxx - sx * sx
+        if kal is None:
+            kal = KalmanOU(phi, mu, sigma, noise_scale)
+            for c in window:
+                kal.update(c)
+        else:
+            kal.phi = phi
+            kal.mu  = mu
+            kal.Q   = sigma ** 2 * max(1.0 - phi ** 2, 1e-6)
+            kal.R   = sigma ** 2 * max(noise_scale, 0.01)
 
-        if abs(denom) < 1e-10:
-            fair_values[i] = prices[i]
-            sigma_stats[i] = 5.0
-            kalman_gains[i] = 0.5
-            half_lives[i]   = 999.0
-            continue
-
-        phi = np.clip((m * sxy - sx * sy) / denom, 0.5, 0.999)
-        c = (sy - phi * sx) / m
-        mu = c / (1 - phi) if abs(1 - phi) > 1e-6 else np.mean(window)
-        residuals = x_curr - (phi * x_prev + c)
-        sigma = max(np.std(residuals), 1.0)
-        sigma_stat = sigma / np.sqrt(max(2 * (1 - phi), 0.001))
-        hl = -np.log(2) / np.log(phi) if phi > 0 else 999.0
-
-        Q = sigma ** 2 * (1 - phi ** 2)
-        R = sigma ** 2 * R_mult
-        x_est = window[0]
-        P = sigma_stat ** 2
-
-        for obs in window:
-            x_pred = phi * x_est + (1 - phi) * mu
-            P_pred = phi ** 2 * P + Q
-            K = P_pred / (P_pred + R)
-            x_est = x_pred + K * (obs - x_pred)
-            P = (1 - K) * P_pred
-
-        fair_values[i] = x_est
-        sigma_stats[i] = sigma_stat
+        _, K = kal.update(prices[i])
+        fair_values[i]  = kal.x
+        sigma_stats[i]  = ss
         kalman_gains[i] = K
         half_lives[i]   = hl
 
     return fair_values, sigma_stats, kalman_gains, half_lives
-
-
-def classify_regime_gmm(returns, sticky_window=5):
-    """
-    Régime 3-états via GMM sur |returns| avec transitions sticky.
-    Ref: Quant Guild Lecture 51 + 72/74
-    Retourne tableau : 0=LOW, 1=MED, 2=HIGH
-    """
-    try:
-        from sklearn.mixture import GaussianMixture
-    except ImportError:
-        return None
-    n = len(returns)
-    X = np.abs(returns).reshape(-1, 1)
-    gmm = GaussianMixture(n_components=3, covariance_type="full",
-                          n_init=5, random_state=42, max_iter=200)
-    gmm.fit(X)
-    raw_labels = gmm.predict(X)
-    means = gmm.means_.flatten()
-    order = np.argsort(means)
-    remap = {order[i]: i for i in range(3)}
-    regimes = np.array([remap[l] for l in raw_labels])
-    # Sticky LOW
-    non_low_streak = 0
-    smoothed = regimes.copy()
-    for i in range(1, n):
-        if smoothed[i - 1] == 0:
-            if regimes[i] != 0:
-                non_low_streak += 1
-                if non_low_streak < sticky_window:
-                    smoothed[i] = 0
-                else:
-                    non_low_streak = 0
-            else:
-                non_low_streak = 0
-        else:
-            non_low_streak = 0
-    return smoothed
 
 
 def clean_price_spikes(df, spike_mult=6.0):
@@ -611,7 +600,7 @@ prices = bars_df["close"].values.astype(float)
 highs = bars_df["high"].values.astype(float)
 lows = bars_df["low"].values.astype(float)
 
-fair_values, sigma_stats, k_gains, half_lives = kalman_ou_filter(prices, kalman_lookback, kalman_R_mult)
+fair_values, sigma_stats, k_gains, half_lives = run_kalman_live(prices, kalman_lookback, kalman_R_mult)
 atr = compute_atr(highs, lows, prices)
 
 last_idx = len(prices) - 1
