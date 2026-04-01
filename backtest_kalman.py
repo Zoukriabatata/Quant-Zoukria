@@ -1952,10 +1952,13 @@ if st.session_state.get('_run_bt', False):
                 st.markdown("<p class='section-title'>Equity OOS : sans filtre vs avec filtre DL</p>", unsafe_allow_html=True)
                 _oos_trades = trades_df.iloc[_split:].reset_index(drop=True)
                 _pnl_raw    = _oos_trades["pnl_dollars"].values
+                _n_align    = min(len(_pnl_raw), len(_y_pred_filt))
+                _pnl_raw    = _pnl_raw[:_n_align]
+                _y_pred_filt = _y_pred_filt[:_n_align]
                 _pnl_filt   = np.where(_y_pred_filt == 1, _pnl_raw, 0.0)
                 _eq_raw     = np.cumsum(_pnl_raw)
                 _eq_filt    = np.cumsum(_pnl_filt)
-                _dates_oos  = _oos_trades["date"].astype(str).tolist()
+                _dates_oos  = _oos_trades["date"].astype(str).tolist()[:_n_align]
 
                 _fig_eq_dl = go.Figure()
                 _fig_eq_dl.add_trace(go.Scatter(
