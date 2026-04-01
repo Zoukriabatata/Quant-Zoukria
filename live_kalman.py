@@ -16,6 +16,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as st_components
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from datetime import datetime, timezone, timedelta, date
 
 try:
