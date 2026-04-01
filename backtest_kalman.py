@@ -140,9 +140,9 @@ kalman_lookback = st.sidebar.number_input(
     help="Fenêtre AR(1) pour calibrer φ, μ, σ. 120 barres = 2h en 1m."
 )
 band_k = st.sidebar.number_input(
-    "Bande k min (σ)", value=float(st.session_state.get('_pref_bk', 2.0)),
+    "Bande k min (σ)", value=float(st.session_state.get('_pref_bk', 1.5)),
     min_value=0.3, max_value=4.0, step=0.1,
-    help="Entrée quand |prix - FV| > k × σ_stat. 2.0 = entrées plus extrêmes → meilleur WR."
+    help="Entrée quand |prix - FV| > k × σ_stat. 1.5 = meilleur équilibre fréquence/edge."
 )
 st.session_state['_pref_bk'] = band_k
 band_k_max = st.sidebar.number_input(
@@ -188,9 +188,9 @@ use_regime_filter = st.sidebar.toggle(
 st.sidebar.markdown("---")
 st.sidebar.header("Risk")
 sl_sigma_mult = st.sidebar.slider(
-    "SL = k × σ_kalman", value=float(st.session_state.get('_pref_sl', 0.75)),
+    "SL = k × σ_kalman", value=float(st.session_state.get('_pref_sl', 1.25)),
     min_value=0.25, max_value=3.0, step=0.25,
-    help="Stop = sl_sigma × σ_stat au-delà de l'entrée. 0.75 avec band_k=1.5 → R:R=2:1."
+    help="Stop = sl_sigma × σ_stat au-delà de l'entrée. 1.25 avec band_k=1.5 → R:R=1.2 · DD < 4%."
 )
 st.session_state['_pref_sl'] = sl_sigma_mult
 min_sl_pts = st.sidebar.number_input("SL min (pts)", value=4.0, step=0.5)
