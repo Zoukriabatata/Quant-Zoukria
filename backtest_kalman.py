@@ -134,8 +134,8 @@ kalman_lookback = st.sidebar.number_input(
     help="Fenêtre AR(1) pour calibrer φ, μ, σ. 120 barres = 2h en 1m."
 )
 band_k = st.sidebar.number_input(
-    "Bande k min (σ)", value=1.5, min_value=0.3, max_value=4.0, step=0.1,
-    help="Entrée quand |prix - FV| > k × σ_stat. 1.5 = bon équilibre fréquence/edge."
+    "Bande k min (σ)", value=2.0, min_value=0.3, max_value=4.0, step=0.1,
+    help="Entrée quand |prix - FV| > k × σ_stat. 2.0 = entrées plus extrêmes → meilleur WR."
 )
 band_k_max = st.sidebar.number_input(
     "Bande k max (σ)", value=4.0, min_value=0.5, max_value=10.0, step=0.5,
@@ -164,14 +164,14 @@ max_sigma_stat = st.sidebar.number_input(
          "0 = désactivé."
 )
 adf_pvalue = st.sidebar.number_input(
-    "ADF p-value max (Lec 93)", value=0.10, min_value=0.0, max_value=1.0, step=0.05,
+    "ADF p-value max (Lec 93)", value=0.0, min_value=0.0, max_value=1.0, step=0.05,
     help="Gate stationnarité : skip si ADF p > seuil → série avec racine unitaire → OU invalide. "
-         "0.10 = seuil standard. 0 = désactivé."
+         "0 = désactivé (défaut — évite l'overfitting IS). Active à 0.05 pour tester."
 ) if HAS_STATSMODELS else 0.0
 if not HAS_STATSMODELS:
     st.sidebar.caption("⚠ statsmodels manquant — ADF désactivé. `pip install statsmodels`")
 use_regime_filter = st.sidebar.toggle(
-    "Filtre régime Markov (Lec 72/74)", value=False,
+    "Filtre régime Markov (Lec 72/74)", value=True,
     help="Skip les signaux en régime HIGH (marché volatile). "
          "LOW=vert, MED=jaune, HIGH=rouge. Basé sur range/close EWM."
 )
