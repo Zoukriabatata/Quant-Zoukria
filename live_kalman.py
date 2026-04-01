@@ -112,22 +112,54 @@ st.markdown("""
 
 # ── Sidebar ──────────────────────────────────────────────────────────
 st.sidebar.header("Kalman OU")
-band_k = st.sidebar.number_input("Bande k (sigma)", value=1.5, min_value=0.3, max_value=3.0, step=0.1)
-kalman_lookback = st.sidebar.number_input("Lookback (barres)", value=120, min_value=30, step=10)
-kalman_R_mult = st.sidebar.number_input("R multiplier", value=5.0, min_value=0.5, step=0.5)
-
-st.sidebar.markdown("---")
-st.sidebar.header("Filtres signal")
+kalman_lookback = st.sidebar.number_input(
+    "Lookback calibration (barres)", value=120, min_value=30, step=10,
+    help="Fenêtre AR(1) pour calibrer φ, μ, σ. 120 barres = 2h en 1m."
+)
+band_k = st.sidebar.number_input(
+    "Bande k min (σ)", value=1.5, min_value=0.3, max_value=4.0, step=0.1,
+    help="Signal quand |prix - FV| > k × σ_stat."
+)
+band_k_max = st.sidebar.number_input(
+    "Bande k max (σ)", value=4.0, min_value=0.5, max_value=10.0, step=0.5,
+    help="Ignore si déviation > k_max (évite les gaps/spikes extrêmes)."
+)
+kalman_R_mult = st.sidebar.number_input(
+    "Noise scale (confiance modèle)", min_value=0.1, max_value=20.0, value=5.0, step=0.5,
+    help="R = σ² × noise_scale. Élevé = fait confiance au modèle OU, lisse."
+)
 confirm_reversal_live = st.sidebar.toggle(
     "Confirmation reversion (Lec 72/95)",
     value=True,
-    help="Signal valide seulement si la barre en cours est déjà plus proche du FV que la précédente"
+    help="Signal valide seulement si la barre en cours est déjà plus proche du FV que la précédente."
+)
+max_sigma_stat = st.sidebar.number_input(
+    "σ_stat max (filtre vol)", value=15.0, min_value=0.0, max_value=100.0, step=1.0,
+    help="Skip si σ_stat > seuil. Marché trending → mean reversion peu fiable. 0 = désactivé."
 )
 
 st.sidebar.markdown("---")
 st.sidebar.header("Risk")
-sl_atr_mult = st.sidebar.number_input("SL = ATR x", value=1.5, step=0.1)
-max_sl = st.sidebar.number_input("SL max (pts)", value=15.0, step=1.0)
+sl_sigma_mult = st.sidebar.slider(
+    "SL = k × σ_kalman", min_value=0.25, max_value=3.0, value=0.75, step=0.25,
+    help="Stop = sl_sigma × σ_stat au-delà de l'entrée. 0.75 avec band_k=1.5 → R:R≈2:1."
+)
+min_sl_pts = st.sidebar.number_input("SL min (pts)", value=4.0, step=0.5)
+tp_ratio = st.sidebar.slider(
+    "TP ratio (% distance vers FV)", min_value=0.25, max_value=1.0, value=1.0, step=0.05,
+    help="1.0 = TP au FV complet."
+)
+
+st.sidebar.markdown("---")
+st.sidebar.header("Session")
+session_start_h = st.sidebar.number_input("Début (h UTC)", value=14, min_value=0, max_value=23)
+session_start_m = st.sidebar.number_input("Début (min)", value=30, min_value=0, max_value=59)
+session_end_h   = st.sidebar.number_input("Fin (h UTC)", value=21, min_value=0, max_value=23)
+session_end_m   = st.sidebar.number_input("Fin (min)", value=0, min_value=0, max_value=59)
+max_trades_per_day = st.sidebar.number_input(
+    "Max trades/jour", value=2, min_value=1, max_value=10, step=1,
+    help="Limite pour respecter le DLL Apex."
+)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Challenge Apex 50K EOD")
@@ -536,31 +568,48 @@ if np.isnan(fv) or np.isnan(ss):
     st.error("Kalman pas encore calibre.")
     st.stop()
 
-# ── Filtres signal avancés (Quant Guild Lec 51/72/74/92/95) ──────────
-# Confirmation reversion : la dernière barre est-elle plus proche du FV que l'avant-dernière ?
+# ── Filtres signal (identiques backtest) ─────────────────────────────
+now_utc_bar = datetime.now(timezone.utc)
+sess_start = now_utc_bar.replace(hour=session_start_h, minute=session_start_m, second=0, microsecond=0)
+sess_end   = now_utc_bar.replace(hour=session_end_h,   minute=session_end_m,   second=0, microsecond=0)
+in_session = sess_start <= now_utc_bar <= sess_end
+
+# Déviation en σ
+deviation_sigma = (last_price - fv) / ss if ss > 0 else 0.0
+
+# Confirmation reversion
 reversal_ok = True
 if confirm_reversal_live and last_idx > 0 and not np.isnan(fair_values[last_idx - 1]):
     prev_dev = abs(prices[last_idx - 1] - fair_values[last_idx - 1])
     curr_dev = abs(last_price - fv)
     reversal_ok = (curr_dev < prev_dev)
 
-# Signal final
-filters_pass = reversal_ok
+# Filtre σ_stat max (marché trending → OU invalide)
+vol_ok = (max_sigma_stat == 0) or (ss <= max_sigma_stat)
 
-# ── Detection donnees perimees (delay IBKR paper) ─────────────────────
+# Filtre band_k_max (spike/gap extrême → ignorer)
+dev_ok = abs(deviation_sigma) <= band_k_max
+
+# Filtre max trades/jour
+trades_ok = trades_today < max_trades_per_day
+
+filters_pass = reversal_ok and vol_ok and dev_ok and in_session and trades_ok
+
+# ── Detection donnees perimees ─────────────────────────────────────────
 try:
     last_bar_ts = pd.to_datetime(bars_df["bar"].iloc[-1], utc=True)
     data_age_min = (datetime.now(timezone.utc) - last_bar_ts.to_pydatetime()).total_seconds() / 60
 except Exception:
     data_age_min = 0.0
 
-DATA_STALE_WARN = 5    # orange si > 5 min
-DATA_STALE_ERROR = 20  # rouge si > 20 min (delay IBKR paper = 15 min)
+DATA_STALE_WARN = 5
+DATA_STALE_ERROR = 20
 
 upper = fv + band_k * ss
 lower = fv - band_k * ss
-sl_pts = min(last_atr * sl_atr_mult, max_sl)
-tp_pts = abs(last_price - fv)
+# SL identique backtest : sl_sigma_mult × σ_kalman, min sl_min_pts
+sl_pts = max(sl_sigma_mult * ss, min_sl_pts)
+tp_pts = abs(last_price - fv) * tp_ratio
 
 # ══════════════════════════════════════════════════════════════════════
 # CHALLENGE APEX 50K EOD — MONEY MANAGEMENT
@@ -756,11 +805,11 @@ else:
 
 # ── SIGNAL ───────────────────────────────────────────────────────────
 st.markdown("---")
-deviation = (last_price - fv) / ss if ss > 0 else 0
+deviation = deviation_sigma  # alias pour l'affichage
 
-# Guard : deviation > 4σ = probable bad tick residuel → ignorer
-MAX_VALID_DEVIATION = 4.0
-data_error = abs(deviation) > MAX_VALID_DEVIATION
+# Guard : deviation > band_k_max = probable bad tick → ignorer (filtre déjà dans filters_pass)
+MAX_VALID_DEVIATION = band_k_max
+data_error = not dev_ok
 
 if data_error:
     signal = "PAS DE SIGNAL"
@@ -837,8 +886,14 @@ _sig_border = signal_color
 _sig_cls = {"LONG": "long", "SHORT": "short"}.get(signal, "none")
 
 # Indicateurs filtres
-_rev_icon = "✓" if reversal_ok else "✗"
-_filter_detail = f"Reversion {_rev_icon}"
+_rev_icon  = "✓" if reversal_ok else "✗"
+_vol_icon  = "✓" if vol_ok      else "✗"
+_sess_icon = "✓" if in_session  else "✗"
+_trd_icon  = "✓" if trades_ok   else "✗"
+_filter_detail = (
+    f"Reversion {_rev_icon} &nbsp;·&nbsp; Vol {_vol_icon} "
+    f"&nbsp;·&nbsp; Session {_sess_icon} &nbsp;·&nbsp; Trades {trades_today}/{max_trades_per_day} {_trd_icon}"
+)
 
 st.markdown(f"""
 <div class="signal-box {_sig_cls}" style="background:{_sig_bg};border-color:{_sig_border}22">
