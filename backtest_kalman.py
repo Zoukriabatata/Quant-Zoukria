@@ -140,9 +140,11 @@ kalman_lookback = st.sidebar.number_input(
     help="Fenêtre AR(1) pour calibrer φ, μ, σ. 120 barres = 2h en 1m."
 )
 band_k = st.sidebar.number_input(
-    "Bande k min (σ)", key='_opt_bk', min_value=0.3, max_value=4.0, step=0.1,
+    "Bande k min (σ)", value=float(st.session_state.get('_opt_bk', 2.0)),
+    min_value=0.3, max_value=4.0, step=0.1,
     help="Entrée quand |prix - FV| > k × σ_stat. 2.0 = entrées plus extrêmes → meilleur WR."
 )
+st.session_state['_opt_bk'] = band_k
 band_k_max = st.sidebar.number_input(
     "Bande k max (σ)", value=4.0, min_value=0.5, max_value=10.0, step=0.5,
     help="Ignore si déviation > k_max (évite les crashes/gaps extrêmes)"
@@ -160,10 +162,11 @@ noise_scale = round(0.1 + 19.9 * (_noise_lever / 100) ** 2, 3)
 st.sidebar.caption(f"noise_scale effectif = {noise_scale:.2f}")
 confirm_reversal = st.sidebar.toggle(
     "Confirmation reversion (Lec 72)",
-    key='_opt_conf',
+    value=bool(st.session_state.get('_opt_conf', True)),
     help="N'entrer qu'à la barre i+1 si elle est déjà plus proche du FV que la barre signal.\n"
          "Réduit les faux signaux au prix de moins de trades."
 )
+st.session_state['_opt_conf'] = confirm_reversal
 max_sigma_stat = st.sidebar.number_input(
     "σ_stat max (filtre vol)", value=15.0, min_value=0.0, max_value=100.0, step=1.0,
     help="Skip si σ_stat > seuil. σ_stat élevé = marché trending/volatile → mean reversion peu fiable. "
@@ -185,9 +188,11 @@ use_regime_filter = st.sidebar.toggle(
 st.sidebar.markdown("---")
 st.sidebar.header("Risk")
 sl_sigma_mult = st.sidebar.slider(
-    "SL = k × σ_kalman", key='_opt_sl', min_value=0.25, max_value=3.0, step=0.25,
+    "SL = k × σ_kalman", value=float(st.session_state.get('_opt_sl', 0.75)),
+    min_value=0.25, max_value=3.0, step=0.25,
     help="Stop = sl_sigma × σ_stat au-delà de l'entrée. 0.75 avec band_k=1.5 → R:R=2:1."
 )
+st.session_state['_opt_sl'] = sl_sigma_mult
 min_sl_pts = st.sidebar.number_input("SL min (pts)", value=4.0, step=0.5)
 tp_ratio = st.sidebar.slider(
     "TP ratio (% distance vers FV)", min_value=0.25, max_value=1.0, value=1.0, step=0.05,
