@@ -1331,6 +1331,79 @@ if st.sidebar.button("Lancer le Backtest", type="primary"):
             else:
                 st.error("Aucune combinaison avec suffisamment de trades (≥10). Vérifie les données.")
 
+        # ── Comparaison multi-config ──────────────────────────────────────
+        st.markdown("---")
+        st.markdown("**📊 Comparaison multi-config** — teste toutes les configurations et affiche un tableau comparatif.")
+        _run_cmp = st.button("📊 Lancer la comparaison", use_container_width=False)
+
+        if _run_cmp or st.session_state.get('_cmp_done'):
+            if _run_cmp:
+                _pb2 = st.progress(0, text="Comparaison en cours…")
+                _all_grid = [(bk, sl, cf)
+                             for bk in [1.0, 1.2, 1.5, 1.8, 2.0, 2.5, 3.0]
+                             for sl in [0.5, 0.75, 1.0, 1.25, 1.5]
+                             for cf in [True, False]]
+                _cmp_rows = []
+                for _ci, (_bk, _sl, _cf) in enumerate(_all_grid):
+                    _pb2.progress((_ci + 1) / len(_all_grid),
+                                  text=f"{_ci+1}/{len(_all_grid)} — band_k={_bk} SL={_sl} conf={'✓' if _cf else '✗'}")
+                    _sc, _wr, _pf, _n = _quick_backtest(
+                        _daily_kalman_cache, _bk, _sl, _cf,
+                        slip, tp_ratio, float(band_k_max), float(min_sl_pts),
+                        max_trades_per_day, skip_open_bars, skip_close_bars, float(max_sigma_stat),
+                    )
+                    if _n >= 10:
+                        _exp = (_wr * (_pf * _sl * 10) - (1 - _wr) * (_sl * 10)) if _pf < 9 else 0
+                        _wr_be = 1 / (1 + (_bk / _sl)) if _sl > 0 else 0.5
+                        _cmp_rows.append({
+                            "band_k": _bk, "SL": _sl, "Confirm": "✓" if _cf else "✗",
+                            "Trades": _n, "WR": f"{_wr:.1%}",
+                            "WR≥BE": "✓" if _wr >= _wr_be else "✗",
+                            "PF": f"{_pf:.2f}", "Score": round(_sc, 3),
+                            "_bk": _bk, "_sl": _sl, "_cf": _cf,
+                        })
+                _pb2.empty()
+                _cmp_rows.sort(key=lambda r: r["Score"], reverse=True)
+                st.session_state['_cmp_rows'] = _cmp_rows
+                st.session_state['_cmp_done'] = True
+
+            _cmp_rows = st.session_state.get('_cmp_rows', [])
+            if _cmp_rows:
+                _display_cols = ["band_k", "SL", "Confirm", "Trades", "WR", "WR≥BE", "PF", "Score"]
+                _cmp_df = pd.DataFrame(_cmp_rows)[_display_cols]
+
+                def _style_cmp(row):
+                    idx = row.name
+                    if idx == 0:
+                        return [f"background-color:#1a3a2a;color:#3CC4B7;font-weight:700"] * len(row)
+                    if idx <= 2:
+                        return [f"background-color:#0f2a1a"] * len(row)
+                    if row["PF"] < "1.00" or row["WR≥BE"] == "✗":
+                        return [f"color:#444"] * len(row)
+                    return [""] * len(row)
+
+                st.dataframe(
+                    _cmp_df.style.apply(_style_cmp, axis=1),
+                    use_container_width=True, height=400,
+                )
+
+                st.markdown("**Appliquer une configuration :**")
+                _top_labels = [
+                    f"#{i+1} — band_k={r['_bk']}σ · SL={r['_sl']}σ · Confirm={'ON' if r['_cf'] else 'OFF'} → WR {r['WR']} PF {r['PF']}"
+                    for i, r in enumerate(_cmp_rows[:10])
+                ]
+                _choice = st.selectbox("Sélectionne une config à appliquer", _top_labels, index=0)
+                if st.button("✅ Appliquer la config sélectionnée", type="primary"):
+                    _ci = _top_labels.index(_choice)
+                    _chosen = _cmp_rows[_ci]
+                    st.session_state['_opt_bk']   = _chosen['_bk']
+                    st.session_state['_opt_sl']   = _chosen['_sl']
+                    st.session_state['_opt_conf'] = _chosen['_cf']
+                    st.session_state['_cmp_done'] = False
+                    st.rerun()
+            else:
+                st.warning("Aucune configuration avec ≥10 trades trouvée.")
+
     # ── TAB 3 : Pipeline ──────────────────────────────────────────────
     with tab3:
         st.markdown("<p class='section-title'>Filtres pipeline</p>", unsafe_allow_html=True)
