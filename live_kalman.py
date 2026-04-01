@@ -870,65 +870,145 @@ if entry:
         st.error("NE PAS TRADER — voir les regles du jour ci-dessus")
 
 # ── CHART ────────────────────────────────────────────────────────────
-st.markdown("---")
-show_bars = min(120, len(prices))
-chart_prices = prices[-show_bars:]
-chart_fv = fair_values[-show_bars:]
-chart_upper = chart_fv + band_k * sigma_stats[-show_bars:]
-chart_lower = chart_fv - band_k * sigma_stats[-show_bars:]
+show_bars = min(160, len(prices))
+chart_prices  = prices[-show_bars:]
+chart_fv      = fair_values[-show_bars:]
+chart_ss      = sigma_stats[-show_bars:]
+chart_upper   = chart_fv + band_k * chart_ss
+chart_lower   = chart_fv - band_k * chart_ss
+chart_dev     = np.where(chart_ss > 0, (chart_prices - chart_fv) / chart_ss, 0.0)
 
-paris_offset = 2  # UTC+2 CEST
+paris_offset = 2
 try:
     bar_times = bars_df["bar"].iloc[-show_bars:].reset_index(drop=True)
-    x_range = list(
+    x_vals = list(
         pd.to_datetime(bar_times, utc=True)
         .map(lambda t: (t + pd.Timedelta(hours=paris_offset)).strftime("%H:%M"))
     )
 except Exception:
-    x_range = list(range(show_bars))
+    x_vals = list(range(show_bars))
 
-fig = go.Figure()
-fig.add_trace(go.Scatter(
-    x=x_range, y=chart_prices, mode="lines",
-    line=dict(color="white", width=1.5), name="Prix"
-))
-fig.add_trace(go.Scatter(
-    x=x_range, y=chart_fv, mode="lines",
-    line=dict(color=CYAN, width=2), name="Fair Value"
-))
-fig.add_trace(go.Scatter(
-    x=x_range, y=chart_upper, mode="lines",
-    line=dict(color=RED, width=1, dash="dash"), name=f"Upper ({band_k}σ)"
-))
-fig.add_trace(go.Scatter(
-    x=x_range, y=chart_lower, mode="lines",
-    line=dict(color=GREEN, width=1, dash="dash"), name=f"Lower ({band_k}σ)",
-    fill="tonexty", fillcolor="rgba(0,229,255,0.05)"
-))
+_AXIS = dict(
+    gridcolor="rgba(255,255,255,0.03)",
+    linecolor="#111",
+    tickfont=dict(color="#333", size=10, family="JetBrains Mono"),
+    zeroline=False,
+    showgrid=True,
+)
 
-if entry:
-    fig.add_hline(y=entry, line_dash="solid", line_color=signal_color, opacity=0.5,
-                  annotation_text=f"{signal} @ {entry:,.2f}")
-    fig.add_hline(y=sl, line_dash="dot", line_color=RED, opacity=0.3,
-                  annotation_text=f"SL {sl:,.2f}")
-    fig.add_hline(y=tp, line_dash="dot", line_color=GREEN, opacity=0.3,
-                  annotation_text=f"TP {tp:,.2f}")
+fig = make_subplots(
+    rows=2, cols=1,
+    row_heights=[0.72, 0.28],
+    shared_xaxes=True,
+    vertical_spacing=0.04,
+)
+
+# ── Panneau 1 : Prix + Kalman ─────────────────────────────────────────
+# Zone entre les bandes (remplissage subtil)
+fig.add_trace(go.Scatter(
+    x=x_vals, y=chart_upper, mode="lines",
+    line=dict(color="rgba(60,196,183,0.25)", width=1, dash="dot"),
+    name=f"+{band_k}σ", showlegend=False,
+), row=1, col=1)
+
+fig.add_trace(go.Scatter(
+    x=x_vals, y=chart_lower, mode="lines",
+    line=dict(color="rgba(60,196,183,0.25)", width=1, dash="dot"),
+    fill="tonexty", fillcolor="rgba(60,196,183,0.04)",
+    name=f"Bande {band_k}σ",
+), row=1, col=1)
+
+# Fair Value
+fig.add_trace(go.Scatter(
+    x=x_vals, y=chart_fv, mode="lines",
+    line=dict(color=TEAL, width=1.5),
+    name="Fair Value",
+), row=1, col=1)
+
+# Prix
+fig.add_trace(go.Scatter(
+    x=x_vals, y=chart_prices, mode="lines",
+    line=dict(color="rgba(255,255,255,0.75)", width=1.2),
+    name="QQQ",
+), row=1, col=1)
+
+# Dernier prix — point accentué
+fig.add_trace(go.Scatter(
+    x=[x_vals[-1]], y=[chart_prices[-1]], mode="markers",
+    marker=dict(color=signal_color, size=7, symbol="circle",
+                line=dict(color="#060606", width=1.5)),
+    name="Now", showlegend=False,
+), row=1, col=1)
+
+# Lignes d'exécution si signal actif
+if entry is not None:
+    fig.add_hline(y=entry, line_dash="solid", line_color=signal_color, line_width=1,
+                  opacity=0.6, row=1, col=1,
+                  annotation_text=f"  {signal}  {entry:,.2f}",
+                  annotation_font=dict(color=signal_color, size=11, family="JetBrains Mono"),
+                  annotation_position="top left")
+    fig.add_hline(y=sl, line_dash="dot", line_color=RED, line_width=1,
+                  opacity=0.4, row=1, col=1,
+                  annotation_text=f"  SL  {sl:,.2f}",
+                  annotation_font=dict(color=RED, size=10, family="JetBrains Mono"),
+                  annotation_position="bottom left")
+    fig.add_hline(y=tp, line_dash="dot", line_color=GREEN, line_width=1,
+                  opacity=0.4, row=1, col=1,
+                  annotation_text=f"  TP  {tp:,.2f}",
+                  annotation_font=dict(color=GREEN, size=10, family="JetBrains Mono"),
+                  annotation_position="top left")
+
+# ── Panneau 2 : Déviation z-score ─────────────────────────────────────
+dev_colors = [RED if d > 0 else GREEN for d in chart_dev]
+
+fig.add_trace(go.Bar(
+    x=x_vals, y=chart_dev,
+    marker_color=dev_colors,
+    marker_opacity=0.55,
+    name="Déviation σ",
+    showlegend=False,
+), row=2, col=1)
+
+# Lignes seuil bande
+fig.add_hline(y=band_k,  line_dash="dot", line_color="rgba(255,51,102,0.4)",  line_width=1, row=2, col=1)
+fig.add_hline(y=-band_k, line_dash="dot", line_color="rgba(0,255,136,0.4)",   line_width=1, row=2, col=1)
+fig.add_hline(y=0,       line_dash="solid", line_color="rgba(255,255,255,0.06)", line_width=1, row=2, col=1)
 
 fig.update_layout(
-    title=f"MNQ — Kalman OU (lookback={kalman_lookback}, k={band_k}σ)",
-    xaxis_title="Heure (Paris)",
-    yaxis_title="Prix",
-    height=500,
-    xaxis=dict(tickangle=-45, nticks=20, showgrid=True, gridcolor="rgba(255,255,255,0.1)"),
-    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.1)"),
-    **DARK
+    height=540,
+    paper_bgcolor="rgba(6,6,6,0)",
+    plot_bgcolor="rgba(8,8,8,1)",
+    font=dict(color="#555", size=11, family="JetBrains Mono"),
+    margin=dict(t=16, b=24, l=54, r=20),
+    legend=dict(
+        orientation="h", y=1.02, x=0,
+        bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#444", size=10),
+        borderwidth=0,
+    ),
+    hovermode="x unified",
+    hoverlabel=dict(bgcolor="#0d0d0d", bordercolor="#1a1a1a", font=dict(color="#ccc", size=11)),
+    xaxis=dict(**_AXIS, tickangle=-30, nticks=16, showticklabels=False),
+    yaxis=dict(**_AXIS, title=dict(text="Prix", font=dict(color="#333", size=10)), tickformat=".2f"),
+    xaxis2=dict(**_AXIS, tickangle=-30, nticks=16, title=dict(text="Heure Paris", font=dict(color="#333", size=10))),
+    yaxis2=dict(**_AXIS, title=dict(text="σ", font=dict(color="#333", size=10)), tickformat=".1f",
+                range=[-max(band_k * 1.8, abs(float(np.nanmin(chart_dev))) * 1.1),
+                        max(band_k * 1.8, abs(float(np.nanmax(chart_dev))) * 1.1)]),
+    bargap=0.1,
+    template="plotly_dark",
 )
+
 st.plotly_chart(fig, use_container_width=True)
 
-now_paris = datetime.now(timezone.utc)
-paris_time = now_paris.strftime("%H:%M:%S") + f" UTC → {(now_paris.hour + paris_offset) % 24:02d}:{now_paris.strftime('%M:%S')} Paris"
-st.caption(f"{len(bars_df)} barres | ATR(14) = {last_atr:.2f} pts | SL = {sl_pts:.1f} pts | "
-           f"Kalman K = {kg:.3f} | Update: {paris_time}")
+now_utc = datetime.now(timezone.utc)
+paris_time = f"{(now_utc.hour + paris_offset) % 24:02d}:{now_utc.strftime('%M:%S')} Paris"
+st.markdown(
+    f"<div style='font-family:JetBrains Mono,monospace;font-size:0.68rem;color:#333;margin-top:-0.5rem'>"
+    f"{len(bars_df)} barres &nbsp;·&nbsp; ATR {last_atr:.2f} pts &nbsp;·&nbsp; "
+    f"SL {sl_pts:.1f} pts &nbsp;·&nbsp; K {kg:.3f} &nbsp;·&nbsp; {paris_time}"
+    f"</div>",
+    unsafe_allow_html=True,
+)
 
 # ── Countdown + auto-refresh ──────────────────────────────────────────
 countdown = st.empty()
