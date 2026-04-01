@@ -949,8 +949,8 @@ if st.session_state.get('_run_bt', False):
     monthly_df = pd.DataFrame(monthly_results)
 
     tab1_label = "💰 Funded PA" if mode_funded else "📅 Bilan Mensuel"
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        [tab1_label, "📈 Résultats", "🔧 Pipeline", "📉 Charts", "🎲 Monte Carlo"]
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        [tab1_label, "📈 Résultats", "🔧 Pipeline", "📉 Charts", "🎲 Monte Carlo", "🧠 Deep Learning"]
     )
 
     results    = trades_df["result_pts"].values
@@ -1788,3 +1788,193 @@ if st.session_state.get('_run_bt', False):
                     f"Pas d'edge détecté — {pct_real:.0f}e percentile seulement. "
                     f"Ton P&L n'est pas significativement différent d'entrées aléatoires."
                 )
+
+    # ── TAB 6 : Deep Learning ─────────────────────────────────────────
+    with tab6:
+        st.markdown("<p class='section-title'>🧠 Deep Learning — MLP Signal Filter (Lec 63)</p>", unsafe_allow_html=True)
+
+        try:
+            from sklearn.neural_network import MLPClassifier
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.metrics import classification_report, confusion_matrix
+            from sklearn.inspection import permutation_importance
+            HAS_SKLEARN = True
+        except ImportError:
+            HAS_SKLEARN = False
+
+        if not HAS_SKLEARN:
+            st.error("scikit-learn manquant. `pip install scikit-learn`")
+        elif len(trades_df) < 30:
+            st.warning("Pas assez de trades pour entraîner un modèle (minimum 30).")
+        else:
+            st.markdown("""
+            **Principe (Lec 63 — Roman Paolucci)** :
+            Un réseau de neurones apprend à prédire si un signal sera gagnant ou perdant
+            à partir des features disponibles *au moment de l'entrée* (zéro look-ahead).
+            Il sert de **filtre intelligent** — n'entre que quand P(win) > seuil.
+            """)
+
+            # ── Features ──────────────────────────────────────────────────
+            _feat_cols = []
+            _X_rows = []
+            for _, row in trades_df.iterrows():
+                _feats = {
+                    "deviation":   abs(row.get("deviation", 0.0)),
+                    "sigma_stat":  row.get("sigma_stat", 1.0),
+                    "direction":   1.0 if row.get("direction", 1) > 0 else -1.0,
+                    "sl_pts":      row.get("sl_pts", 10.0),
+                }
+                # Heure du trade depuis le timestamp bar si dispo
+                try:
+                    _bar_ts = pd.to_datetime(row.get("bar"))
+                    _feats["hour"] = float(_bar_ts.hour + _bar_ts.minute / 60)
+                except Exception:
+                    _feats["hour"] = 0.0
+                _X_rows.append(_feats)
+            _feat_cols = list(_X_rows[0].keys())
+
+            _X = np.array([[r[c] for c in _feat_cols] for r in _X_rows], dtype=float)
+            _y = trades_df["win"].astype(int).values
+
+            # ── IS / OOS split ────────────────────────────────────────────
+            _dl_oos = st.slider("OOS % pour validation DL", 10, 40, 20, 5,
+                                key="_dl_oos_pct")
+            _split = int(len(_X) * (1 - _dl_oos / 100))
+            _X_tr, _X_te = _X[:_split], _X[_split:]
+            _y_tr, _y_te = _y[:_split], _y[_split:]
+
+            # ── Hyperparamètres ───────────────────────────────────────────
+            with st.expander("⚙️ Hyperparamètres du réseau"):
+                _hc1, _hc2 = st.columns(2)
+                _hidden1 = _hc1.number_input("Couche 1 (neurones)", 8, 256, 64, 8, key="_dl_h1")
+                _hidden2 = _hc2.number_input("Couche 2 (neurones)", 0, 128, 32, 8, key="_dl_h2")
+                _hc3, _hc4 = st.columns(2)
+                _lr       = _hc3.select_slider("Learning rate", [0.001, 0.005, 0.01, 0.05], value=0.01, key="_dl_lr")
+                _max_iter = _hc4.number_input("Epochs max", 100, 2000, 500, 100, key="_dl_iter")
+                _thresh   = st.slider("Seuil P(win) pour entrer", 0.40, 0.80, 0.55, 0.05, key="_dl_thresh")
+
+            if st.button("🚀 Entraîner le modèle", type="primary"):
+                _layers = (_hidden1,) if _hidden2 == 0 else (_hidden1, _hidden2)
+                _scaler = StandardScaler()
+                _X_tr_s = _scaler.fit_transform(_X_tr)
+                _X_te_s = _scaler.transform(_X_te)
+
+                _mlp = MLPClassifier(
+                    hidden_layer_sizes=_layers,
+                    learning_rate_init=_lr,
+                    max_iter=int(_max_iter),
+                    random_state=42,
+                    early_stopping=True,
+                    validation_fraction=0.15,
+                )
+                _mlp.fit(_X_tr_s, _y_tr)
+
+                _y_pred_te = _mlp.predict(_X_te_s)
+                _y_prob_te = _mlp.predict_proba(_X_te_s)[:, 1]
+
+                st.session_state['_dl_model']   = _mlp
+                st.session_state['_dl_scaler']  = _scaler
+                st.session_state['_dl_thresh_v'] = _thresh
+                st.session_state['_dl_trained'] = True
+                st.session_state['_dl_X_te_s']  = _X_te_s
+                st.session_state['_dl_y_te']    = _y_te
+                st.session_state['_dl_y_prob_te'] = _y_prob_te
+                st.session_state['_dl_feat_cols'] = _feat_cols
+                st.session_state['_dl_X_tr_s']  = _X_tr_s
+                st.session_state['_dl_y_tr']    = _y_tr
+                st.session_state['_dl_split']   = _split
+
+            if st.session_state.get('_dl_trained'):
+                _mlp      = st.session_state['_dl_model']
+                _scaler   = st.session_state['_dl_scaler']
+                _thresh   = st.session_state.get('_dl_thresh_v', 0.55)
+                _X_te_s   = st.session_state['_dl_X_te_s']
+                _y_te     = st.session_state['_dl_y_te']
+                _y_prob_te = st.session_state['_dl_y_prob_te']
+                _feat_cols = st.session_state['_dl_feat_cols']
+                _split    = st.session_state['_dl_split']
+
+                _y_pred_filt = (_y_prob_te >= _thresh).astype(int)
+                _acc_raw  = (_mlp.predict(_X_te_s) == _y_te).mean()
+                _acc_filt = (_y_pred_filt[_y_pred_filt == 1] == _y_te[_y_pred_filt == 1]).mean() if _y_pred_filt.sum() > 0 else 0.0
+                _n_kept   = int(_y_pred_filt.sum())
+                _n_total_oos = len(_y_te)
+
+                # ── Métriques ──────────────────────────────────────────
+                st.markdown("<p class='section-title'>Résultats OOS</p>", unsafe_allow_html=True)
+                _mc1, _mc2, _mc3, _mc4 = st.columns(4)
+                _mc1.metric("Accuracy OOS", f"{_acc_raw:.1%}")
+                _mc2.metric(f"WR filtré (≥{_thresh:.0%})", f"{_acc_filt:.1%}")
+                _mc3.metric("Trades gardés", f"{_n_kept}/{_n_total_oos}")
+                _mc4.metric("Réduction", f"{(1-_n_kept/_n_total_oos):.0%} filtrés")
+
+                if _acc_filt > trades_df["win"].mean() + 0.05:
+                    st.success(f"✓ Le filtre DL améliore le WR : {trades_df['win'].mean():.1%} → {_acc_filt:.1%} sur OOS")
+                elif _acc_filt > trades_df["win"].mean():
+                    st.warning(f"Amélioration marginale : {trades_df['win'].mean():.1%} → {_acc_filt:.1%}")
+                else:
+                    st.error(f"Le filtre DL ne améliore pas le WR ({_acc_filt:.1%} ≤ {trades_df['win'].mean():.1%}) — signal trop faible pour le NN")
+
+                # ── Courbe de loss ──────────────────────────────────────
+                if hasattr(_mlp, 'loss_curve_'):
+                    _fig_loss = go.Figure()
+                    _fig_loss.add_trace(go.Scatter(
+                        y=_mlp.loss_curve_, mode="lines",
+                        line=dict(color=TEAL, width=2), name="Train loss"
+                    ))
+                    if hasattr(_mlp, 'validation_scores_') and _mlp.validation_scores_:
+                        _fig_loss.add_trace(go.Scatter(
+                            y=_mlp.validation_scores_, mode="lines",
+                            line=dict(color=ORANGE, width=1.5, dash="dot"), name="Val score"
+                        ))
+                    _fig_loss.update_layout(height=250, title="Courbe d'apprentissage",
+                                            xaxis_title="Epoch", **DARK)
+                    st.plotly_chart(_fig_loss, use_container_width=True)
+
+                # ── Feature importance ──────────────────────────────────
+                st.markdown("<p class='section-title'>Importance des features</p>", unsafe_allow_html=True)
+                try:
+                    _pi = permutation_importance(_mlp, _X_te_s, _y_te, n_repeats=10, random_state=42)
+                    _imp_mean = _pi.importances_mean
+                    _imp_order = np.argsort(_imp_mean)[::-1]
+                    _fig_imp = go.Figure(go.Bar(
+                        x=[_feat_cols[i] for i in _imp_order],
+                        y=[_imp_mean[i] for i in _imp_order],
+                        marker_color=[TEAL if _imp_mean[i] > 0 else RED for i in _imp_order],
+                    ))
+                    _fig_imp.update_layout(height=280, title="Permutation importance (OOS)",
+                                           xaxis_title="Feature", yaxis_title="Score drop", **DARK)
+                    st.plotly_chart(_fig_imp, use_container_width=True)
+                except Exception as _e:
+                    st.caption(f"Importance non calculable : {_e}")
+
+                # ── Equity curve filtrée vs non filtrée ────────────────
+                st.markdown("<p class='section-title'>Equity OOS : sans filtre vs avec filtre DL</p>", unsafe_allow_html=True)
+                _oos_trades = trades_df.iloc[_split:].reset_index(drop=True)
+                _pnl_raw    = _oos_trades["pnl_dollars"].values
+                _pnl_filt   = np.where(_y_pred_filt == 1, _pnl_raw, 0.0)
+                _eq_raw     = np.cumsum(_pnl_raw)
+                _eq_filt    = np.cumsum(_pnl_filt)
+                _dates_oos  = _oos_trades["date"].astype(str).tolist()
+
+                _fig_eq_dl = go.Figure()
+                _fig_eq_dl.add_trace(go.Scatter(
+                    x=_dates_oos, y=_eq_raw, mode="lines",
+                    line=dict(color="rgba(255,255,255,0.3)", width=1.5), name="Sans filtre"
+                ))
+                _fig_eq_dl.add_trace(go.Scatter(
+                    x=_dates_oos, y=_eq_filt, mode="lines",
+                    line=dict(color=TEAL, width=2), name=f"Filtre DL ≥{_thresh:.0%}"
+                ))
+                _fig_eq_dl.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.1)")
+                _fig_eq_dl.update_layout(height=350, **DARK,
+                                         legend=dict(orientation="h", y=1.02))
+                st.plotly_chart(_fig_eq_dl, use_container_width=True)
+
+                _pf_raw  = _eq_raw[-1]
+                _pf_filt = _eq_filt[-1]
+                _col_r, _col_f = st.columns(2)
+                _col_r.metric("P&L OOS sans filtre", f"${_pf_raw:+,.0f}")
+                _col_f.metric("P&L OOS avec filtre DL", f"${_pf_filt:+,.0f}",
+                              delta=f"{_pf_filt - _pf_raw:+,.0f}",
+                              delta_color="normal" if _pf_filt > _pf_raw else "inverse")
