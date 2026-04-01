@@ -34,47 +34,67 @@ YELLOW, ORANGE = "#ffd600", "#ff9100"
 
 st.set_page_config(page_title="Backtest Kalman OU", page_icon="📊", layout="wide")
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-* { box-sizing: border-box; }
-[data-testid="stAppViewContainer"] { background: #060606; font-family: 'Space Grotesk', sans-serif; }
-[data-testid="stSidebar"] { background: #0a0a0a; border-right: 1px solid #1a1a1a; }
+def _inject_css(raw_css: str) -> None:
+    import re as _re
+    css = _re.sub(r'/\*.*?\*/', '', raw_css, flags=_re.DOTALL)
+    css = ' '.join(css.split())
+    st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
+
+st.markdown(
+    '<link rel="preconnect" href="https://fonts.googleapis.com">'
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">',
+    unsafe_allow_html=True,
+)
+
+_inject_css("""
+/* Base */
+*, *::before, *::after { box-sizing: border-box; }
+[data-testid="stAppViewContainer"] { background: #060606; font-family: 'Inter', sans-serif; }
+[data-testid="stSidebar"] { background: #080808; border-right: 1px solid #141414; }
 [data-testid="stHeader"] { background: transparent; }
 [data-testid="stToolbar"] { display: none; }
+.block-container { padding-top: 1.5rem; max-width: 1200px; }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: #0a0a0a; }
 ::-webkit-scrollbar-thumb { background: #3CC4B7; border-radius: 2px; }
+/* Sidebar nav */
 [data-testid="stSidebarNavLink"] {
-    display:block; padding:0.6rem 1.2rem; margin:2px 8px; border-radius:6px;
-    font-family:'JetBrains Mono',monospace; font-size:0.75rem; letter-spacing:0.08em;
-    color:#555 !important; text-decoration:none !important;
-    transition:background 0.15s,color 0.15s; border:1px solid transparent;
+    display: block; padding: 0.6rem 1.2rem; margin: 2px 8px; border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; letter-spacing: 0.08em;
+    color: #555 !important; text-decoration: none !important;
+    transition: background 0.15s, color 0.15s; border: 1px solid transparent;
 }
-[data-testid="stSidebarNavLink"]:hover { background:#111 !important; color:#ccc !important; border-color:#1a1a1a; }
+[data-testid="stSidebarNavLink"]:hover { background: #111 !important; color: #ccc !important; border-color: #1a1a1a; }
 [data-testid="stSidebarNavLink"][aria-current="page"] {
-    background:rgba(60,196,183,0.08) !important; color:#3CC4B7 !important; border-color:rgba(60,196,183,0.2);
+    background: rgba(60,196,183,0.08) !important; color: #3CC4B7 !important; border-color: rgba(60,196,183,0.2);
 }
-.page-header { padding:1.5rem 0 0.5rem; border-bottom:1px solid #1a1a1a; margin-bottom:1.5rem; }
-.page-tag { font-family:'JetBrains Mono',monospace; font-size:0.65rem; letter-spacing:0.2em; color:#3CC4B7; text-transform:uppercase; }
-.page-title { font-size:1.8rem; font-weight:700; color:#fff; letter-spacing:-0.02em; margin:0.3rem 0 0; }
-.section-title { font-family:'JetBrains Mono',monospace; font-size:0.65rem; font-weight:700;
-    letter-spacing:0.2em; color:#3CC4B7; text-transform:uppercase; margin:1.5rem 0 0.8rem 0; }
-.stat-row { display:flex; gap:0; border:1px solid #1a1a1a; border-radius:10px; overflow:hidden; margin:0.5rem 0 1rem; }
-.stat-cell { flex:1; padding:1.2rem 1rem; text-align:center; border-right:1px solid #1a1a1a; background:#060606; }
-.stat-cell:last-child { border-right:none; }
-.stat-cell:hover { background:#0f0f0f; }
-.stat-num { font-size:1.6rem; font-weight:700; font-family:'JetBrains Mono',monospace; letter-spacing:-0.02em; }
-.stat-lbl { font-size:0.6rem; color:#444; letter-spacing:0.12em; text-transform:uppercase; margin-top:0.2rem; }
-.result-block { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px;
-    padding:1.2rem 1.5rem; font-family:'JetBrains Mono',monospace; font-size:0.82rem; line-height:2; margin:0.5rem 0; }
-.result-row { display:flex; gap:1rem; align-items:center; }
-.result-key { color:#3CC4B7; min-width:140px; font-weight:700; }
-.result-val { color:#888; }
-.result-val.green { color:#00ff88; }
-.result-val.red   { color:#ff3366; }
-</style>
-""", unsafe_allow_html=True)
+/* Page header */
+.page-header { padding: 1.5rem 0 0.5rem; border-bottom: 1px solid #1a1a1a; margin-bottom: 1.5rem; }
+.page-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; letter-spacing: 0.2em; color: #3CC4B7; text-transform: uppercase; }
+.page-title { font-size: 1.8rem; font-weight: 700; color: #fff; letter-spacing: -0.02em; margin: 0.3rem 0 0; }
+/* Section label */
+.section-label { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 700;
+    letter-spacing: 0.2em; color: #3CC4B7; text-transform: uppercase; margin: 1.8rem 0 0.8rem; }
+/* Stats row */
+.stat-row { display: flex; gap: 0; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden; margin: 0.5rem 0 1rem; }
+.stat-cell { flex: 1; padding: 1.2rem 1rem; text-align: center; border-right: 1px solid #1a1a1a; background: #060606; transition: background 0.15s; }
+.stat-cell:last-child { border-right: none; }
+.stat-cell:hover { background: #0d0d0d; }
+.stat-num { font-size: 1.6rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
+.stat-lbl { font-size: 0.58rem; color: #444; letter-spacing: 0.14em; text-transform: uppercase; margin-top: 0.25rem; }
+/* Result block */
+.result-block { background: #080808; border: 1px solid #141414; border-radius: 10px;
+    padding: 1.2rem 1.5rem; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 2; margin: 0.5rem 0; }
+.result-row { display: flex; gap: 1rem; align-items: center; }
+.result-key { color: #3CC4B7; min-width: 160px; font-weight: 500; }
+.result-val { color: #888; }
+.result-val.green { color: #00ff88; }
+.result-val.red { color: #ff3366; }
+/* Info card */
+.info-card { background: #080808; border: 1px solid #141414; border-radius: 10px; padding: 1.2rem 1.5rem; margin: 0.5rem 0; }
+.info-card-title { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; letter-spacing: 0.18em; color: #3CC4B7; text-transform: uppercase; margin-bottom: 0.6rem; }
+""")
 
 st.markdown("""
 <div class="page-header">
