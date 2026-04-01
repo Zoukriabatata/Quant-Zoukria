@@ -130,8 +130,8 @@ csv_years = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.header("Kalman OU")
 kalman_lookback = st.sidebar.number_input(
-    "Lookback calibration (barres)", value=120, min_value=30, step=10,
-    help="Fenêtre AR(1) pour calibrer φ, μ, σ. 120 barres = 2h en 1m."
+    "Lookback calibration (barres)", value=30, min_value=30, step=10,
+    help="Fenêtre AR(1) pour calibrer φ, μ, σ. 30 barres = 30m en 1m. Court = mean reversion micro-structure."
 )
 band_k = st.sidebar.number_input(
     "Bande k min (σ)", value=2.0, min_value=0.3, max_value=4.0, step=0.1,
