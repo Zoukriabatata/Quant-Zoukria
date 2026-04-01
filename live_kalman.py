@@ -976,7 +976,7 @@ fig.add_hline(y=-band_k, line_dash="dot", line_color="rgba(0,255,136,0.4)",   li
 fig.add_hline(y=0,       line_dash="solid", line_color="rgba(255,255,255,0.06)", line_width=1, row=2, col=1)
 
 fig.update_layout(
-    height=540,
+    height=780,
     paper_bgcolor="rgba(6,6,6,0)",
     plot_bgcolor="rgba(8,8,8,1)",
     font=dict(color="#555", size=11, family="JetBrains Mono"),
