@@ -15,26 +15,21 @@ DARK = dict(
     plot_bgcolor="rgba(8,8,8,1)",
     font=dict(color="#888", size=12, family="JetBrains Mono"),
     margin=dict(t=44, b=36, l=48, r=20),
-    xaxis=dict(
-        gridcolor="rgba(255,255,255,0.04)",
-        linecolor="#1a1a1a",
-        tickfont=dict(color="#444", size=11),
-        title_font=dict(color="#555", size=11),
-        zeroline=False,
-    ),
-    yaxis=dict(
-        gridcolor="rgba(255,255,255,0.04)",
-        linecolor="#1a1a1a",
-        tickfont=dict(color="#444", size=11),
-        title_font=dict(color="#555", size=11),
-        zeroline=False,
-    ),
     legend=dict(
         bgcolor="rgba(0,0,0,0)",
         bordercolor="rgba(255,255,255,0.05)",
         borderwidth=1,
         font=dict(color="#555", size=11),
     ),
+)
+# Axis style appliqué individuellement par chart (ne pas mettre dans DARK
+# pour éviter les conflits quand une fonction passe xaxis/yaxis explicitement)
+AXIS = dict(
+    gridcolor="rgba(255,255,255,0.04)",
+    linecolor="#1a1a1a",
+    tickfont=dict(color="#444", size=11),
+    title_font=dict(color="#555", size=11),
+    zeroline=False,
 )
 TEAL    = "#3CC4B7"
 CYAN    = "#00e5ff"
