@@ -1821,7 +1821,7 @@ if st.session_state.get('_run_bt', False):
                 _feats = {
                     "deviation":   abs(row.get("deviation", 0.0)),
                     "sigma_stat":  row.get("sigma_stat", 1.0),
-                    "direction":   1.0 if row.get("direction", 1) > 0 else -1.0,
+                    "direction":   1.0 if str(row.get("direction", "LONG")).upper() in ("LONG", "1", "BUY") else -1.0,
                     "sl_pts":      row.get("sl_pts", 10.0),
                 }
                 # Heure du trade depuis le timestamp bar si dispo
