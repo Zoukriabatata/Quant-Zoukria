@@ -48,10 +48,6 @@ st.markdown("""
 [data-testid="stMainBlockContainer"] > div {
     animation: fadeSlide 0.18s ease both;
 }
-@keyframes fadeSlide {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
 
 /* ── Scrollbar ────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
@@ -218,6 +214,7 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     padding-top: 1rem;
 }
 
+
 /* ── Inputs ───────────────────────────────────────── */
 [data-testid="stNumberInput"] input,
 [data-testid="stTextInput"]   input {
@@ -302,6 +299,18 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 .charts-header::after { content: ''; flex: 1; height: 1px; background: #141414; }
 </style>
 """, unsafe_allow_html=True)
+
+# @keyframes injecté séparément — les {} imbriqués cassent le parser Streamlit
+# quand ils sont dans le même bloc st.markdown que le reste du CSS
+st.markdown(
+    "<style>"
+    "@keyframes fadeSlide{"
+    "from{opacity:0;transform:translateY(6px)}"
+    "to{opacity:1;transform:translateY(0)}"
+    "}"
+    "</style>",
+    unsafe_allow_html=True,
+)
 
 LEARNING_DIR = Path(__file__).parent.parent / "learning"
 
