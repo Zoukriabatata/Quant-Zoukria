@@ -525,377 +525,379 @@ if col_btn2.button("Arreter"):
 if not st.session_state.get("live_running"):
     st.stop()
 
-# ── Chargement des barres ─────────────────────────────────────────────
-is_first_load = "bars_cache" not in st.session_state
-
-if is_first_load:
+# ── Premier chargement des barres (hors fragment) ─────────────────────
+if "bars_cache" not in st.session_state:
     with st.spinner("Chargement des barres QQQ..."):
-        bars_df = fetch_bars_yf(days=3)
+        _bars_init = fetch_bars_yf(days=3)
 
-    if bars_df is None or len(bars_df) < kalman_lookback:
-        st.error(f"Pas assez de barres ({len(bars_df) if bars_df is not None else 0}). "
+    if _bars_init is None or len(_bars_init) < kalman_lookback:
+        st.error(f"Pas assez de barres ({len(_bars_init) if _bars_init is not None else 0}). "
                  f"Le marche est peut-etre ferme (QQQ trade 9h30-16h00 ET).")
         st.session_state["live_running"] = False
         st.stop()
 
-    st.session_state["bars_cache"] = bars_df
-    st.success(f"Connecte — {len(bars_df)} barres QQQ chargees")
-else:
+    st.session_state["bars_cache"] = _bars_init
+    st.toast(f"Connecte — {len(_bars_init)} barres QQQ chargees")
+
+
+# ── Fragment live (auto-refresh sans rechargement complet) ────────────────
+@st.fragment(run_every=refresh_sec)
+def _live():
+    # Refresh incremental des barres
     existing = st.session_state["bars_cache"]
     bars_df = refresh_bars_yf(existing)
     st.session_state["bars_cache"] = bars_df
 
-# ── Nettoyage spikes avant Kalman ─────────────────────────────────────
-bars_df = clean_price_spikes(bars_df, spike_mult=6.0)
+    # ── Nettoyage spikes avant Kalman ──────────────────────────
+    bars_df = clean_price_spikes(bars_df, spike_mult=6.0)
 
-# ── Kalman ───────────────────────────────────────────────────────────
-prices = bars_df["close"].values.astype(float)
-highs = bars_df["high"].values.astype(float)
-lows = bars_df["low"].values.astype(float)
+    # ── Kalman ──────────────────────────────────────────────────────────────
+    prices = bars_df["close"].values.astype(float)
+    highs = bars_df["high"].values.astype(float)
+    lows = bars_df["low"].values.astype(float)
 
-fair_values, sigma_stats, k_gains, half_lives = run_kalman_live(prices, kalman_lookback, kalman_R_mult)
-atr = compute_atr(highs, lows, prices)
+    fair_values, sigma_stats, k_gains, half_lives = run_kalman_live(prices, kalman_lookback, kalman_R_mult)
+    atr = compute_atr(highs, lows, prices)
 
-last_idx = len(prices) - 1
-last_price = prices[last_idx]
-fv = fair_values[last_idx]
-ss = sigma_stats[last_idx]
-kg = k_gains[last_idx]
-last_atr = atr[last_idx]
-last_hl = half_lives[last_idx]
+    last_idx = len(prices) - 1
+    last_price = prices[last_idx]
+    fv = fair_values[last_idx]
+    ss = sigma_stats[last_idx]
+    kg = k_gains[last_idx]
+    last_atr = atr[last_idx]
 
-if np.isnan(fv) or np.isnan(ss):
-    st.error("Kalman pas encore calibre.")
-    st.stop()
+    if np.isnan(fv) or np.isnan(ss):
+        st.error("Kalman pas encore calibre.")
+        return
 
-# ── Filtres signal (identiques backtest) ─────────────────────────────
-now_utc_bar = datetime.now(timezone.utc)
-sess_start = now_utc_bar.replace(hour=session_start_h, minute=session_start_m, second=0, microsecond=0)
-sess_end   = now_utc_bar.replace(hour=session_end_h,   minute=session_end_m,   second=0, microsecond=0)
-in_session = sess_start <= now_utc_bar <= sess_end
+    # ── Filtres signal (identiques backtest) ─────────────────────────────
+    now_utc_bar = datetime.now(timezone.utc)
+    sess_start = now_utc_bar.replace(hour=session_start_h, minute=session_start_m, second=0, microsecond=0)
+    sess_end   = now_utc_bar.replace(hour=session_end_h,   minute=session_end_m,   second=0, microsecond=0)
+    in_session = sess_start <= now_utc_bar <= sess_end
 
-# Déviation en σ
-deviation_sigma = (last_price - fv) / ss if ss > 0 else 0.0
+    # Deviation en σ
+    deviation_sigma = (last_price - fv) / ss if ss > 0 else 0.0
 
-# Confirmation reversion
-reversal_ok = True
-if confirm_reversal_live and last_idx > 0 and not np.isnan(fair_values[last_idx - 1]):
-    prev_dev = abs(prices[last_idx - 1] - fair_values[last_idx - 1])
-    curr_dev = abs(last_price - fv)
-    reversal_ok = (curr_dev < prev_dev)
+    # Confirmation reversion
+    reversal_ok = True
+    if confirm_reversal_live and last_idx > 0 and not np.isnan(fair_values[last_idx - 1]):
+        prev_dev = abs(prices[last_idx - 1] - fair_values[last_idx - 1])
+        curr_dev = abs(last_price - fv)
+        reversal_ok = (curr_dev < prev_dev)
 
-# Filtre σ_stat max (marché trending → OU invalide)
-vol_ok = (max_sigma_stat == 0) or (ss <= max_sigma_stat)
+    # Filtre σ_stat max (marche trending → OU invalide)
+    vol_ok = (max_sigma_stat == 0) or (ss <= max_sigma_stat)
 
-# Filtre band_k_max (spike/gap extrême → ignorer)
-dev_ok = abs(deviation_sigma) <= band_k_max
+    # Filtre band_k_max (spike/gap extreme → ignorer)
+    dev_ok = abs(deviation_sigma) <= band_k_max
 
-# Filtre max trades/jour
-trades_ok = trades_today < max_trades_per_day
+    # Filtre max trades/jour
+    trades_ok = trades_today < max_trades_per_day
 
-filters_pass = reversal_ok and vol_ok and dev_ok and in_session and trades_ok
+    filters_pass = reversal_ok and vol_ok and dev_ok and in_session and trades_ok
 
-# ── Detection donnees perimees ─────────────────────────────────────────
-try:
-    last_bar_ts = pd.to_datetime(bars_df["bar"].iloc[-1], utc=True)
-    data_age_min = (datetime.now(timezone.utc) - last_bar_ts.to_pydatetime()).total_seconds() / 60
-except Exception:
-    data_age_min = 0.0
+    # ── Detection donnees perimees ─────────────────────────────────────
+    try:
+        last_bar_ts = pd.to_datetime(bars_df["bar"].iloc[-1], utc=True)
+        data_age_min = (datetime.now(timezone.utc) - last_bar_ts.to_pydatetime()).total_seconds() / 60
+    except Exception:
+        data_age_min = 0.0
 
-DATA_STALE_WARN = 5
-DATA_STALE_ERROR = 20
+    DATA_STALE_WARN = 5
+    DATA_STALE_ERROR = 20
 
-upper = fv + band_k * ss
-lower = fv - band_k * ss
-# SL identique backtest : sl_sigma_mult × σ_kalman, min sl_min_pts
-sl_pts = max(sl_sigma_mult * ss, min_sl_pts)
-tp_pts = abs(last_price - fv) * tp_ratio
+    upper = fv + band_k * ss
+    lower = fv - band_k * ss
+    # SL identique backtest : sl_sigma_mult x sigma_kalman, min sl_min_pts
+    sl_pts = max(sl_sigma_mult * ss, min_sl_pts)
+    tp_pts = abs(last_price - fv) * tp_ratio
 
-# ══════════════════════════════════════════════════════════════════════
-# CHALLENGE APEX 50K EOD — MONEY MANAGEMENT
-# Basé sur backtest : WR=42%, PF=2, ratio win/loss=2.75
-# Kelly fraction = WR - (1-WR)/ratio = 0.42 - 0.58/2.75 = 21%
-# Half-Kelly utilisé = 10% du trailing DD restant par trade
-# ══════════════════════════════════════════════════════════════════════
-st.markdown("---")
-MNQ_POINT = 2.0  # 1 point MNQ = $2
+    # ══════════════════════════════════════════════════════════════════
+    # CHALLENGE APEX 50K EOD — MONEY MANAGEMENT
+    # Base sur backtest : WR=42%, PF=2, ratio win/loss=2.75
+    # Kelly fraction = WR - (1-WR)/ratio = 0.42 - 0.58/2.75 = 21%
+    # Half-Kelly utilise = 10% du trailing DD restant par trade
+    # ══════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    MNQ_POINT = 2.0  # 1 point MNQ = $2
 
-# ── Calculs challenge ─────────────────────────────────────────────────
-trailing_dd_remaining = APEX_50K["trailing_dd"] - trailing_dd_used
-days_remaining        = max(1, days_remaining_override)  # jours business restants ce mois
-pnl_needed            = max(0.0, APEX_50K["profit_target"] - challenge_pnl_total)
-daily_needed          = pnl_needed / days_remaining
-losses_today          = max(0.0, -pnl_today)   # pertes du jour (positif)
+    # ── Calculs challenge ─────────────────────────────────────────────────────
+    trailing_dd_remaining = APEX_50K["trailing_dd"] - trailing_dd_used
+    days_remaining        = max(1, days_remaining_override)  # jours business restants ce mois
+    pnl_needed            = max(0.0, APEX_50K["profit_target"] - challenge_pnl_total)
+    daily_needed          = pnl_needed / days_remaining
+    losses_today          = max(0.0, -pnl_today)   # pertes du jour (positif)
 
-# ── Determination de la phase ─────────────────────────────────────────
-# Phase SECURITE : 80%+ de l'objectif atteint → proteger le gain
-# Phase PRUDENTE : premiers 5 jours OU >50% du DD utilise → taille mini
-# Phase PUSH     : derniers 5 jours ET <80% objectif ET DD intact → taille max
-# Phase STANDARD : tous les autres cas → taille normale
+    # ── Determination de la phase ─────────────────────────────────────────────────
+    # Phase SECURITE : 80%+ de l'objectif atteint -> proteger le gain
+    # Phase PRUDENTE : premiers 5 jours OU >50% du DD utilise -> taille mini
+    # Phase PUSH     : derniers 5 jours ET <80% objectif ET DD intact -> taille max
+    # Phase STANDARD : tous les autres cas -> taille normale
 
-dd_pct_used = trailing_dd_used / APEX_50K["trailing_dd"]   # 0→1
-challenge_pct_done = challenge_pnl_total / APEX_50K["profit_target"]
+    dd_pct_used = trailing_dd_used / APEX_50K["trailing_dd"]   # 0->1
+    challenge_pct_done = challenge_pnl_total / APEX_50K["profit_target"]
 
-# Pas de limite de trades imposee par Apex — on trade tant que le signal existe
-# et que les stops internes (daily loss, consecutive losses, DD) ne sont pas atteints
-if challenge_pct_done >= 0.80:
-    phase = "SECURITE"
-    phase_color = CYAN
-    risk_pct_dd = 0.04   # 4% du DD restant → ultra-conservateur
-    phase_desc = "80%+ atteint — taille mini, protege le gain"
-elif dd_pct_used > 0.50 or trailing_dd_remaining < 400:
-    phase = "PRUDENTE"
-    phase_color = YELLOW
-    risk_pct_dd = 0.05   # 5% du DD restant
-    phase_desc = "DD > 50% utilise — taille reduite, qualite avant tout"
-elif days_remaining <= 5 and challenge_pct_done < 0.80:
-    phase = "PUSH"
-    phase_color = ORANGE
-    risk_pct_dd = 0.15   # 15% du DD restant
-    phase_desc = "Derniers jours — taille augmentee si signal fort"
-elif days_elapsed <= 5:
-    phase = "PRUDENTE"
-    phase_color = YELLOW
-    risk_pct_dd = 0.05
-    phase_desc = "Debut du challenge — taille mini, apprends le marche"
-else:
-    phase = "STANDARD"
-    phase_color = GREEN
-    risk_pct_dd = 0.10   # 10% du DD restant = Half-Kelly
-    phase_desc = "Execution mecanique — risque 10% du DD restant par trade"
-
-# ── Calcul du risque et des contrats ─────────────────────────────────
-risk_per_trade = max(80.0, min(trailing_dd_remaining * risk_pct_dd, 600.0))
-sl_dollars_per_contract = sl_pts * MNQ_POINT
-nb_contracts = max(1, int(risk_per_trade / sl_dollars_per_contract)) if sl_dollars_per_contract > 0 else 1
-nb_contracts = min(nb_contracts, APEX_50K["max_contracts"])
-total_risk_trade  = nb_contracts * sl_dollars_per_contract
-total_tp_trade    = nb_contracts * tp_pts * MNQ_POINT
-
-# Daily hard stops
-# Regle Apex EOD 50K : $1 000/jour fixe
-# On stop a $800 pour garder $200 de marge (evite de toucher exactement la limite)
-daily_loss_hard   = min(APEX_50K["daily_loss"] * 0.80, trailing_dd_remaining * 0.32)
-
-# ── EOD check ────────────────────────────────────────────────────────
-now_utc = datetime.now(timezone.utc)
-eod_utc = now_utc.replace(hour=21, minute=45, second=0, microsecond=0)
-past_eod = now_utc.time() > eod_utc.time()
-near_eod = (not past_eod) and (now_utc.hour == 21 and now_utc.minute >= 30)
-if past_eod:
-    mins_to_eod = 0
-else:
-    mins_to_eod = max(0, int((eod_utc - now_utc).total_seconds() / 60))
-
-# ── Autorisation de trader ───────────────────────────────��────────────
-# Pas de limite de trades Apex — on stop uniquement sur DD, daily loss, consec, EOD
-block_daily_loss = losses_today >= daily_loss_hard
-block_consec     = consec_losses >= 2
-block_dd         = trailing_dd_remaining <= 100
-block_eod        = past_eod or near_eod
-can_trade = not any([block_daily_loss, block_consec, block_dd, block_eod])
-
-# ══════════════════════════════════════════════════════════════════════
-# AFFICHAGE CHALLENGE
-# ══════════════════════════════════════════════════════════════════════
-st.markdown("""<div style='font-family:JetBrains Mono,monospace;font-size:0.65rem;letter-spacing:0.2em;color:#3CC4B7;text-transform:uppercase;margin:1.5rem 0 0.8rem'>CHALLENGE APEX 50K EOD TRAIL</div>""", unsafe_allow_html=True)
-
-# ── Ligne 1 : Progression challenge ──────────────────────────────────
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric(
-    "Objectif",
-    f"${challenge_pnl_total:+,.0f} / ${APEX_50K['profit_target']:,}",
-    delta=f"{challenge_pct_done*100:.0f}% atteint",
-    delta_color="normal"
-)
-c2.metric(
-    f"Mois en cours ({_today.strftime('%b %Y')})",
-    f"Jour {days_elapsed} / {_bdays_total}",
-    delta=f"{days_remaining} jours restants ce mois",
-    delta_color="inverse" if days_remaining <= 3 else "normal"
-)
-c3.metric(
-    "A faire / jour",
-    f"${daily_needed:.0f}",
-    delta="objectif journalier"
-)
-c4.metric(
-    "Trailing DD restant",
-    f"${trailing_dd_remaining:,.0f}",
-    delta=f"{dd_pct_used*100:.0f}% utilise",
-    delta_color="inverse" if dd_pct_used > 0.3 else "normal"
-)
-c5.metric(
-    f"Phase : {phase}",
-    f"{risk_pct_dd*100:.0f}% DD / trade",
-    delta=phase_desc
-)
-
-# Barre progression objectif
-st.markdown(f"**Progression objectif : {challenge_pct_done*100:.0f}%**")
-st.progress(min(challenge_pct_done, 1.0))
-
-# Barre trailing DD
-st.markdown(f"**Trailing drawdown utilise : {dd_pct_used*100:.0f}%** (max ${APEX_50K['trailing_dd']:,} EOD)")
-st.progress(min(dd_pct_used, 1.0))
-
-# ── Alerte fenetre mensuelle ──────────────────────────────────────────
-_month_name = f"{challenge_start.strftime('%d %b')} → {_month_end.strftime('%d %b %Y')}"
-if challenge_pct_done >= 1.0:
-    st.success(f"CHALLENGE PASSE — Objectif ${APEX_50K['profit_target']:,} atteint ce mois !")
-elif days_remaining == 0:
-    st.error(
-        f"FIN DE MOIS ({_month_name}) — Objectif non atteint "
-        f"(${challenge_pnl_total:+,.0f} / ${APEX_50K['profit_target']:,}). "
-        f"Le challenge repart de zero le 1er du mois prochain."
-    )
-elif days_remaining <= 3:
-    daily_needed_push = pnl_needed / days_remaining if days_remaining > 0 else pnl_needed
-    st.error(
-        f"URGENCE — {days_remaining} jour(s) restant(s) en {_month_name}. "
-        f"Il faut ${pnl_needed:.0f} en {days_remaining} jours "
-        f"(${daily_needed_push:.0f}/jour). Phase PUSH activee si DD intact."
-    )
-elif days_remaining <= 5:
-    st.warning(
-        f"{days_remaining} jours business restants en {_month_name}. "
-        f"Encore ${pnl_needed:.0f} a faire — "
-        f"${daily_needed:.0f}/jour necessaires."
-    )
-
-# ── Ligne 2 : Regles du jour ──────────────────────────────────────────
-st.markdown(f"#### Regles d'aujourd'hui — Phase <span style='color:{phase_color};font-weight:bold'>{phase}</span>", unsafe_allow_html=True)
-r1, r2, r3, r4, r5 = st.columns(5)
-
-r1.metric("Risque / trade", f"${risk_per_trade:.0f}",
-          delta=f"{risk_pct_dd*100:.0f}% du DD restant")
-r2.metric(f"Contrats x{nb_contracts}",
-          f"SL ${total_risk_trade:.0f} / TP ${total_tp_trade:.0f}",
-          delta=f"SL = {sl_pts:.1f} pts")
-r3.metric("Daily loss stop", f"${daily_loss_hard:.0f}",
-          delta=f"-${losses_today:.0f} aujourd'hui",
-          delta_color="inverse" if losses_today > 0 else "off")
-r4.metric("Trades aujourd'hui", f"{trades_today}",
-          delta=f"{consec_losses} pertes consec.",
-          delta_color="inverse" if consec_losses >= 1 else "off")
-
-# EOD
-paris_offset = 2
-eod_paris = f"{(21 + paris_offset) % 24:02d}:45"
-if past_eod:
-    r5.metric("EOD", "FERME", delta="Flat obligatoire", delta_color="inverse")
-elif near_eod:
-    r5.metric("EOD", f"{mins_to_eod} min", delta="FERME TES POSITIONS !", delta_color="inverse")
-else:
-    r5.metric("EOD (flat)", eod_paris + " Paris", delta=f"dans {mins_to_eod} min")
-
-# ── Status GO / STOP ──────────────────────────────────────────────────
-if block_dd:
-    st.error("ARRET TOTAL — Trailing drawdown critique (<$100 restant). Ne trade plus ce compte.")
-elif block_eod and past_eod:
-    st.error("SESSION FERMEE — Apres 21h45 UTC. Verifie que tu es flat sur Apex.")
-elif block_eod and near_eod:
-    st.warning("FERME TES POSITIONS — Moins de 15 min avant EOD obligatoire (21h45 UTC).")
-elif block_daily_loss:
-    st.error(f"STOP DU JOUR — Daily loss atteinte (${losses_today:.0f} / ${daily_loss_hard:.0f}). Ne trade plus aujourd'hui.")
-elif block_consec:
-    st.error("STOP DU JOUR — 2 pertes consecutives. Regle absolue : arrete maintenant.")
-else:
-    st.success(f"GO — Phase {phase} | Risque ${risk_per_trade:.0f} | {nb_contracts} contrat(s) MNQ | Daily loss restant : ${daily_loss_hard - losses_today:.0f}")
-
-# ── SIGNAL ───────────────────────────────────────────────────────────
-st.markdown("---")
-deviation = deviation_sigma  # alias pour l'affichage
-
-# Guard : deviation > band_k_max = probable bad tick → ignorer (filtre déjà dans filters_pass)
-MAX_VALID_DEVIATION = band_k_max
-data_error = not dev_ok
-
-if data_error:
-    signal = "PAS DE SIGNAL"
-    signal_color = YELLOW
-    entry = sl = tp = None
-elif last_price > upper:
-    if filters_pass:
-        signal = "SHORT"
-        signal_color = RED
+    # Pas de limite de trades imposee par Apex -- on trade tant que le signal existe
+    # et que les stops internes (daily loss, consecutive losses, DD) ne sont pas atteints
+    if challenge_pct_done >= 0.80:
+        phase = "SECURITE"
+        phase_color = CYAN
+        risk_pct_dd = 0.04   # 4% du DD restant -> ultra-conservateur
+        phase_desc = "80%+ atteint — taille mini, protege le gain"
+    elif dd_pct_used > 0.50 or trailing_dd_remaining < 400:
+        phase = "PRUDENTE"
+        phase_color = YELLOW
+        risk_pct_dd = 0.05   # 5% du DD restant
+        phase_desc = "DD > 50% utilise — taille reduite, qualite avant tout"
+    elif days_remaining <= 5 and challenge_pct_done < 0.80:
+        phase = "PUSH"
+        phase_color = ORANGE
+        risk_pct_dd = 0.15   # 15% du DD restant
+        phase_desc = "Derniers jours — taille augmentee si signal fort"
+    elif days_elapsed <= 5:
+        phase = "PRUDENTE"
+        phase_color = YELLOW
+        risk_pct_dd = 0.05
+        phase_desc = "Debut du challenge — taille mini, apprends le marche"
     else:
-        signal = "ATTENDRE"
-        signal_color = YELLOW
-    entry = last_price
-    sl = entry + sl_pts
-    tp = fv
-elif last_price < lower:
-    if filters_pass:
-        signal = "LONG"
-        signal_color = GREEN
+        phase = "STANDARD"
+        phase_color = GREEN
+        risk_pct_dd = 0.10   # 10% du DD restant = Half-Kelly
+        phase_desc = "Execution mecanique — risque 10% du DD restant par trade"
+
+    # ── Calcul du risque et des contrats ─────────────────────────────────────────
+    risk_per_trade = max(80.0, min(trailing_dd_remaining * risk_pct_dd, 600.0))
+    sl_dollars_per_contract = sl_pts * MNQ_POINT
+    nb_contracts = max(1, int(risk_per_trade / sl_dollars_per_contract)) if sl_dollars_per_contract > 0 else 1
+    nb_contracts = min(nb_contracts, APEX_50K["max_contracts"])
+    total_risk_trade  = nb_contracts * sl_dollars_per_contract
+    total_tp_trade    = nb_contracts * tp_pts * MNQ_POINT
+
+    # Daily hard stops
+    # Regle Apex EOD 50K : $1 000/jour fixe
+    # On stop a $800 pour garder $200 de marge (evite de toucher exactement la limite)
+    daily_loss_hard   = min(APEX_50K["daily_loss"] * 0.80, trailing_dd_remaining * 0.32)
+
+    # ── EOD check ────────────────────────────────────────────────────────────
+    now_utc = datetime.now(timezone.utc)
+    eod_utc = now_utc.replace(hour=21, minute=45, second=0, microsecond=0)
+    past_eod = now_utc.time() > eod_utc.time()
+    near_eod = (not past_eod) and (now_utc.hour == 21 and now_utc.minute >= 30)
+    if past_eod:
+        mins_to_eod = 0
     else:
-        signal = "ATTENDRE"
+        mins_to_eod = max(0, int((eod_utc - now_utc).total_seconds() / 60))
+
+    # ── Autorisation de trader ────────────────────────────────────────────────────
+    # Pas de limite de trades Apex -- on stop uniquement sur DD, daily loss, consec, EOD
+    block_daily_loss = losses_today >= daily_loss_hard
+    block_consec     = consec_losses >= 2
+    block_dd         = trailing_dd_remaining <= 100
+    block_eod        = past_eod or near_eod
+    can_trade = not any([block_daily_loss, block_consec, block_dd, block_eod])
+
+    # ══════════════════════════════════════════════════════════════════
+    # AFFICHAGE CHALLENGE
+    # ══════════════════════════════════════════════════════════════════
+    st.markdown("""<div style='font-family:JetBrains Mono,monospace;font-size:0.65rem;letter-spacing:0.2em;color:#3CC4B7;text-transform:uppercase;margin:1.5rem 0 0.8rem'>CHALLENGE APEX 50K EOD TRAIL</div>""", unsafe_allow_html=True)
+
+    # ── Ligne 1 : Progression challenge ────────────────────────────────────────────
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric(
+        "Objectif",
+        f"${challenge_pnl_total:+,.0f} / ${APEX_50K['profit_target']:,}",
+        delta=f"{challenge_pct_done*100:.0f}% atteint",
+        delta_color="normal"
+    )
+    c2.metric(
+        f"Mois en cours ({_today.strftime('%b %Y')})",
+        f"Jour {days_elapsed} / {_bdays_total}",
+        delta=f"{days_remaining} jours restants ce mois",
+        delta_color="inverse" if days_remaining <= 3 else "normal"
+    )
+    c3.metric(
+        "A faire / jour",
+        f"${daily_needed:.0f}",
+        delta="objectif journalier"
+    )
+    c4.metric(
+        "Trailing DD restant",
+        f"${trailing_dd_remaining:,.0f}",
+        delta=f"{dd_pct_used*100:.0f}% utilise",
+        delta_color="inverse" if dd_pct_used > 0.3 else "normal"
+    )
+    c5.metric(
+        f"Phase : {phase}",
+        f"{risk_pct_dd*100:.0f}% DD / trade",
+        delta=phase_desc
+    )
+
+    # Barre progression objectif
+    st.markdown(f"**Progression objectif : {challenge_pct_done*100:.0f}%**")
+    st.progress(min(challenge_pct_done, 1.0))
+
+    # Barre trailing DD
+    st.markdown(f"**Trailing drawdown utilise : {dd_pct_used*100:.0f}%** (max ${APEX_50K['trailing_dd']:,} EOD)")
+    st.progress(min(dd_pct_used, 1.0))
+
+    # ── Alerte fenetre mensuelle ──────────────────────────────────────────────
+    _month_name = f"{challenge_start.strftime('%d %b')} → {_month_end.strftime('%d %b %Y')}"
+    if challenge_pct_done >= 1.0:
+        st.success(f"CHALLENGE PASSE — Objectif ${APEX_50K['profit_target']:,} atteint ce mois !")
+    elif days_remaining == 0:
+        st.error(
+            f"FIN DE MOIS ({_month_name}) — Objectif non atteint "
+            f"(${challenge_pnl_total:+,.0f} / ${APEX_50K['profit_target']:,}). "
+            f"Le challenge repart de zero le 1er du mois prochain."
+        )
+    elif days_remaining <= 3:
+        daily_needed_push = pnl_needed / days_remaining if days_remaining > 0 else pnl_needed
+        st.error(
+            f"URGENCE — {days_remaining} jour(s) restant(s) en {_month_name}. "
+            f"Il faut ${pnl_needed:.0f} en {days_remaining} jours "
+            f"(${daily_needed_push:.0f}/jour). Phase PUSH activee si DD intact."
+        )
+    elif days_remaining <= 5:
+        st.warning(
+            f"{days_remaining} jours business restants en {_month_name}. "
+            f"Encore ${pnl_needed:.0f} a faire — "
+            f"${daily_needed:.0f}/jour necessaires."
+        )
+
+    # ── Ligne 2 : Regles du jour ──────────────────────────────────────────────────────
+    st.markdown(f"#### Regles d'aujourd'hui — Phase <span style='color:{phase_color};font-weight:bold'>{phase}</span>", unsafe_allow_html=True)
+    r1, r2, r3, r4, r5 = st.columns(5)
+
+    r1.metric("Risque / trade", f"${risk_per_trade:.0f}",
+              delta=f"{risk_pct_dd*100:.0f}% du DD restant")
+    r2.metric(f"Contrats x{nb_contracts}",
+              f"SL ${total_risk_trade:.0f} / TP ${total_tp_trade:.0f}",
+              delta=f"SL = {sl_pts:.1f} pts")
+    r3.metric("Daily loss stop", f"${daily_loss_hard:.0f}",
+              delta=f"-${losses_today:.0f} aujourd'hui",
+              delta_color="inverse" if losses_today > 0 else "off")
+    r4.metric("Trades aujourd'hui", f"{trades_today}",
+              delta=f"{consec_losses} pertes consec.",
+              delta_color="inverse" if consec_losses >= 1 else "off")
+
+    # EOD
+    paris_offset = 2
+    eod_paris = f"{(21 + paris_offset) % 24:02d}:45"
+    if past_eod:
+        r5.metric("EOD", "FERME", delta="Flat obligatoire", delta_color="inverse")
+    elif near_eod:
+        r5.metric("EOD", f"{mins_to_eod} min", delta="FERME TES POSITIONS !", delta_color="inverse")
+    else:
+        r5.metric("EOD (flat)", eod_paris + " Paris", delta=f"dans {mins_to_eod} min")
+
+    # ── Status GO / STOP ────────────────────────────────────────────────────────────
+    if block_dd:
+        st.error("ARRET TOTAL — Trailing drawdown critique (<$100 restant). Ne trade plus ce compte.")
+    elif block_eod and past_eod:
+        st.error("SESSION FERMEE — Apres 21h45 UTC. Verifie que tu es flat sur Apex.")
+    elif block_eod and near_eod:
+        st.warning("FERME TES POSITIONS — Moins de 15 min avant EOD obligatoire (21h45 UTC).")
+    elif block_daily_loss:
+        st.error(f"STOP DU JOUR — Daily loss atteinte (${losses_today:.0f} / ${daily_loss_hard:.0f}). Ne trade plus aujourd'hui.")
+    elif block_consec:
+        st.error("STOP DU JOUR — 2 pertes consecutives. Regle absolue : arrete maintenant.")
+    else:
+        st.success(f"GO — Phase {phase} | Risque ${risk_per_trade:.0f} | {nb_contracts} contrat(s) MNQ | Daily loss restant : ${daily_loss_hard - losses_today:.0f}")
+
+    # ── SIGNAL ────────────────────────────────────────────────────────────────────
+    st.markdown("---")
+    deviation = deviation_sigma  # alias pour l'affichage
+
+    # Guard : deviation > band_k_max = probable bad tick -> ignorer (filtre deja dans filters_pass)
+    MAX_VALID_DEVIATION = band_k_max
+    data_error = not dev_ok
+
+    if data_error:
+        signal = "PAS DE SIGNAL"
         signal_color = YELLOW
-    entry = last_price
-    sl = entry - sl_pts
-    tp = fv
-else:
-    signal = "PAS DE SIGNAL"
-    signal_color = YELLOW
-    entry = sl = tp = None
+        entry = sl = tp = None
+    elif last_price > upper:
+        if filters_pass:
+            signal = "SHORT"
+            signal_color = RED
+        else:
+            signal = "ATTENDRE"
+            signal_color = YELLOW
+        entry = last_price
+        sl = entry + sl_pts
+        tp = fv
+    elif last_price < lower:
+        if filters_pass:
+            signal = "LONG"
+            signal_color = GREEN
+        else:
+            signal = "ATTENDRE"
+            signal_color = YELLOW
+        entry = last_price
+        sl = entry - sl_pts
+        tp = fv
+    else:
+        signal = "PAS DE SIGNAL"
+        signal_color = YELLOW
+        entry = sl = tp = None
 
-# ── Alerte son sur changement de signal ──────────────────────────────
-prev_signal = st.session_state.get("prev_signal", "PAS DE SIGNAL")
-signal_changed = (signal != prev_signal) and (signal in ("LONG", "SHORT"))
-st.session_state["prev_signal"] = signal
+    # ── Alerte son sur changement de signal ─────────────────────────────────────────
+    prev_signal = st.session_state.get("prev_signal", "PAS DE SIGNAL")
+    signal_changed = (signal != prev_signal) and (signal in ("LONG", "SHORT"))
+    st.session_state["prev_signal"] = signal
 
-if signal_changed:
-    # Frequence differente selon direction
-    freq = 880 if signal == "SHORT" else 440  # SHORT = aigu, LONG = grave
-    beep_js = f"""
-    <script>
-    (function() {{
-        var ctx = new (window.AudioContext || window.webkitAudioContext)();
-        function beep(freq, duration, vol) {{
-            var osc = ctx.createOscillator();
-            var gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.frequency.value = freq;
-            osc.type = 'sine';
-            gain.gain.setValueAtTime(vol, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + duration);
-        }}
-        beep({freq}, 0.4, 0.5);
-        setTimeout(function() {{ beep({freq}, 0.4, 0.4); }}, 500);
-        setTimeout(function() {{ beep({freq}, 0.6, 0.5); }}, 1000);
-    }})();
-    </script>
-    """
-    st_components.html(beep_js, height=0)
+    if signal_changed:
+        # Frequence differente selon direction
+        freq = 880 if signal == "SHORT" else 440  # SHORT = aigu, LONG = grave
+        beep_js = f"""
+        <script>
+        (function() {{
+            var ctx = new (window.AudioContext || window.webkitAudioContext)();
+            function beep(freq, duration, vol) {{
+                var osc = ctx.createOscillator();
+                var gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = freq;
+                osc.type = 'sine';
+                gain.gain.setValueAtTime(vol, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + duration);
+            }}
+            beep({freq}, 0.4, 0.5);
+            setTimeout(function() {{ beep({freq}, 0.4, 0.4); }}, 500);
+            setTimeout(function() {{ beep({freq}, 0.6, 0.5); }}, 1000);
+        }})();
+        </script>
+        """
+        st_components.html(beep_js, height=0)
 
-# ── Alertes donnees ───────────────────────────────────────────────────
-if data_error:
-    st.error(f"BAD TICK — deviation {deviation:+.1f}σ > {MAX_VALID_DEVIATION}σ. Signal IGNORE.")
-elif data_age_min > DATA_STALE_ERROR:
-    st.error(f"DONNEES PERIMEES — {data_age_min:.0f} min. Verifie yfinance.")
-elif data_age_min > DATA_STALE_WARN:
-    st.warning(f"Donnees en retard de {data_age_min:.0f} min.")
+    # ── Alertes donnees ─────────────────────────────────────────────────────────────
+    if data_error:
+        st.error(f"BAD TICK — deviation {deviation:+.1f}σ > {MAX_VALID_DEVIATION}σ. Signal IGNORE.")
+    elif data_age_min > DATA_STALE_ERROR:
+        st.error(f"DONNEES PERIMEES — {data_age_min:.0f} min. Verifie yfinance.")
+    elif data_age_min > DATA_STALE_WARN:
+        st.warning(f"Donnees en retard de {data_age_min:.0f} min.")
 
-# ── Signal principal (grand affichage) ───────────────────────────────
-_sig_bg = {"LONG": "rgba(0,255,136,0.06)", "SHORT": "rgba(255,51,102,0.06)"}.get(signal, "rgba(255,214,0,0.04)")
-_sig_border = signal_color
-_sig_cls = {"LONG": "long", "SHORT": "short"}.get(signal, "none")
+    # ── Signal principal (grand affichage) ───────────────────────────────────────────
+    _sig_bg = {"LONG": "rgba(0,255,136,0.06)", "SHORT": "rgba(255,51,102,0.06)"}.get(signal, "rgba(255,214,0,0.04)")
+    _sig_border = signal_color
+    _sig_cls = {"LONG": "long", "SHORT": "short"}.get(signal, "none")
 
-# Indicateurs filtres
-_rev_icon  = "✓" if reversal_ok else "✗"
-_vol_icon  = "✓" if vol_ok      else "✗"
-_sess_icon = "✓" if in_session  else "✗"
-_trd_icon  = "✓" if trades_ok   else "✗"
-_filter_detail = (
-    f"Reversion {_rev_icon} &nbsp;·&nbsp; Vol {_vol_icon} "
-    f"&nbsp;·&nbsp; Session {_sess_icon} &nbsp;·&nbsp; Trades {trades_today}/{max_trades_per_day} {_trd_icon}"
-)
+    # Indicateurs filtres
+    _rev_icon  = "✓" if reversal_ok else "✗"
+    _vol_icon  = "✓" if vol_ok      else "✗"
+    _sess_icon = "✓" if in_session  else "✗"
+    _trd_icon  = "✓" if trades_ok   else "✗"
+    _filter_detail = (
+        f"Reversion {_rev_icon} &nbsp;·&nbsp; Vol {_vol_icon} "
+        f"&nbsp;·&nbsp; Session {_sess_icon} &nbsp;·&nbsp; Trades {trades_today}/{max_trades_per_day} {_trd_icon}"
+    )
 
-st.markdown(f"""
+    st.markdown(f"""
 <div class="signal-box {_sig_cls}" style="background:{_sig_bg};border-color:{_sig_border}22">
     <div class="signal-text" style="color:{signal_color}">{signal}</div>
     <div class="signal-sub">QQQ → MNQ &nbsp;·&nbsp; Deviation: {deviation:+.2f}σ &nbsp;·&nbsp; Data: {data_age_min:.0f} min</div>
@@ -903,173 +905,190 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Metriques prix ────────────────────────────────────────────────────
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("Prix QQQ", f"{last_price:,.2f}")
-m2.metric("Fair Value", f"{fv:,.2f}")
-m3.metric("Deviation", f"{deviation:+.2f}σ")
-m4.metric("Bande haute", f"{upper:,.2f}")
-m5.metric("Bande basse", f"{lower:,.2f}")
+    # ── Metriques prix ────────────────────────────────────────────────────────────────
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Prix QQQ", f"{last_price:,.2f}")
+    m2.metric("Fair Value", f"{fv:,.2f}")
+    m3.metric("Deviation", f"{deviation:+.2f}σ")
+    m4.metric("Bande haute", f"{upper:,.2f}")
+    m5.metric("Bande basse", f"{lower:,.2f}")
 
-# ── Execution ─────────────────────────────────────────────────────────
-if entry:
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(f"<p style='color:#888;font-size:0.8rem;letter-spacing:0.1em'>EXECUTION SUR APEX — {nb_contracts} CONTRAT(S) MNQ</p>", unsafe_allow_html=True)
-    e1, e2, e3, e4, e5 = st.columns(5)
-    e1.metric("Entry", f"{entry:,.2f}")
-    e2.metric("Stop Loss", f"{sl:,.2f}", delta=f"{sl_pts:.1f} pts")
-    e3.metric("Take Profit", f"{tp:,.2f}", delta=f"{tp_pts:.1f} pts")
-    e4.metric("R:R", f"{tp_pts/sl_pts:.1f}" if sl_pts > 0 else "N/A")
-    e5.metric("Risque trade", f"${total_risk_trade:.0f}", delta=f"+${total_tp_trade:.0f} si TP")
+    # ── Execution ───────────────────────────────────────────────────────────────────
+    if entry:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:#888;font-size:0.8rem;letter-spacing:0.1em'>EXECUTION SUR APEX — {nb_contracts} CONTRAT(S) MNQ</p>", unsafe_allow_html=True)
+        e1, e2, e3, e4, e5 = st.columns(5)
+        e1.metric("Entry", f"{entry:,.2f}")
+        e2.metric("Stop Loss", f"{sl:,.2f}", delta=f"{sl_pts:.1f} pts")
+        e3.metric("Take Profit", f"{tp:,.2f}", delta=f"{tp_pts:.1f} pts")
+        e4.metric("R:R", f"{tp_pts/sl_pts:.1f}" if sl_pts > 0 else "N/A")
+        e5.metric("Risque trade", f"${total_risk_trade:.0f}", delta=f"+${total_tp_trade:.0f} si TP")
 
-    if not can_trade:
-        st.error("NE PAS TRADER — voir les regles du jour ci-dessus")
+        if not can_trade:
+            st.error("NE PAS TRADER — voir les regles du jour ci-dessus")
 
-# ── CHART ────────────────────────────────────────────────────────────
-show_bars = min(160, len(prices))
-chart_prices  = prices[-show_bars:]
-chart_fv      = fair_values[-show_bars:]
-chart_ss      = sigma_stats[-show_bars:]
-chart_upper   = chart_fv + band_k * chart_ss
-chart_lower   = chart_fv - band_k * chart_ss
-chart_dev     = np.where(chart_ss > 0, (chart_prices - chart_fv) / chart_ss, 0.0)
+    # ── CHART ────────────────────────────────────────────────────────────────────────
+    show_bars = min(160, len(prices))
+    chart_prices  = prices[-show_bars:]
+    chart_fv_raw  = fair_values[-show_bars:]
+    chart_ss_raw  = sigma_stats[-show_bars:]
 
-paris_offset = 2
-try:
-    bar_times = bars_df["bar"].iloc[-show_bars:].reset_index(drop=True)
-    x_vals = list(
-        pd.to_datetime(bar_times, utc=True)
-        .map(lambda t: (t + pd.Timedelta(hours=paris_offset)).strftime("%H:%M"))
+    # Masquer les barres avant convergence Kalman (FV = NaN -> Y-axis ecrase sinon)
+    valid_mask    = ~np.isnan(chart_fv_raw)
+    chart_fv      = np.where(valid_mask, chart_fv_raw, np.nan)
+    chart_ss      = np.where(valid_mask, chart_ss_raw, np.nan)
+    chart_upper   = np.where(valid_mask, chart_fv + band_k * chart_ss, np.nan)
+    chart_lower   = np.where(valid_mask, chart_fv - band_k * chart_ss, np.nan)
+    chart_dev     = np.where(valid_mask & (chart_ss > 0), (chart_prices - chart_fv) / chart_ss, np.nan)
+
+    # Y-range panneau 1 : base uniquement sur les donnees valides
+    _vp = chart_prices[valid_mask]
+    _vu = chart_upper[valid_mask]
+    _vl = chart_lower[valid_mask]
+    if len(_vp) > 0:
+        _pad   = max(1.5, float(np.nanstd(_vp)) * 0.3)
+        _y_min = float(min(np.nanmin(_vl), np.nanmin(_vp))) - _pad
+        _y_max = float(max(np.nanmax(_vu), np.nanmax(_vp))) + _pad
+    else:
+        _y_min, _y_max = last_price - 10, last_price + 10
+
+    paris_offset = 2
+    try:
+        bar_times = bars_df["bar"].iloc[-show_bars:].reset_index(drop=True)
+        x_vals = list(
+            pd.to_datetime(bar_times, utc=True)
+            .map(lambda t: (t + pd.Timedelta(hours=paris_offset)).strftime("%H:%M"))
+        )
+    except Exception:
+        x_vals = list(range(show_bars))
+
+    _AXIS = dict(
+        gridcolor="rgba(255,255,255,0.025)",
+        linecolor="#111",
+        tickfont=dict(color="#2e2e2e", size=10, family="JetBrains Mono"),
+        zeroline=False,
+        showgrid=True,
     )
-except Exception:
-    x_vals = list(range(show_bars))
 
-_AXIS = dict(
-    gridcolor="rgba(255,255,255,0.03)",
-    linecolor="#111",
-    tickfont=dict(color="#333", size=10, family="JetBrains Mono"),
-    zeroline=False,
-    showgrid=True,
-)
+    fig = make_subplots(
+        rows=2, cols=1,
+        row_heights=[0.74, 0.26],
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+    )
 
-fig = make_subplots(
-    rows=2, cols=1,
-    row_heights=[0.72, 0.28],
-    shared_xaxes=True,
-    vertical_spacing=0.04,
-)
+    # ── Panneau 1 : Prix + Kalman ───────────────────────────────────────────────────
+    # Fill entre les bandes
+    fig.add_trace(go.Scatter(
+        x=x_vals, y=chart_upper, mode="lines",
+        line=dict(color="rgba(60,196,183,0.18)", width=1, dash="dot"),
+        name=f"+{band_k}σ", showlegend=True,
+    ), row=1, col=1)
 
-# ── Panneau 1 : Prix + Kalman ─────────────────────────────────────────
-# Zone entre les bandes (remplissage subtil)
-fig.add_trace(go.Scatter(
-    x=x_vals, y=chart_upper, mode="lines",
-    line=dict(color="rgba(60,196,183,0.25)", width=1, dash="dot"),
-    name=f"+{band_k}σ", showlegend=False,
-), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=x_vals, y=chart_lower, mode="lines",
+        line=dict(color="rgba(60,196,183,0.18)", width=1, dash="dot"),
+        fill="tonexty", fillcolor="rgba(60,196,183,0.03)",
+        name=f"−{band_k}σ", showlegend=True,
+    ), row=1, col=1)
 
-fig.add_trace(go.Scatter(
-    x=x_vals, y=chart_lower, mode="lines",
-    line=dict(color="rgba(60,196,183,0.25)", width=1, dash="dot"),
-    fill="tonexty", fillcolor="rgba(60,196,183,0.04)",
-    name=f"Bande {band_k}σ",
-), row=1, col=1)
+    # Fair Value
+    fig.add_trace(go.Scatter(
+        x=x_vals, y=chart_fv, mode="lines",
+        line=dict(color=TEAL, width=1.8),
+        name="Fair Value",
+    ), row=1, col=1)
 
-# Fair Value
-fig.add_trace(go.Scatter(
-    x=x_vals, y=chart_fv, mode="lines",
-    line=dict(color=TEAL, width=1.5),
-    name="Fair Value",
-), row=1, col=1)
+    # Prix
+    fig.add_trace(go.Scatter(
+        x=x_vals, y=chart_prices, mode="lines",
+        line=dict(color="rgba(220,220,220,0.85)", width=1.2),
+        name="QQQ",
+    ), row=1, col=1)
 
-# Prix
-fig.add_trace(go.Scatter(
-    x=x_vals, y=chart_prices, mode="lines",
-    line=dict(color="rgba(255,255,255,0.75)", width=1.2),
-    name="QQQ",
-), row=1, col=1)
+    # Dernier prix -- point accentue
+    fig.add_trace(go.Scatter(
+        x=[x_vals[-1]], y=[chart_prices[-1]], mode="markers",
+        marker=dict(color=signal_color, size=8, symbol="circle",
+                    line=dict(color="#060606", width=1.5)),
+        name="Now", showlegend=False,
+    ), row=1, col=1)
 
-# Dernier prix — point accentué
-fig.add_trace(go.Scatter(
-    x=[x_vals[-1]], y=[chart_prices[-1]], mode="markers",
-    marker=dict(color=signal_color, size=7, symbol="circle",
-                line=dict(color="#060606", width=1.5)),
-    name="Now", showlegend=False,
-), row=1, col=1)
+    # Lignes d'execution si signal actif
+    if entry is not None:
+        fig.add_hline(y=entry, line_dash="solid", line_color=signal_color, line_width=1,
+                      opacity=0.7, row=1, col=1,
+                      annotation_text=f"  {signal}  {entry:,.2f}",
+                      annotation_font=dict(color=signal_color, size=11, family="JetBrains Mono"),
+                      annotation_position="top left")
+        fig.add_hline(y=sl, line_dash="dot", line_color=RED, line_width=1,
+                      opacity=0.5, row=1, col=1,
+                      annotation_text=f"  SL  {sl:,.2f}",
+                      annotation_font=dict(color=RED, size=10, family="JetBrains Mono"),
+                      annotation_position="bottom left")
+        fig.add_hline(y=tp, line_dash="dot", line_color=GREEN, line_width=1,
+                      opacity=0.5, row=1, col=1,
+                      annotation_text=f"  TP  {tp:,.2f}",
+                      annotation_font=dict(color=GREEN, size=10, family="JetBrains Mono"),
+                      annotation_position="top left")
 
-# Lignes d'exécution si signal actif
-if entry is not None:
-    fig.add_hline(y=entry, line_dash="solid", line_color=signal_color, line_width=1,
-                  opacity=0.6, row=1, col=1,
-                  annotation_text=f"  {signal}  {entry:,.2f}",
-                  annotation_font=dict(color=signal_color, size=11, family="JetBrains Mono"),
-                  annotation_position="top left")
-    fig.add_hline(y=sl, line_dash="dot", line_color=RED, line_width=1,
-                  opacity=0.4, row=1, col=1,
-                  annotation_text=f"  SL  {sl:,.2f}",
-                  annotation_font=dict(color=RED, size=10, family="JetBrains Mono"),
-                  annotation_position="bottom left")
-    fig.add_hline(y=tp, line_dash="dot", line_color=GREEN, line_width=1,
-                  opacity=0.4, row=1, col=1,
-                  annotation_text=f"  TP  {tp:,.2f}",
-                  annotation_font=dict(color=GREEN, size=10, family="JetBrains Mono"),
-                  annotation_position="top left")
+    # ── Panneau 2 : Deviation z-score ─────────────────────────────────────────────────
+    _dev_display = np.where(np.isnan(chart_dev), 0.0, chart_dev)
+    dev_colors   = [RED if d > 0 else GREEN for d in _dev_display]
+    dev_opacity  = [0.6 if valid_mask[i] else 0.0 for i in range(len(valid_mask))]
 
-# ── Panneau 2 : Déviation z-score ─────────────────────────────────────
-dev_colors = [RED if d > 0 else GREEN for d in chart_dev]
+    fig.add_trace(go.Bar(
+        x=x_vals, y=_dev_display,
+        marker_color=dev_colors,
+        marker_opacity=dev_opacity,
+        name="Deviation σ",
+        showlegend=False,
+    ), row=2, col=1)
 
-fig.add_trace(go.Bar(
-    x=x_vals, y=chart_dev,
-    marker_color=dev_colors,
-    marker_opacity=0.55,
-    name="Déviation σ",
-    showlegend=False,
-), row=2, col=1)
+    fig.add_hline(y=band_k,  line_dash="dot", line_color="rgba(255,51,102,0.35)",   line_width=1, row=2, col=1)
+    fig.add_hline(y=-band_k, line_dash="dot", line_color="rgba(0,255,136,0.35)",    line_width=1, row=2, col=1)
+    fig.add_hline(y=0,       line_dash="solid", line_color="rgba(255,255,255,0.05)", line_width=1, row=2, col=1)
 
-# Lignes seuil bande
-fig.add_hline(y=band_k,  line_dash="dot", line_color="rgba(255,51,102,0.4)",  line_width=1, row=2, col=1)
-fig.add_hline(y=-band_k, line_dash="dot", line_color="rgba(0,255,136,0.4)",   line_width=1, row=2, col=1)
-fig.add_hline(y=0,       line_dash="solid", line_color="rgba(255,255,255,0.06)", line_width=1, row=2, col=1)
+    # Y-range panneau 2 : +/-max(band_k*1.5, max_dev observe) -- jamais extreme
+    _dev_abs_max = float(np.nanmax(np.abs(_dev_display[valid_mask]))) if valid_mask.any() else band_k
+    _dev_range   = max(band_k * 1.6, min(_dev_abs_max * 1.15, band_k_max * 1.1))
 
-fig.update_layout(
-    height=780,
-    paper_bgcolor="rgba(6,6,6,0)",
-    plot_bgcolor="rgba(8,8,8,1)",
-    font=dict(color="#555", size=11, family="JetBrains Mono"),
-    margin=dict(t=16, b=24, l=54, r=20),
-    legend=dict(
-        orientation="h", y=1.02, x=0,
-        bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#444", size=10),
-        borderwidth=0,
-    ),
-    hovermode="x unified",
-    hoverlabel=dict(bgcolor="#0d0d0d", bordercolor="#1a1a1a", font=dict(color="#ccc", size=11)),
-    xaxis=dict(**_AXIS, tickangle=-30, nticks=16, showticklabels=False),
-    yaxis=dict(**_AXIS, title=dict(text="Prix", font=dict(color="#333", size=10)), tickformat=".2f"),
-    xaxis2=dict(**_AXIS, tickangle=-30, nticks=16, title=dict(text="Heure Paris", font=dict(color="#333", size=10))),
-    yaxis2=dict(**_AXIS, title=dict(text="σ", font=dict(color="#333", size=10)), tickformat=".1f",
-                range=[-max(band_k * 1.8, abs(float(np.nanmin(chart_dev))) * 1.1),
-                        max(band_k * 1.8, abs(float(np.nanmax(chart_dev))) * 1.1)]),
-    bargap=0.1,
-    template="plotly_dark",
-)
+    fig.update_layout(
+        height=760,
+        paper_bgcolor="rgba(6,6,6,0)",
+        plot_bgcolor="rgba(8,8,8,1)",
+        font=dict(color="#555", size=11, family="JetBrains Mono"),
+        margin=dict(t=16, b=24, l=60, r=24),
+        legend=dict(
+            orientation="h", y=1.02, x=0,
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#444", size=10),
+            borderwidth=0,
+        ),
+        hovermode="x unified",
+        hoverlabel=dict(bgcolor="#0d0d0d", bordercolor="#1a1a1a", font=dict(color="#ccc", size=11)),
+        xaxis=dict(**_AXIS, tickangle=-30, nticks=20, showticklabels=False),
+        yaxis=dict(**_AXIS, title=dict(text="Prix", font=dict(color="#333", size=10)),
+                   tickformat=".2f", range=[_y_min, _y_max]),
+        xaxis2=dict(**_AXIS, tickangle=-30, nticks=20,
+                    title=dict(text="Heure Paris", font=dict(color="#333", size=10))),
+        yaxis2=dict(**_AXIS, title=dict(text="σ", font=dict(color="#333", size=10)),
+                    tickformat=".1f", range=[-_dev_range, _dev_range]),
+        bargap=0.08,
+        template="plotly_dark",
+    )
 
-st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
-now_utc = datetime.now(timezone.utc)
-paris_time = f"{(now_utc.hour + paris_offset) % 24:02d}:{now_utc.strftime('%M:%S')} Paris"
-st.markdown(
-    f"<div style='font-family:JetBrains Mono,monospace;font-size:0.68rem;color:#333;margin-top:-0.5rem'>"
-    f"{len(bars_df)} barres &nbsp;·&nbsp; ATR {last_atr:.2f} pts &nbsp;·&nbsp; "
-    f"SL {sl_pts:.1f} pts &nbsp;·&nbsp; K {kg:.3f} &nbsp;·&nbsp; {paris_time}"
-    f"</div>",
-    unsafe_allow_html=True,
-)
+    now_utc = datetime.now(timezone.utc)
+    paris_time = f"{(now_utc.hour + paris_offset) % 24:02d}:{now_utc.strftime('%M:%S')} Paris"
+    st.markdown(
+        f"<div style='font-family:JetBrains Mono,monospace;font-size:0.68rem;color:#333;margin-top:-0.5rem'>"
+        f"{len(bars_df)} barres &nbsp;·&nbsp; ATR {last_atr:.2f} pts &nbsp;·&nbsp; "
+        f"SL {sl_pts:.1f} pts &nbsp;·&nbsp; K {kg:.3f} &nbsp;·&nbsp; {paris_time}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
-# ── Countdown + auto-refresh ──────────────────────────────────────────
-countdown = st.empty()
-for remaining in range(int(refresh_sec), 0, -1):
-    countdown.info(f"Prochain refresh dans **{remaining}s**...")
-    time.sleep(1)
-countdown.empty()
-st.rerun()
+
+_live()
