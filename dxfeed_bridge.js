@@ -27,6 +27,11 @@ const OUTPUT_FILE = "C:\\tmp\\mnq_live.json";
 // Assure que C:\tmp existe
 if (!fs.existsSync("C:\\tmp")) fs.mkdirSync("C:\\tmp", { recursive: true });
 
+// Le module api.js utilise process.cwd() sur Windows (bug path.includes avec backslash)
+// Fix : changer CWD vers le répertoire du module avant le require
+const _origCwd = process.cwd();
+process.chdir(DXFEED_MODULE);
+
 let DXFeed;
 try {
     DXFeed = require(DXFEED_MODULE);
@@ -34,6 +39,8 @@ try {
     console.error("❌ Module dxFeed introuvable:", DXFEED_MODULE);
     console.error(e.message);
     process.exit(1);
+} finally {
+    process.chdir(_origCwd);
 }
 
 console.log("=".repeat(55));
@@ -46,69 +53,66 @@ console.log("");
 // Buffer de barres pour la session courante
 const barBuffer = [];
 
-async function main() {
+function main() {
     try {
-        // Connexion dxFeed
-        const endpoint = DXFeed.DXEndpoint.create();
-        await endpoint.connect(`${HOST}[login=${LOGIN},password=${PASSWORD}]`);
+        // API : new Endpoint(url), connect(callback), createSubscription(eventType)
+        const url      = `${HOST}[login=${LOGIN},password=${PASSWORD}]`;
+        const endpoint = new DXFeed.Endpoint(url);
+        // Abonnement créé avant connect (dxFeed bufferise jusqu'à connexion)
+        const sub = endpoint.createSubscription("Candle");
+        sub.addSymbols(["/MNQ{=1m}"]);
+        console.log("✓ Abonnement /MNQ{=1m} enregistré");
 
-        console.log("✓ Connecté à dxFeed");
-
-        // Abonnement Candle M1 pour /MNQ (front-month futures)
-        const feed       = endpoint.getFeed();
-        const sub        = feed.createSubscription(DXFeed.Candle);
-
-        // Symbol format dxFeed : /MNQ{=1m}
-        const candleSymbol = DXFeed.CandleSymbol.valueOf("/MNQ{=1m}");
-        sub.addSymbols([candleSymbol]);
-
-        console.log("✓ Abonné à /MNQ{=1m}");
-        console.log("En attente de barres M1...\n");
+        endpoint.connect((state) => {
+            if (state === "CONNECTED") {
+                console.log("\n✅ Connecté à dxFeed —", HOST);
+                console.log("En attente de barres M1...\n");
+            } else {
+                process.stdout.write(`\r  État: ${state}   `);
+            }
+        });
+        console.log("✓ Connexion dxFeed en cours →", HOST);
 
         sub.addEventListener((events) => {
             for (const event of events) {
                 try {
+                    const close = Number(event.close);
+                    if (!close || close <= 0) continue;
+
                     const bar = {
                         time:   new Date(Number(event.time)).toISOString(),
-                        open:   Number(event.open),
-                        high:   Number(event.high),
-                        low:    Number(event.low),
-                        close:  Number(event.close),
-                        volume: Number(event.volume),
-                        count:  Number(event.count || 0),
+                        open:   Number(event.open)  || close,
+                        high:   Number(event.high)  || close,
+                        low:    Number(event.low)   || close,
+                        close:  close,
+                        volume: Number(event.volume) || 0,
                     };
-
-                    // Ignore barres invalides
-                    if (!bar.close || bar.close <= 0) continue;
 
                     barBuffer.push(bar);
-
-                    // Garde max 600 barres (session ~10h)
                     if (barBuffer.length > 600) barBuffer.shift();
 
-                    // Écrit dans le fichier JSON
-                    const output = {
+                    fs.writeFileSync(OUTPUT_FILE, JSON.stringify({
                         updated:  new Date().toISOString(),
                         last_bar: bar,
-                        bars:     barBuffer.slice(-120), // dernière 2h
-                    };
-                    fs.writeFileSync(OUTPUT_FILE, JSON.stringify(output, null, 2));
+                        bars:     barBuffer.slice(-120),
+                    }, null, 2));
 
                     process.stdout.write(
-                        `\r  [${bar.time.slice(11,16)} UTC] close=${bar.close.toFixed(2)}  bars=${barBuffer.length}   `
+                        `\r  [${bar.time.slice(11,16)} UTC] ${bar.close.toFixed(2)}  bars=${barBuffer.length}   `
                     );
-                } catch (e) {
-                    // Barre incomplète, ignore
-                }
+                } catch (_) {}
             }
         });
 
     } catch (e) {
-        console.error("\n❌ Erreur connexion dxFeed:", e.message);
-        console.error("   Vérifier HOST dans .env ou en argument");
-        console.error("   Essayer: DXFEED_HOST=demo.dxfeed.com:7300 node dxfeed_bridge.js");
+        console.error("\n❌ Erreur:", e.message);
+        console.error("   HOST actuel:", HOST);
+        console.error("   Essayer: set DXFEED_HOST=demo.dxfeed.com:7300 && node dxfeed_bridge.js");
         process.exit(1);
     }
 }
+
+// Keep-alive
+setInterval(() => {}, 60000);
 
 main();
