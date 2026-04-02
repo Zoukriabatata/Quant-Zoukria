@@ -1,8 +1,15 @@
 """
 Multi-Model Backtest Framework — Apex · TopStep · Alpha Futures 50K EOD
 Instruments : MNQ · ES · MGC · MCL (1 an OHLCV M1 Databento)
-Models      : Kalman OU · Bollinger MR · GARCH MR · HMM Trend · Momentum Hurst · VWAP Reversion
-Sources     : Roman Paolucci Quant Guild Library (Lec 25 · 47 · 51 · 72 · 95)
+Models      : GARCH_MR · HMM_Regime · Markov_Bot · Heston_Vol · ARIMA_MR · Hurst_MR
+Sources     : Roman Paolucci Quant Guild Library
+              Lec 25 — Fractional Brownian Motion (Hurst)
+              Lec 39 — Heston Stochastic Volatility & FFT
+              Lec 44 — Time Series Analysis for Quant Finance
+              Lec 47 — Master Volatility with ARCH & GARCH Models
+              Lec 51 — Hidden Markov Models for Quant Finance
+              Lec 72/74 — Markov Chain Regime Switching Bot (IBKR)
+              https://github.com/romanmichaelpaolucci/Quant-Guild-Library
 """
 
 import os
@@ -26,15 +33,12 @@ TEAL, CYAN, GREEN, RED, YELLOW, ORANGE, MAGENTA = (
     "#3CC4B7", "#00e5ff", "#00ff88", "#ff3366", "#ffd600", "#ff9100", "#ff00e5"
 )
 MODEL_COLORS = {
-    "Kalman_OU":       TEAL,
-    "Bollinger_MR":    CYAN,
-    "GARCH_MR":        ORANGE,
-    "HMM_Trend":       MAGENTA,
-    "Momentum_Hurst":  YELLOW,
-    "VWAP_Rev":        GREEN,
-    "Markov_Regime":   "#ff6b35",
-    "Heston_Vol":      "#a8ff78",
-    "ARIMA_MR":        "#78c1ff",
+    "GARCH_MR":    ORANGE,
+    "HMM_Regime":  MAGENTA,
+    "Markov_Bot":  "#ff6b35",
+    "Heston_Vol":  "#a8ff78",
+    "ARIMA_MR":    CYAN,
+    "Hurst_MR":    YELLOW,
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -49,6 +53,7 @@ INSTRUMENTS = {
         "dollar_per_pt": 2.0,
         "max_contracts": 60,
         "sl_min_pts":   3.0,
+        "sl_max_pts":   20.0,   # cap SL → assure min 5 contrats avec $200 risk
         "description":  "Micro E-mini Nasdaq · $2/pt · 60 contrats",
     },
     "ES": {
@@ -58,6 +63,7 @@ INSTRUMENTS = {
         "dollar_per_pt": 50.0,
         "max_contracts": 5,
         "sl_min_pts":   2.0,
+        "sl_max_pts":   4.0,    # $200 max loss / contrat ES
         "description":  "E-mini S&P 500 · $50/pt · 5 contrats max $2K DD",
     },
     "MGC": {
@@ -67,6 +73,7 @@ INSTRUMENTS = {
         "dollar_per_pt": 10.0,
         "max_contracts": 30,
         "sl_min_pts":   2.0,
+        "sl_max_pts":   8.0,    # max $80/contrat → force 2-3 contrats avec $200 risk
         "description":  "Micro Gold · $10/pt · 30 contrats",
     },
     "MCL": {
@@ -76,6 +83,7 @@ INSTRUMENTS = {
         "dollar_per_pt": 100.0,
         "max_contracts": 3,
         "sl_min_pts":   0.20,
+        "sl_max_pts":   0.60,   # max $60/contrat MCL
         "description":  "Micro WTI Crude Oil · $100/pt · 3 contrats max",
     },
 }
@@ -119,101 +127,72 @@ PROP_FIRMS = {
 # ═══════════════════════════════════════════════════════════════════════════
 
 MODEL_GRIDS = {
-    "Kalman_OU": {
-        "description": "Kalman Filter OU Mean Reversion",
-        "source":      "Lec 95 — Roman Paolucci kts.py",
-        "type":        "Mean Reversion",
-        "params": [
-            {"band_k": bk, "sl_sigma": sl, "lookback": lb, "confirm": cf}
-            for bk in [1.2, 1.5, 1.8, 2.0]
-            for sl in [0.75, 1.25, 1.5]
-            for lb in [60, 120]
-            for cf in [True, False]
-        ],
-    },
-    "Bollinger_MR": {
-        "description": "Bollinger Band Mean Reversion",
-        "source":      "Lec 72 — Markov Regime Bot (BB classic)",
-        "type":        "Mean Reversion",
-        "params": [
-            {"period": p, "std_k": sk, "confirm": cf}
-            for p  in [20, 50, 100]
-            for sk in [1.5, 2.0, 2.5]
-            for cf in [True, False]
-        ],
-    },
     "GARCH_MR": {
-        "description": "GARCH(1,1) Volatility-Filtered Mean Reversion",
-        "source":      "Lec 47 — Master Volatility with ARCH & GARCH",
-        "type":        "Volatility-Filtered MR",
+        "description": "GARCH(1,1) Volatility Regime — Mean Reversion en low vol",
+        "source":      "Lec 47 — Master Volatility with ARCH & GARCH Models",
+        "type":        "Vol-Filtered MR",
         "params": [
-            {"bb_period": p, "bb_std": sk, "vol_pct": vp}
-            for p  in [30, 50, 100]
-            for sk in [1.5, 2.0]
-            for vp in [0.5, 0.7]
+            {"low_vol_pct": lvp, "band_k": bk, "confirm": cf}
+            for lvp in [0.30, 0.40, 0.50]
+            for bk  in [1.5, 2.0, 2.5]
+            for cf  in [True, False]
         ],
     },
-    "HMM_Trend": {
-        "description": "HMM Regime Trend Following",
+    "HMM_Regime": {
+        "description": "HMM 3 États (Bull/Neutral/Bear) — Inférence Viterbi",
         "source":      "Lec 51 — Hidden Markov Models for Quant Finance",
-        "type":        "Trend Following",
+        "type":        "Regime-Based",
         "params": [
-            {"lookback": lb, "pullback": pb}
+            {"lookback": lb, "pullback": pb, "entry_k": ek}
             for lb in [60, 100, 150]
             for pb in [0.5, 1.0]
+            for ek in [1.0, 1.5]
         ],
     },
-    "Momentum_Hurst": {
-        "description": "EMA Momentum + Hurst Filter",
-        "source":      "Lec 25 — Fractional Brownian Motion (Davies-Harte)",
-        "type":        "Trend Following",
-        "params": [
-            {"fast": f, "slow": s, "hurst_min": h}
-            for f in [5, 10, 15]
-            for s in [30, 60]
-            for h in [0.50, 0.55]
-        ],
-    },
-    "VWAP_Rev": {
-        "description": "VWAP Intraday Mean Reversion",
-        "source":      "Market Microstructure — Volume Profile",
-        "type":        "Intraday MR",
-        "params": [
-            {"dev_pct": d}
-            for d in [0.0008, 0.0012, 0.0018, 0.0025]
-        ],
-    },
-    "Markov_Regime": {
-        "description": "Markov Chain 3-State Regime Switching",
-        "source":      "Lec 72/74 — Markov Chain Regime Bot (IBKR)",
+    "Markov_Bot": {
+        "description": "Markov Chain 3-State Vol Bot (LOW/MED/HIGH)",
+        "source":      "Lec 72/74 — Markov Chain Regime Bot avec IBKR",
         "type":        "Regime Adaptive",
         "params": [
-            {"lookback": lb, "bb_k": bk, "mode": mo}
+            {"lookback": lb, "entry_k": ek, "mode": mo}
             for lb in [30, 60, 100]
-            for bk in [1.5, 2.0]
+            for ek in [1.5, 2.0]
             for mo in ["mr", "trend"]
         ],
     },
     "Heston_Vol": {
-        "description": "Heston Variance Mean Reversion Filter",
-        "source":      "Lec 39 — Heston Stochastic Vol Model & FFT",
-        "type":        "Vol-Filtered MR",
+        "description": "Heston SV — Dynamique κ/θ Variance Mean Reversion",
+        "source":      "Lec 39 — Heston Stochastic Volatility Model & FFT",
+        "type":        "Stochastic Vol MR",
         "params": [
             {"short_w": sw, "long_w": lw, "band_k": bk}
             for sw in [5, 10]
             for lw in [30, 60]
-            for bk in [1.5, 2.0]
+            for bk in [1.5, 2.0, 2.5]
         ],
     },
     "ARIMA_MR": {
-        "description": "AR(p) Prediction Mean Reversion",
+        "description": "AR(p) Prévision Rolling — Mean Reversion vers forecast",
         "source":      "Lec 44 — Time Series Analysis for Quant Finance",
         "type":        "Time Series MR",
         "params": [
-            {"ar_order": p, "lookback": lb, "band_k": bk}
+            {"ar_order": p, "lookback": lb, "band_k": bk, "confirm": cf}
             for p  in [1, 2]
             for lb in [60, 120]
-            for bk in [1.0, 1.5, 2.0]
+            for bk in [1.5, 2.0, 2.5]
+            for cf in [True, False]
+        ],
+    },
+    "Hurst_MR": {
+        "description": "Hurst fBm < 0.5 → Session anti-persistante → MR (+ filtre HMM bar-niveau)",
+        "source":      "Lec 25 — Fractional Brownian Motion (Davies-Harte) + Lec 51 — HMM",
+        "type":        "Regime-Gated MR",
+        "params": [
+            {"hurst_threshold": ht, "lookback": lb, "band_k": bk, "hmm_filter": hf}
+            for ht in [0.45, 0.50]
+            for lb in [30, 60, 100]
+            for bk in [1.5, 2.0, 2.5]
+            for hf in [True, False]
         ],
     },
 }
@@ -243,67 +222,6 @@ def hurst_exponent(prices):
     if len(log_lags) < 3:
         return 0.5
     return float(np.clip(np.polyfit(log_lags, log_tau, 1)[0], 0.05, 0.95))
-
-
-def estimate_ar1(closes):
-    y = np.array(closes, dtype=float)
-    y = y[np.isfinite(y)]
-    if len(y) < 5:
-        return None
-    try:
-        x_lag, x_curr = y[:-1], y[1:]
-        X    = np.column_stack([np.ones_like(x_lag), x_lag])
-        beta = np.linalg.lstsq(X, x_curr, rcond=None)[0]
-        c, phi = float(beta[0]), float(beta[1])
-        phi = np.clip(phi, 0.01, 0.99)
-        resid = x_curr - (c + phi * x_lag)
-        sigma = float(np.sqrt(np.mean(resid ** 2)))
-        if sigma <= 0 or not np.isfinite(sigma):
-            sigma = max(float(np.std(y)) * 0.01, 1e-9)
-        return phi, c / (1.0 - phi), sigma
-    except Exception:
-        return None
-
-
-class KalmanOU:
-    def __init__(self, phi, mu, sigma, noise_scale=5.0):
-        self.phi, self.mu = phi, mu
-        self.Q = sigma ** 2 * max(1.0 - phi ** 2, 1e-6)
-        self.R = sigma ** 2 * max(noise_scale, 0.01)
-        self.x, self.P = mu, self.R
-
-    def update(self, z):
-        self.x = self.phi * self.x + (1.0 - self.phi) * self.mu
-        self.P = self.phi ** 2 * self.P + self.Q
-        K = self.P / (self.P + self.R)
-        self.x = self.x + K * (z - self.x)
-        self.P = (1.0 - K) * self.P
-        return self.x
-
-
-def run_kalman(closes, lookback=120, noise_scale=5.0):
-    n = len(closes)
-    fair_values = np.full(n, np.nan)
-    sigma_stats = np.full(n, np.nan)
-    kal = None
-    for i in range(lookback, n):
-        params = estimate_ar1(closes[i - lookback: i])
-        if params is None:
-            continue
-        phi, mu, sigma = params
-        ss = sigma / np.sqrt(max(1.0 - phi ** 2, 1e-6))
-        if kal is None:
-            kal = KalmanOU(phi, mu, sigma, noise_scale)
-            for c in closes[i - lookback: i]:
-                kal.update(c)
-        else:
-            kal.phi, kal.mu = phi, mu
-            kal.Q = sigma ** 2 * max(1.0 - phi ** 2, 1e-6)
-            kal.R = sigma ** 2 * max(noise_scale, 0.01)
-        kal.update(closes[i])
-        fair_values[i] = kal.x
-        sigma_stats[i] = ss
-    return fair_values, sigma_stats
 
 
 def garch_rolling(returns, omega=1e-7, alpha=0.05, beta=0.90):
@@ -361,71 +279,55 @@ def simulate_trade(bars, entry_idx, entry_price, direction, sl_pts, tp_price, sl
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# SIGNAL GENERATORS — one per model
+# SIGNAL GENERATORS — 6 modèles strictement issus du repo Quant Guild
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _make_sig(bars, i, entry_bar, price, fv, ss, direction):
     n = len(bars)
     return {
-        "bar_idx":   min(entry_bar, n - 1),
-        "date":      bars.iloc[i]["date"],
-        "bar":       bars.iloc[min(entry_bar, n - 1)]["bar"],
-        "price":     price,
+        "bar_idx":    min(entry_bar, n - 1),
+        "date":       bars.iloc[i]["date"],
+        "bar":        bars.iloc[min(entry_bar, n - 1)]["bar"],
+        "price":      price,
         "fair_value": fv,
-        "sigma_stat": ss,
+        "sigma_stat": max(abs(ss), 1e-9),
         "direction":  direction,
     }
 
 
-def sigs_kalman_ou(cached, band_k, sl_sigma, confirm, skip_open, skip_close):
-    bars    = cached["bars"]
-    closes  = cached["closes"]
-    fvs     = cached["fair_values"]
-    sss     = cached["sigma_stats"]
-    n       = len(closes)
-    signals = []
-    for i in range(skip_open, n - skip_close):
-        if np.isnan(fvs[i]) or np.isnan(sss[i]) or sss[i] <= 0:
-            continue
-        dev = abs(closes[i] - fvs[i]) / sss[i]
-        if dev < band_k or dev > 4.0:
-            continue
-        direction = "short" if closes[i] > fvs[i] else "long"
-        if confirm:
-            if i + 1 >= n or np.isnan(fvs[i+1]) or np.isnan(sss[i+1]) or sss[i+1] <= 0:
-                continue
-            next_dev = abs(closes[i+1] - fvs[i+1]) / sss[i+1]
-            if next_dev >= dev:
-                continue
-            signals.append(_make_sig(bars, i, i+1, closes[i+1], fvs[i], sss[i], direction))
-        else:
-            signals.append(_make_sig(bars, i, i, closes[i], fvs[i], sss[i], direction))
-    return signals
-
-
-def sigs_bollinger(cached, period, std_k, confirm, skip_open, skip_close):
-    bars    = cached["bars"]
-    closes  = cached["closes"]
-    n       = len(closes)
-    signals = []
-    for i in range(period, n - skip_close):
+def sigs_garch_mr(cached, low_vol_pct, band_k, confirm, skip_open, skip_close):
+    """
+    Lec 47 — GARCH(1,1) Volatility Regime.
+    σ²(t) = ω + α·r²(t-1) + β·σ²(t-1)
+    LOW vol (GARCH var < low_vol_pct percentile) → mean-reverting regime → MR entry.
+    HIGH vol → skip (trending/explosive).
+    """
+    bars      = cached["bars"]
+    closes    = cached["closes"]
+    garch_var = cached["garch_var"]
+    n         = len(closes)
+    threshold = float(np.nanpercentile(garch_var, low_vol_pct * 100))
+    signals   = []
+    for i in range(30, n - skip_close):
         if i < skip_open:
             continue
-        window = closes[i - period: i]
+        if garch_var[i] > threshold:
+            continue
+        window = closes[max(0, i - 30): i]
         mid, std = window.mean(), window.std()
         if std == 0:
             continue
         price = closes[i]
         z = (price - mid) / std
-        if abs(z) < std_k:
+        if abs(z) < band_k:
             continue
-        direction = "short" if price > mid else "long"
+        direction = "short" if z > 0 else "long"
         if confirm:
             if i + 1 >= n:
                 continue
-            nw = closes[i - period + 1: i + 1]
+            nw = closes[max(0, i - 29): i + 1]
             nm, ns = nw.mean(), nw.std()
-            if ns > 0 and abs(closes[i+1] - nm) / ns >= abs(z):
+            if ns > 0 and abs((closes[i+1] - nm) / ns) >= abs(z):
                 continue
             signals.append(_make_sig(bars, i, i+1, closes[min(i+1, n-1)], mid, std, direction))
         else:
@@ -433,40 +335,13 @@ def sigs_bollinger(cached, period, std_k, confirm, skip_open, skip_close):
     return signals
 
 
-def sigs_garch_mr(cached, bb_period, bb_std, vol_pct, skip_open, skip_close):
+def sigs_hmm_regime(cached, lookback, pullback, entry_k, skip_open, skip_close):
     """
-    GARCH(1,1) filters out high-vol bars (trending/explosive).
-    Only trade when GARCH var < vol_pct percentile → mean-reverting regime (Lec 47).
-    """
-    bars      = cached["bars"]
-    closes    = cached["closes"]
-    garch_var = cached["garch_var"]
-    n         = len(closes)
-    threshold = float(np.nanpercentile(garch_var, vol_pct * 100))
-    signals   = []
-    for i in range(bb_period, n - skip_close):
-        if i < skip_open:
-            continue
-        if garch_var[i] > threshold:   # high-vol → skip
-            continue
-        window = closes[i - bb_period: i]
-        mid, std = window.mean(), window.std()
-        if std == 0:
-            continue
-        price = closes[i]
-        z = (price - mid) / std
-        if abs(z) < bb_std:
-            continue
-        direction = "short" if price > mid else "long"
-        signals.append(_make_sig(bars, i, i, price, mid, std, direction))
-    return signals
-
-
-def sigs_hmm_trend(cached, lookback, pullback, skip_open, skip_close):
-    """
-    HMM proxy regime (Lec 51).
-    Bull state → long on pullback · Bear state → short on bounce.
-    TP = trend extension (2 × sigma above entry).
+    Lec 51 — Hidden Markov Models 3-State Regime.
+    State 2 (BULL) → long sur pullback (z < -entry_k).
+    State 0 (BEAR) → short sur rebond (z > entry_k).
+    State 1 (NEUTRAL) → skip.
+    TP = 2σ dans le sens du régime.
     """
     bars       = cached["bars"]
     closes     = cached["closes"]
@@ -477,84 +352,33 @@ def sigs_hmm_trend(cached, lookback, pullback, skip_open, skip_close):
         if i < skip_open:
             continue
         state = hmm_states[i]
-        if state == 1:   # neutral
+        if state == 1:
             continue
-        mid = closes[max(0, i-20): i].mean()
-        std = closes[max(0, i-20): i].std()
+        window = closes[max(0, i - lookback): i]
+        mid = window.mean()
+        std = window.std()
         if std == 0:
             continue
         price = closes[i]
         z = (price - mid) / std
-        if state == 2 and z < -pullback:      # bull + pullback → long
+        if state == 2 and z < -entry_k:
             direction = "long"
-            fv = price + 2.0 * std            # TP = 2σ above entry
-        elif state == 0 and z > pullback:      # bear + bounce → short
+            fv = price + 2.0 * std
+        elif state == 0 and z > entry_k:
             direction = "short"
-            fv = price - 2.0 * std            # TP = 2σ below entry
+            fv = price - 2.0 * std
         else:
             continue
         signals.append(_make_sig(bars, i, i, price, fv, std, direction))
     return signals
 
 
-def sigs_momentum_hurst(cached, fast, slow, hurst_min, skip_open, skip_close):
+def sigs_markov_bot(cached, lookback, entry_k, mode, skip_open, skip_close):
     """
-    EMA crossover UNIQUEMENT quand H > hurst_min (jour trending — Lec 25).
-    H < hurst_min → skip le jour entier (mean-reverting → pas d'edge momentum).
-    """
-    if cached["hurst"] < hurst_min:
-        return []
-    bars    = cached["bars"]
-    closes  = cached["closes"]
-    ema_f   = cached["emas"][str(fast)]
-    ema_s   = cached["emas"][str(slow)]
-    n       = len(closes)
-    signals = []
-    for i in range(slow + 1, n - skip_close):
-        if i < skip_open:
-            continue
-        cross_up = ema_f[i] > ema_s[i] and ema_f[i-1] <= ema_s[i-1]
-        cross_dn = ema_f[i] < ema_s[i] and ema_f[i-1] >= ema_s[i-1]
-        if not (cross_up or cross_dn):
-            continue
-        direction = "long" if cross_up else "short"
-        sigma_est = max(abs(ema_f[i] - ema_s[i]), closes[i] * 0.0001)
-        fv = closes[i] + (2.0 * sigma_est if direction == "long" else -2.0 * sigma_est)
-        signals.append(_make_sig(bars, i, i, closes[i], fv, sigma_est, direction))
-    return signals
-
-
-def sigs_vwap_rev(cached, dev_pct, skip_open, skip_close):
-    """
-    Déviation > dev_pct du VWAP intraday → mean reversion vers le VWAP.
-    """
-    bars     = cached["bars"]
-    closes   = cached["closes"]
-    vwap     = cached["vwap"]
-    vwap_std = cached["vwap_std"]
-    n        = len(closes)
-    signals  = []
-    for i in range(30, n - skip_close):
-        if i < skip_open:
-            continue
-        if np.isnan(vwap[i]) or np.isnan(vwap_std[i]) or vwap_std[i] == 0:
-            continue
-        price = closes[i]
-        v     = vwap[i]
-        dev   = abs(price - v) / max(abs(v), 1e-9)
-        if dev < dev_pct:
-            continue
-        direction = "short" if price > v else "long"
-        signals.append(_make_sig(bars, i, i, price, v, vwap_std[i], direction))
-    return signals
-
-
-def sigs_markov_regime(cached, lookback, bb_k, mode, skip_open, skip_close):
-    """
-    Lec 72/74 — Markov Chain Regime Switching Bot.
-    State 0 (low vol) + mode='mr'    → mean reversion (Bollinger-like).
-    State 2 (high vol) + mode='trend'→ trend entry on small pullback.
-    State 1 (medium)   → skip always.
+    Lec 72/74 — Markov Chain 3-State Vol Bot.
+    State 0 (LOW vol)  + mode='mr'    → MR : entrée quand z > entry_k.
+    State 2 (HIGH vol) + mode='trend' → Trend : entrée sur micro-pullback.
+    State 1 (MED)      → skip.
     """
     bars          = cached["bars"]
     closes        = cached["closes"]
@@ -574,13 +398,13 @@ def sigs_markov_regime(cached, lookback, bb_k, mode, skip_open, skip_close):
         price = closes[i]
         z = (price - mid) / std
         if state == 0 and mode == "mr":
-            if abs(z) < bb_k:
+            if abs(z) < entry_k:
                 continue
-            direction = "short" if price > mid else "long"
+            direction = "short" if z > 0 else "long"
             signals.append(_make_sig(bars, i, i, price, mid, std, direction))
         elif state == 2 and mode == "trend":
             if abs(z) > 0.5:
-                continue  # already extended, late entry
+                continue
             direction = "long" if closes[i] > closes[max(0, i - 5)] else "short"
             fv = price + (2.0 * std if direction == "long" else -2.0 * std)
             signals.append(_make_sig(bars, i, i, price, fv, std, direction))
@@ -589,14 +413,15 @@ def sigs_markov_regime(cached, lookback, bb_k, mode, skip_open, skip_close):
 
 def sigs_heston_vol(cached, short_w, long_w, band_k, skip_open, skip_close):
     """
-    Lec 39 — Heston Stochastic Vol Model.
-    Variance ratio = short_vol / long_vol.
-    Ratio < 1.0 → variance mean-reverting (contracting) → MR trade.
-    Ratio >= 1.2 → vol expanding → skip.
+    Lec 39 — Heston Stochastic Volatility Model.
+    dv = κ(θ - v)dt + ξ√v dW₂
+    Ratio v(t)/θ : quand vol courte << vol longue (v < θ → variance mean-reverting)
+    → prix aussi mean-reverting → entrée MR.
+    Ratio >= 1.2 → vol en expansion → skip.
     """
-    bars     = cached["bars"]
-    closes   = cached["closes"]
-    returns  = cached["returns"]
+    bars    = cached["bars"]
+    closes  = cached["closes"]
+    returns = cached["returns"]
     n = len(closes)
     short_vol = pd.Series(returns).rolling(short_w, min_periods=3).std().values
     long_vol  = pd.Series(returns).rolling(long_w,  min_periods=10).std().values
@@ -615,16 +440,17 @@ def sigs_heston_vol(cached, short_w, long_w, band_k, skip_open, skip_close):
         z = (price - mid) / std
         if abs(z) < band_k:
             continue
-        direction = "short" if price > mid else "long"
+        direction = "short" if z > 0 else "long"
         signals.append(_make_sig(bars, i, i, price, mid, std, direction))
     return signals
 
 
-def sigs_arima_mr(cached, ar_order, lookback, band_k, skip_open, skip_close):
+def sigs_arima_mr(cached, ar_order, lookback, band_k, confirm, skip_open, skip_close):
     """
-    Lec 44 — Time Series Analysis.
-    Rolling AR(p) forecast. Trade when actual price deviates > band_k sigma from prediction.
-    TP = AR prediction (expected mean reversion back to forecast).
+    Lec 44 — Time Series Analysis for Quant Finance.
+    Rolling AR(p) forecast. Trade quand prix s'écarte > band_k sigma de la prévision.
+    TP = retour à la prévision AR (mean reversion vers forecast).
+    Confirmation optionnelle : attend que la barre suivante commence à revenir.
     """
     bars   = cached["bars"]
     closes = cached["closes"]
@@ -651,8 +477,50 @@ def sigs_arima_mr(cached, ar_order, lookback, band_k, skip_open, skip_close):
         z = (price - pred) / resid_std
         if abs(z) < band_k:
             continue
-        direction = "short" if price > pred else "long"
-        signals.append(_make_sig(bars, i, i, price, pred, resid_std, direction))
+        direction = "short" if z > 0 else "long"
+        if confirm:
+            if i + 1 >= n:
+                continue
+            z_next = (closes[i+1] - pred) / resid_std
+            if abs(z_next) >= abs(z):
+                continue
+            signals.append(_make_sig(bars, i, i+1, closes[min(i+1, n-1)], pred, resid_std, direction))
+        else:
+            signals.append(_make_sig(bars, i, i, price, pred, resid_std, direction))
+    return signals
+
+
+def sigs_hurst_mr(cached, hurst_threshold, lookback, band_k, hmm_filter, skip_open, skip_close):
+    """
+    Lec 25 — Fractional Brownian Motion (Davies-Harte).
+    H < hurst_threshold → session anti-persistante (mean-reverting).
+    H >= hurst_threshold → persistante ou aléatoire → skip tout le jour.
+    Signal : prix > band_k × σ du rolling mean → MR vers la mean.
+    hmm_filter=True → overlay Lec 51 : skip barres où HMM state == 2 (trending).
+    """
+    if cached["hurst"] >= hurst_threshold:
+        return []
+    bars       = cached["bars"]
+    closes     = cached["closes"]
+    hmm_states = cached["hmm_states"]
+    n = len(closes)
+    signals = []
+    for i in range(lookback, n - skip_close):
+        if i < skip_open:
+            continue
+        # Lec 51 overlay : si état HMM trending (state 2) → pas de MR
+        if hmm_filter and i < len(hmm_states) and hmm_states[i] == 2:
+            continue
+        window = closes[i - lookback: i]
+        mid, std = window.mean(), window.std()
+        if std == 0:
+            continue
+        price = closes[i]
+        z = (price - mid) / std
+        if abs(z) < band_k:
+            continue
+        direction = "short" if z > 0 else "long"
+        signals.append(_make_sig(bars, i, i, price, mid, std, direction))
     return signals
 
 
@@ -677,7 +545,7 @@ def load_instrument_csv(csv_path, symbol_prefix):
         return None, f"Aucun symbole {symbol_prefix} dans {csv_path}"
     df = df.sort_values("volume", ascending=False).groupby("ts_event", sort=False).first().reset_index()
     df["bar"] = pd.to_datetime(df["ts_event"], utc=True)
-    df = df[["bar","open","high","low","close","volume"]].copy()
+    df = df[["bar","open","high","low","close","volume","symbol"]].copy()
     df[["open","high","low","close"]] = df[["open","high","low","close"]].astype(float)
     df["volume"] = df["volume"].fillna(0).astype(int)
     df.sort_values("bar", inplace=True)
@@ -691,6 +559,22 @@ def load_instrument_csv(csv_path, symbol_prefix):
         df["high"] - df["low"],
         np.maximum(abs(df["high"] - df["close"].shift(1)), abs(df["low"] - df["close"].shift(1)))
     )
+
+    # ── Rollover detection ──────────────────────────────────────────────
+    # Dominant contract per day = symbol with most volume that day
+    day_sym = (
+        df.groupby("date")
+        .apply(lambda g: g.loc[g["volume"].idxmax(), "symbol"] if len(g) > 0 else None)
+        .reset_index()
+    )
+    day_sym.columns = ["date", "dominant"]
+    day_sym["prev"] = day_sym["dominant"].shift(1)
+    day_sym["is_rollover"] = (day_sym["dominant"] != day_sym["prev"]) & day_sym["prev"].notna()
+    # Also mark the day AFTER rollover (price still adjusting)
+    day_sym["is_rollover"] = day_sym["is_rollover"] | day_sym["is_rollover"].shift(-1).fillna(False)
+    rollover_dates = set(day_sym.loc[day_sym["is_rollover"], "date"].astype(str))
+
+    df["is_rollover_day"] = df["date"].astype(str).isin(rollover_dates)
     return df, None
 
 
@@ -715,16 +599,21 @@ def compute_markov_states(closes, highs, lows, lookback=60):
     return states
 
 
-def build_daily_cache(full_df, sh, sm, eh, em, kalman_lb=120, noise_scale=5.0):
+def build_daily_cache(full_df, sh, sm, eh, em):
     """
-    Precompute par jour :
-    Kalman FV · sigma · GARCH var · HMM states · VWAP · Hurst · EMAs
+    Precompute par jour (Quant Guild sources uniquement) :
+    GARCH(1,1) var · HMM 3-state · Markov vol states · Hurst · Returns
     """
     cache = {}
     for day_key in sorted(full_df["date"].unique()):
         day_df = full_df[full_df["date"] == day_key].copy()
+
+        # Skip rollover days — price gaps créent des faux signaux
+        if day_df["is_rollover_day"].any():
+            continue
+
         bars   = filter_session(day_df, sh, sm, eh, em)
-        if len(bars) < kalman_lb + 20:
+        if len(bars) < 50:
             continue
 
         closes = bars["close"].values
@@ -732,54 +621,28 @@ def build_daily_cache(full_df, sh, sm, eh, em, kalman_lb=120, noise_scale=5.0):
         lows   = bars["low"].values
         vols   = bars["volume"].values
 
-        # Kalman OU (Lec 95)
-        fair_values, sigma_stats = run_kalman(closes, kalman_lb, noise_scale)
-
-        # Hurst (Lec 25)
+        # Hurst exponent (Lec 25 — fBm Davies-Harte)
         hurst_val = hurst_exponent(closes)
 
-        # GARCH(1,1) (Lec 47)
+        # GARCH(1,1) (Lec 47 — Master Volatility with ARCH & GARCH)
         returns   = np.diff(np.log(np.maximum(closes, 1e-9)))
         returns   = np.concatenate([[0], returns])
         garch_var = garch_rolling(returns)
 
-        # HMM proxy (Lec 51)
+        # HMM proxy 3-state (Lec 51 — Hidden Markov Models)
         hmm_states = hmm_proxy_states(returns, lookback=60)
 
-        # Markov 3-state regime (Lec 72/74)
+        # Markov vol regime 3-state (Lec 72/74 — Markov Chain Bot)
         markov_states = compute_markov_states(closes, highs, lows, lookback=60)
-
-        # VWAP
-        typical   = (highs + lows + closes) / 3
-        cum_vol   = np.cumsum(vols)
-        cum_tpv   = np.cumsum(typical * np.maximum(vols, 1))
-        vwap      = np.where(cum_vol > 0, cum_tpv / cum_vol, typical)
-        spread    = closes - vwap
-        vwap_std  = pd.Series(spread).rolling(30, min_periods=10).std().bfill().values
-
-        # EMAs (Lec 25 momentum)
-        cs = pd.Series(closes)
-        emas = {
-            "5":  cs.ewm(span=5).mean().values,
-            "10": cs.ewm(span=10).mean().values,
-            "15": cs.ewm(span=15).mean().values,
-            "30": cs.ewm(span=30).mean().values,
-            "60": cs.ewm(span=60).mean().values,
-        }
 
         cache[str(day_key)] = {
             "bars":          bars,
             "closes":        closes,
-            "fair_values":   fair_values,
-            "sigma_stats":   sigma_stats,
             "garch_var":     garch_var,
             "hmm_states":    hmm_states,
             "markov_states": markov_states,
             "returns":       returns,
-            "vwap":          vwap,
-            "vwap_std":      vwap_std,
             "hurst":         hurst_val,
-            "emas":          emas,
         }
     return cache
 
@@ -789,38 +652,31 @@ def build_daily_cache(full_df, sh, sm, eh, em, kalman_lb=120, noise_scale=5.0):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def dispatch_signals(model_id, cached, params, skip_open, skip_close):
-    if model_id == "Kalman_OU":
-        return sigs_kalman_ou(cached, params["band_k"], params["sl_sigma"],
-                               params["confirm"], skip_open, skip_close)
-    if model_id == "Bollinger_MR":
-        return sigs_bollinger(cached, params["period"], params["std_k"],
-                               params["confirm"], skip_open, skip_close)
     if model_id == "GARCH_MR":
-        return sigs_garch_mr(cached, params["bb_period"], params["bb_std"],
-                              params["vol_pct"], skip_open, skip_close)
-    if model_id == "HMM_Trend":
-        return sigs_hmm_trend(cached, params["lookback"], params["pullback"],
-                               skip_open, skip_close)
-    if model_id == "Momentum_Hurst":
-        return sigs_momentum_hurst(cached, params["fast"], params["slow"],
-                                    params["hurst_min"], skip_open, skip_close)
-    if model_id == "VWAP_Rev":
-        return sigs_vwap_rev(cached, params["dev_pct"], skip_open, skip_close)
-    if model_id == "Markov_Regime":
-        return sigs_markov_regime(cached, params["lookback"], params["bb_k"],
-                                   params["mode"], skip_open, skip_close)
+        return sigs_garch_mr(cached, params["low_vol_pct"], params["band_k"],
+                              params["confirm"], skip_open, skip_close)
+    if model_id == "HMM_Regime":
+        return sigs_hmm_regime(cached, params["lookback"], params["pullback"],
+                                params["entry_k"], skip_open, skip_close)
+    if model_id == "Markov_Bot":
+        return sigs_markov_bot(cached, params["lookback"], params["entry_k"],
+                                params["mode"], skip_open, skip_close)
     if model_id == "Heston_Vol":
         return sigs_heston_vol(cached, params["short_w"], params["long_w"],
                                 params["band_k"], skip_open, skip_close)
     if model_id == "ARIMA_MR":
         return sigs_arima_mr(cached, params["ar_order"], params["lookback"],
-                              params["band_k"], skip_open, skip_close)
+                              params["band_k"], params["confirm"], skip_open, skip_close)
+    if model_id == "Hurst_MR":
+        return sigs_hurst_mr(cached, params["hurst_threshold"], params["lookback"],
+                              params["band_k"], params.get("hmm_filter", False),
+                              skip_open, skip_close)
     return []
 
 
 def run_backtest(day_cache, model_id, params, instr_cfg, prop_cfg,
                  sl_sigma_mult, sl_min_pts, tp_ratio, slip_pts,
-                 max_trades_day, skip_open, skip_close):
+                 max_trades_day, skip_open, skip_close, risk_pct_dd=0.10):
     """
     Simule 1 an de trading pour un model × params × instrument.
     Retourne un dict de métriques ou None si < 10 trades.
@@ -887,16 +743,21 @@ def run_backtest(day_cache, model_id, params, instr_cfg, prop_cfg,
                 continue
 
             sl_pts  = max(float(sl_min_pts), sl_sigma_mult * sig["sigma_stat"])
+            sl_pts  = min(sl_pts, instr_cfg.get("sl_max_pts", sl_pts))  # cap
             tp_price = sig["price"] + tp_ratio * (sig["fair_value"] - sig["price"])
 
-            # Sizing: risk $200/trade, capped by daily loss and max_contracts
-            risk_per_trade  = min(200.0, daily_loss_lim * 0.20)
+            # Sizing: Half-Kelly sur DD restant (comme Apex live)
+            # Risk par trade = risk_pct × DD restant (pas encore consommé)
+            dd_used         = max(0.0, running_peak - running_equity)
+            dd_remaining    = max(0.0, max_dd_dollars - dd_used)
+            risk_per_trade  = risk_pct_dd * dd_remaining
+            risk_per_trade  = max(50.0, min(risk_per_trade, daily_loss_lim * 0.40))
             loss_per_ctr    = sl_pts * dollar_per_pt
             if loss_per_ctr <= 0:
                 continue
             contracts = max(1, min(max_contracts, int(risk_per_trade / loss_per_ctr)))
-            if contracts * loss_per_ctr > (daily_loss_lim + daily_pnl):
-                contracts = max(1, int((daily_loss_lim + daily_pnl) / loss_per_ctr))
+            if contracts * loss_per_ctr > max(0.0, daily_loss_lim + daily_pnl):
+                contracts = max(1, int(max(0.0, daily_loss_lim + daily_pnl) / loss_per_ctr))
             if contracts <= 0:
                 continue
 
@@ -922,7 +783,7 @@ def run_backtest(day_cache, model_id, params, instr_cfg, prop_cfg,
             })
             month_trades.append({"win": win, "pnl": pnl_dollars})
 
-    if len(all_trades) < 10:
+    if len(all_trades) < 20:
         return None
 
     df       = pd.DataFrame(all_trades)
@@ -942,10 +803,17 @@ def run_backtest(day_cache, model_id, params, instr_cfg, prop_cfg,
     daily_ret = daily_pnl_s.reindex(bdays, fill_value=0) / capital
     sharpe    = float(daily_ret.mean() / daily_ret.std() * np.sqrt(252)) if daily_ret.std() > 0 else 0.0
 
-    # Max DD
-    equity_arr = np.concatenate([[capital], np.cumsum(df["pnl"].values) + capital])
-    peak_arr   = np.maximum.accumulate(equity_arr)
-    max_dd_pct = float((peak_arr - equity_arr).max() / capital * 100)
+    # Max DD — calculé par mois (comme Apex : reset mensuel)
+    # On prend le pire drawdown intra-mensuel
+    max_dd_pct = 0.0
+    for m in monthly_results:
+        month_trades_df = df[df["date"].str.startswith(m["mois"])] if len(df) > 0 else pd.DataFrame()
+        if len(month_trades_df) == 0:
+            continue
+        m_eq = np.concatenate([[capital], np.cumsum(month_trades_df["pnl"].values) + capital])
+        m_pk = np.maximum.accumulate(m_eq)
+        m_dd = float((m_pk - m_eq).max() / capital * 100)
+        max_dd_pct = max(max_dd_pct, m_dd)
 
     # Prop firm stats
     n_months   = len(monthly_results)
@@ -959,18 +827,21 @@ def run_backtest(day_cache, model_id, params, instr_cfg, prop_cfg,
     tpd       = n / n_bdays
 
     # Composite score (higher = better)
-    #   PF component (0-1): saturates at PF=3
-    #   WR component (0-1): above 0.45 breakeven typical
-    #   Sharpe component (0-1): saturates at Sharpe=2
-    #   Frequency bonus (0-1): penalize < 0.3 trades/day
-    #   DD penalty: -0.5 if DD > 4%
+    #   PF component  (0-1): saturates at PF=3,  bonus fort au-dessus de 1.5
+    #   WR component  (0-1): cible 45-60%
+    #   Sharpe        (0-1): saturates at 2.5
+    #   Pass rate     (0-1): cible >= 50%
+    #   Fréquence     (0-1): min 0.5 trades/jour
+    #   DD penalty : hard -0.50 si DD mensuel > 4% (pas viable Apex EOD)
+    #   PF penalty  : hard -0.40 si PF < 1.3   (edge trop faible)
     score = (
-        0.35 * min(max(pf - 1.0, 0.0) / 2.0, 1.0) +
-        0.25 * min(max(wr - 0.35, 0.0) / 0.35, 1.0) +
-        0.20 * min(max(sharpe, 0.0) / 2.0, 1.0) +
-        0.10 * min(tpd / 0.5, 1.0) +
-        0.10 * min(pass_rate / 50.0, 1.0) -
-        (0.30 if max_dd_pct > 4.0 else 0.0)
+        0.30 * min(max(pf - 1.0, 0.0) / 2.0, 1.0) +
+        0.25 * min(max(wr - 0.38, 0.0) / 0.32, 1.0) +
+        0.20 * min(max(sharpe, 0.0) / 2.5, 1.0) +
+        0.15 * min(pass_rate / 60.0, 1.0) +
+        0.10 * min(tpd / 0.5, 1.0) -
+        (0.50 if max_dd_pct > 4.0 else 0.0) -
+        (0.40 if pf < 1.3 else 0.0)
     )
 
     return {
@@ -1063,14 +934,21 @@ sl_sigma_mult = st.sidebar.slider(
     help="Multiplicateur sigma pour le stop-loss. Appliqué à tous les modèles.",
 )
 tp_ratio = st.sidebar.slider(
-    "TP ratio", min_value=0.5, max_value=1.0, value=1.0, step=0.1,
-    help="1.0 = TP au fair value complet.",
+    "TP ratio", min_value=0.3, max_value=1.0, value=0.7, step=0.1,
+    help="0.7 = TP à 70% du fair value → WR plus élevé. 1.0 = TP complet.",
 )
-slippage_ticks = st.sidebar.number_input("Slippage (ticks)", value=2, min_value=0, step=1)
+slippage_ticks = st.sidebar.number_input("Slippage (ticks)", value=1, min_value=0, step=1)
+risk_pct_dd_val = st.sidebar.slider(
+    "Risk % DD restant / trade", min_value=0.05, max_value=0.25, value=0.10, step=0.05,
+    help="Ex: 0.10 = risque 10% du DD restant par trade (Half-Kelly Apex). Monte à 0.15 pour plus d'agressivité.",
+)
 
-st.sidebar.header("Kalman (modèles Kalman OU)")
-kalman_lb = st.sidebar.number_input("Lookback Kalman", value=120, min_value=30, step=10)
-noise_scale_val = 5.0
+st.sidebar.header("Grid Search")
+top_n_params = st.sidebar.number_input(
+    "Top N params par modèle",
+    value=3, min_value=1, max_value=10,
+    help="Garde les N meilleurs paramétrages par modèle × instrument dans le classement final.",
+)
 
 prop_cfg  = PROP_FIRMS[selected_firm]
 st.sidebar.info(
@@ -1140,10 +1018,9 @@ for instr_key in selected_instruments:
         outer_progress.progress(combo_done / grand_total)
         continue
 
-    status_box.info(f"⚙ Precompute {instr_key} — Kalman · GARCH · HMM · VWAP · Hurst…")
+    status_box.info(f"⚙ Precompute {instr_key} — GARCH · HMM · Markov · Hurst…")
     day_cache = build_daily_cache(
         full_df, session_start_h, session_start_m, session_end_h, session_end_m,
-        kalman_lb=kalman_lb, noise_scale=noise_scale_val,
     )
     n_days = len(day_cache)
 
@@ -1153,8 +1030,7 @@ for instr_key in selected_instruments:
 
     for model_id in selected_models:
         model_params_list = MODEL_GRIDS[model_id]["params"]
-        best_score = -999.0
-        best_result = None
+        model_results = []
 
         for params in model_params_list:
             combo_done += 1
@@ -1167,17 +1043,16 @@ for instr_key in selected_instruments:
                 day_cache, model_id, params, instr_cfg, prop_cfg,
                 sl_sigma_mult, instr_sl_min, tp_ratio,
                 instr_slip, max_trades_day, skip_open_bars, skip_close_bars,
+                risk_pct_dd=risk_pct_dd_val,
             )
             if res is None:
                 continue
             res["instrument"] = instr_key
-            # Only keep BEST params per model × instrument
-            if res["score"] > best_score:
-                best_score  = res["score"]
-                best_result = res
+            model_results.append(res)
 
-        if best_result is not None:
-            all_results.append(best_result)
+        # Keep top N parametrizations per model × instrument
+        model_results.sort(key=lambda x: x["score"], reverse=True)
+        all_results.extend(model_results[:top_n_params])
 
 outer_progress.empty()
 status_box.empty()
@@ -1204,7 +1079,7 @@ results_df = pd.DataFrame([{
     "Tr/Jour":       r["trades_per_day"],
     "Pass %":        r["pass_rate"],
     "Bust %":        r["bust_rate"],
-    "Meilleurs Params": r["params_str"],
+    "Params":        r["params_str"],
 } for r in all_results]).sort_values("Score ★", ascending=False).reset_index(drop=True)
 
 best = all_results[0] if all_results else None
@@ -1363,7 +1238,59 @@ with tab_best:
     )
     st.plotly_chart(fig_best, use_container_width=True)
 
-    # Diagnostics
+    # ── Sizing analysis ────────────────────────────────────────────────────
+    st.markdown("<p class='section-label'>Analyse sizing — combien risquer par trade ?</p>",
+                unsafe_allow_html=True)
+
+    n_months_b   = max(len(b["_monthly"]), 1)
+    avg_monthly  = b["total_pnl"] / n_months_b
+    target_month = prop_cfg["profit_target"]
+
+    # Multiplier needed to reach target on average
+    if avg_monthly > 0:
+        mult_needed = target_month / avg_monthly
+        risk_needed = risk_pct_dd_val * mult_needed
+    else:
+        mult_needed = 999
+        risk_needed = 999
+
+    # Estimate pass rate at different risk levels
+    import math
+    monthly_std_est = avg_monthly / max(b["sharpe"] / math.sqrt(12), 0.01)
+    sizing_rows = []
+    for rp in [0.05, 0.10, 0.15, 0.20, 0.25, 0.30]:
+        scale      = rp / max(risk_pct_dd_val, 0.01)
+        mu_scaled  = avg_monthly * scale
+        sd_scaled  = monthly_std_est * scale
+        if sd_scaled > 0:
+            z         = (target_month - mu_scaled) / sd_scaled
+            # Normal CDF approximation
+            pass_est  = 0.5 * (1 + math.erf(-z / math.sqrt(2)))
+        else:
+            pass_est  = 1.0 if mu_scaled >= target_month else 0.0
+        pass_est = max(0.0, min(pass_est, 0.99))
+        # Bust estimate: aggressive sizing → higher bust risk
+        bust_est = min(0.95, b["bust_rate"] / 100 * scale ** 1.5)
+        viable   = "✅" if pass_est >= 0.40 and bust_est < 0.30 else ("⚠" if pass_est >= 0.20 else "❌")
+        sizing_rows.append({
+            "Risk % DD / trade": f"{rp*100:.0f}%",
+            "P&L moy/mois (est)": f"${mu_scaled:+,.0f}",
+            "Pass rate (est)":    f"{pass_est*100:.0f}%",
+            "Bust rate (est)":    f"{bust_est*100:.0f}%",
+            "Verdict":            viable,
+        })
+    st.dataframe(pd.DataFrame(sizing_rows), use_container_width=True, hide_index=True)
+
+    if mult_needed < 5:
+        st.info(
+            f"Sizing actuel **{risk_pct_dd_val*100:.0f}%** → P&L moyen ~${avg_monthly:+,.0f}/mois.  \n"
+            f"Pour atteindre ${target_month:,}/mois en moyenne → risque **{risk_needed*100:.0f}%** par trade.  \n"
+            f"Recommandé : monte progressivement à **{min(risk_needed*100, 25):.0f}%** et observe le bust rate."
+        )
+    else:
+        st.warning("Edge insuffisant même avec sizing maximum — modèle non viable pour funded.")
+
+    # ── Diagnostics ────────────────────────────────────────────────────────
     st.markdown("<p class='section-label'>Diagnostique du meilleur modèle</p>",
                 unsafe_allow_html=True)
     diag = []
@@ -1484,6 +1411,7 @@ with tab_firms:
         st.dataframe(pd.DataFrame(top5_rows), use_container_width=True, hide_index=True)
 
 st.caption(
-    f"Multi-Model Backtest — {len(all_results)} modèles testés · {selected_firm} · "
-    f"Source : Roman Paolucci Quant Guild Library (Lec 25/39/44/47/51/72/74/95)"
+    f"Multi-Model Backtest — {len(all_results)} combos testés · {selected_firm} · "
+    f"Source : github.com/romanmichaelpaolucci/Quant-Guild-Library "
+    f"(Lec 25 · 39 · 44 · 47 · 51 · 72/74)"
 )
