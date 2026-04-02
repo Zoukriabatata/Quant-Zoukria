@@ -1423,6 +1423,377 @@ def mean_reversion_trap():
     return fig
 
 
+# ===================================================================
+# 25 — HURST MR
+# ===================================================================
+
+def hurst_regime_spectrum():
+    """Visual H spectrum: MR zone / Random Walk / Trend zone."""
+    fig = go.Figure()
+
+    # Colored zones
+    zones = [
+        (0.00, 0.45, "rgba(0,255,136,0.18)",  "rgba(0,255,136,0.6)"),
+        (0.45, 0.55, "rgba(255,214,0,0.12)",  "rgba(255,214,0,0.5)"),
+        (0.55, 1.00, "rgba(255,51,102,0.15)", "rgba(255,51,102,0.6)"),
+    ]
+    for x0, x1, fill, line_c in zones:
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=0, y1=1,
+                      fillcolor=fill, line=dict(width=0), layer="below")
+
+    # Gradient bar
+    h_vals = np.linspace(0, 1, 200)
+    colors = []
+    for h in h_vals:
+        if h < 0.45:
+            r = int(0 + h / 0.45 * 255)
+            colors.append(f"rgb({r},255,136)")
+        elif h < 0.55:
+            colors.append("rgb(255,214,0)")
+        else:
+            r = int(255)
+            g = int(max(0, 51 + (1 - h) / 0.45 * 80))
+            colors.append(f"rgb({r},{g},102)")
+
+    fig.add_trace(go.Bar(
+        x=h_vals, y=[0.45] * len(h_vals),
+        marker_color=colors, marker_line_width=0,
+        width=0.005, base=0.275, showlegend=False,
+        hoverinfo="skip",
+    ))
+
+    # Labels sous la barre
+    labels = [
+        (0.225, 0.12, GREEN,  "MEAN REVERSION", "H < 0.45", "TON EDGE"),
+        (0.500, 0.12, YELLOW, "RANDOM WALK",    "H = 0.5",  "pas d'edge"),
+        (0.775, 0.12, RED,    "TRENDING",       "H > 0.55", "ne pas trader MR"),
+    ]
+    for x, y, color, title, sub, note in labels:
+        fig.add_annotation(x=x, y=0.55, text=f"<b>{title}</b>",
+                           showarrow=False, font=dict(color=color, size=13,
+                           family="JetBrains Mono"), xanchor="center")
+        fig.add_annotation(x=x, y=0.38, text=sub,
+                           showarrow=False, font=dict(color=color, size=11,
+                           family="JetBrains Mono"), xanchor="center")
+        fig.add_annotation(x=x, y=0.22, text=f"<i>{note}</i>",
+                           showarrow=False, font=dict(color="#555", size=10,
+                           family="JetBrains Mono"), xanchor="center")
+
+    # Seuil 0.45
+    fig.add_shape(type="line", x0=0.45, x1=0.45, y0=0.0, y1=0.75,
+                  line=dict(color=TEAL, width=2, dash="dot"))
+    fig.add_annotation(x=0.45, y=0.80, text="Seuil 0.45",
+                       showarrow=False, font=dict(color=TEAL, size=10,
+                       family="JetBrains Mono"), xanchor="center")
+
+    # Axe H
+    tick_vals = [0, 0.1, 0.2, 0.3, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    fig.update_layout(
+        height=200,
+        title=dict(text="Spectre de l'Exposant de Hurst H", font=dict(size=13, color="#aaa")),
+        xaxis=dict(range=[0, 1], tickvals=tick_vals,
+                   ticktext=[str(v) for v in tick_vals],
+                   tickfont=dict(color="#555", size=10, family="JetBrains Mono"),
+                   gridcolor="#111", title="H", zeroline=False),
+        yaxis=dict(visible=False, range=[0, 1]),
+        **DARK,
+        margin=dict(t=50, b=40, l=40, r=20),
+    )
+    return fig
+
+
+def hurst_session_visual():
+    """Side-by-side: trending session vs mean-reverting session."""
+    np.random.seed(42)
+    n = 80
+
+    # Trending: fBm H=0.75
+    trend_path = _fbm_ar1(n, H=0.73, seed=7)
+
+    # MR: fBm H=0.2 + rolling bands
+    mr_path = _fbm_ar1(n, H=0.22, seed=13)
+    lb = 20
+    mu_r  = np.array([mr_path[max(0, i-lb):i].mean() if i >= lb else np.nan for i in range(n)])
+    std_r = np.array([mr_path[max(0, i-lb):i].std()  if i >= lb else np.nan for i in range(n)])
+    upper_r = mu_r + 2.0 * std_r
+    lower_r = mu_r - 2.0 * std_r
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["SESSION TRENDING — H > 0.5 (NE PAS TRADER)",
+                         "SESSION MEAN-REVERTING — H < 0.45 (TON EDGE)"],
+        horizontal_spacing=0.10,
+    )
+
+    # Trending side
+    fig.add_trace(go.Scatter(y=trend_path, mode="lines",
+                             line=dict(color=RED, width=2), name="Prix"), row=1, col=1)
+    # Arrows showing momentum
+    for i in range(10, n - 10, 15):
+        if trend_path[i+5] > trend_path[i]:
+            fig.add_annotation(x=i+3, y=trend_path[i+3],
+                               ax=i, ay=trend_path[i],
+                               xref="x", yref="y", axref="x", ayref="y",
+                               showarrow=True, arrowhead=2, arrowwidth=2,
+                               arrowcolor=RED, row=1, col=1)
+
+    # MR side
+    fig.add_trace(go.Scatter(y=upper_r, line=dict(color="rgba(255,51,102,0.4)", dash="dot", width=1.5),
+                             name="+2σ", showlegend=False), row=1, col=2)
+    fig.add_trace(go.Scatter(y=lower_r, line=dict(color="rgba(0,255,136,0.4)", dash="dot", width=1.5),
+                             fill="tonexty", fillcolor="rgba(60,196,183,0.04)",
+                             name="-2σ", showlegend=False), row=1, col=2)
+    fig.add_trace(go.Scatter(y=mu_r, line=dict(color=TEAL, width=1.5, dash="dash"),
+                             name="Fair Value", showlegend=False), row=1, col=2)
+    fig.add_trace(go.Scatter(y=mr_path, mode="lines",
+                             line=dict(color=GREEN, width=2), name="Prix MR"), row=1, col=2)
+
+    fig.update_layout(
+        height=380,
+        showlegend=False,
+        **DARK,
+        margin=dict(t=60, b=30, l=40, r=20),
+    )
+    fig.update_annotations(font=dict(size=11, family="JetBrains Mono"))
+    return fig
+
+def _fbm_ar1(n, H, seed=42):
+    """Approximate fBm via AR(1) with exact lag-1 autocorrelation of fGn."""
+    np.random.seed(seed)
+    phi = 2 ** (2 * H - 1) - 1          # lag-1 autocorr of fGn (exact formula)
+    z = np.random.randn(n)
+    eps = np.zeros(n)
+    eps[0] = z[0]
+    for i in range(1, n):
+        eps[i] = phi * eps[i - 1] + z[i] * np.sqrt(max(1 - phi ** 2, 1e-9))
+    return 100 + np.cumsum(eps)
+
+
+def hurst_fbm_paths():
+    """Compare 3 fBm paths: H=0.2 (MR), H=0.5 (RW), H=0.7 (Trend)."""
+    n = 200
+    cases = [
+        (0.2, GREEN,   "H = 0.2 — Anti-persistant (Mean Reversion) ← TON EDGE"),
+        (0.5, YELLOW,  "H = 0.5 — Random Walk (pas de memoire)"),
+        (0.7, RED,     "H = 0.7 — Persistant (Trending)"),
+    ]
+    fig = make_subplots(
+        rows=3, cols=1, shared_xaxes=True,
+        subplot_titles=[c[2] for c in cases],
+        vertical_spacing=0.08,
+    )
+    for row, (H, color, label) in enumerate(cases, 1):
+        y = _fbm_ar1(n, H, seed=row * 7)
+        fig.add_trace(go.Scatter(
+            y=y, mode="lines", line=dict(color=color, width=1.8),
+            name=label, showlegend=False,
+        ), row=row, col=1)
+        # Add rolling mean for H=0.2 to show MR property
+        if H == 0.2:
+            w = 30
+            mu = np.array([np.mean(y[max(0, i-w):i]) if i >= w else np.nan for i in range(n)])
+            fig.add_trace(go.Scatter(
+                y=mu, mode="lines", line=dict(color=TEAL, width=1.5, dash="dash"),
+                name="Moyenne rolling", showlegend=False,
+            ), row=row, col=1)
+    fig.update_layout(
+        height=600,
+        title="Exposant de Hurst H — Impact visuel sur le prix",
+        **DARK,
+    )
+    return fig
+
+
+def hurst_rs_analysis():
+    """R/S log-log plot showing slope = H for different regimes."""
+    np.random.seed(42)
+    n = 2000
+    lags = [5, 8, 12, 20, 30, 50, 80, 120, 200]
+
+    def compute_rs(series, lag):
+        chunks = [series[i:i+lag] for i in range(0, len(series)-lag+1, lag)]
+        rs_vals = []
+        for c in chunks:
+            if len(c) < 4:
+                continue
+            std = np.std(c)
+            if std > 0:
+                devs = np.cumsum(c - np.mean(c))
+                rs_vals.append((devs.max() - devs.min()) / std)
+        return np.mean(rs_vals) if rs_vals else np.nan
+
+    cases = [
+        (0.2, GREEN,  "H=0.2 (MR)"),
+        (0.5, YELLOW, "H=0.5 (RW)"),
+        (0.7, RED,    "H=0.7 (Trend)"),
+    ]
+
+    fig = go.Figure()
+    for H, color, label in cases:
+        series = np.diff(_fbm_ar1(n + 1, H, seed=99))
+        rs = [compute_rs(series, lag) for lag in lags]
+        valid = [(lags[i], rs[i]) for i in range(len(lags)) if not np.isnan(rs[i])]
+        if len(valid) < 3:
+            continue
+        lx = np.log([v[0] for v in valid])
+        ly = np.log([v[1] for v in valid])
+        slope = np.polyfit(lx, ly, 1)[0]
+        fig.add_trace(go.Scatter(
+            x=lx, y=ly, mode="lines+markers",
+            line=dict(color=color, width=2),
+            marker=dict(size=6, color=color),
+            name=f"{label} (pente mesurée={slope:.2f})",
+        ))
+    fig.add_annotation(
+        x=2.5, y=1.8,
+        text="Pente = H\n← plus la pente est faible, plus le marche est MR",
+        showarrow=False, font=dict(color=TEAL, size=10),
+        bgcolor="rgba(0,0,0,0.5)",
+    )
+    fig.update_layout(
+        height=420,
+        title="Analyse R/S (Rescaled Range) — La pente = H",
+        xaxis_title="log(tau) — taille de la fenetre",
+        yaxis_title="log(R/S)",
+        **DARK,
+    )
+    return fig
+
+
+def hurst_mr_strategy():
+    """Simulate the actual Hurst_MR strategy: OU process + bands + signals."""
+    np.random.seed(42)
+    n = 120   # 2h de barres M1
+
+    # OU process (mean reverting par construction)
+    theta, mu_ref, sigma_ou = 0.08, 24200.0, 8.0
+    price = np.zeros(n)
+    price[0] = mu_ref
+    for i in range(1, n):
+        price[i] = price[i-1] + theta * (mu_ref - price[i-1]) + np.random.randn() * sigma_ou
+
+    LOOKBACK = 30
+    BAND_K = 2.5
+    means = np.full(n, np.nan)
+    upper = np.full(n, np.nan)
+    lower = np.full(n, np.nan)
+    for i in range(LOOKBACK, n):
+        w = price[i - LOOKBACK:i]
+        m, s = w.mean(), w.std()
+        means[i] = m
+        upper[i] = m + BAND_K * s
+        lower[i] = m - BAND_K * s
+
+    long_x, long_y, short_x, short_y = [], [], [], []
+    tp_x, tp_y = [], []
+    in_trade = None
+    for i in range(LOOKBACK + 5, n):
+        if np.isnan(means[i]):
+            continue
+        z = (price[i] - means[i]) / (price[i - LOOKBACK:i].std() or 1)
+        if in_trade is None:
+            if z < -BAND_K:
+                long_x.append(i); long_y.append(price[i]); in_trade = ("long", i, means[i])
+            elif z > BAND_K:
+                short_x.append(i); short_y.append(price[i]); in_trade = ("short", i, means[i])
+        else:
+            direction, entry_i, tp_level = in_trade
+            hit_tp = (direction == "long" and price[i] >= tp_level) or \
+                     (direction == "short" and price[i] <= tp_level)
+            if hit_tp:
+                tp_x.append(i); tp_y.append(price[i]); in_trade = None
+
+    x = list(range(n))
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x, y=upper, line=dict(color="rgba(255,51,102,0.5)", dash="dot", width=1.5),
+                             name=f"+{BAND_K}σ (SHORT zone)"))
+    fig.add_trace(go.Scatter(x=x, y=lower, line=dict(color="rgba(0,255,136,0.5)", dash="dot", width=1.5),
+                             fill="tonexty", fillcolor="rgba(60,196,183,0.04)",
+                             name=f"-{BAND_K}σ (LONG zone)"))
+    fig.add_trace(go.Scatter(x=x, y=means, line=dict(color=TEAL, width=1.5, dash="dash"),
+                             name="Fair Value (TP)"))
+    fig.add_trace(go.Scatter(x=x, y=price, line=dict(color=YELLOW, width=2), name="MNQ M1"))
+    if long_x:
+        fig.add_trace(go.Scatter(x=long_x, y=[y * 0.9995 for y in long_y],
+                                 mode="markers+text", text=["LONG"]*len(long_x),
+                                 textposition="bottom center", textfont=dict(color=GREEN, size=9),
+                                 marker=dict(symbol="triangle-up", size=14, color=GREEN),
+                                 name="Signal LONG"))
+    if short_x:
+        fig.add_trace(go.Scatter(x=short_x, y=[y * 1.0005 for y in short_y],
+                                 mode="markers+text", text=["SHORT"]*len(short_x),
+                                 textposition="top center", textfont=dict(color=RED, size=9),
+                                 marker=dict(symbol="triangle-down", size=14, color=RED),
+                                 name="Signal SHORT"))
+    if tp_x:
+        fig.add_trace(go.Scatter(x=tp_x, y=tp_y,
+                                 mode="markers", marker=dict(symbol="x", size=10, color=TEAL,
+                                                              line=dict(color="white", width=1)),
+                                 name="TP touche"))
+    fig.update_layout(
+        height=450,
+        title="Hurst_MR — Strategie complete (session simule, H=0.2)",
+        xaxis_title="Barres M1",
+        yaxis_title="Prix MNQ",
+        **DARK,
+    )
+    return fig
+
+
+def hurst_edge_stats():
+    """Simulate many sessions: show win-rate and PnL by H value."""
+    np.random.seed(0)
+
+    H_vals, pnl_vals, mr_vals, wr_vals = [], [], [], []
+    for _ in range(300):
+        H = np.random.uniform(0.25, 0.65)
+        base_wr = 0.70 - 0.80 * (H - 0.25)   # wr: 70% at H=0.25, 30% at H=0.65
+        n_trades = np.random.randint(2, 8)
+        pnl = 0.0
+        for _ in range(n_trades):
+            win = np.random.rand() < base_wr
+            pnl += (np.random.uniform(0.5, 2.5) if win else -np.random.uniform(0.5, 1.5))
+        H_vals.append(H); pnl_vals.append(pnl)
+        mr_vals.append(H < 0.45); wr_vals.append(base_wr)
+
+    H_arr  = np.array(H_vals)
+    pnl_arr = np.array(pnl_vals)
+    mr_arr  = np.array(mr_vals)
+    wr_arr  = np.array(wr_vals)
+
+    fig = make_subplots(rows=1, cols=2,
+                        subplot_titles=["PnL par session vs H", "Win-rate moyen par regime"])
+
+    # Scatter PnL vs H
+    colors = [GREEN if r else RED for r in mr_arr]
+    fig.add_trace(go.Scatter(
+        x=H_arr, y=pnl_arr,
+        mode="markers",
+        marker=dict(color=colors, size=6, opacity=0.7),
+        showlegend=False,
+    ), row=1, col=1)
+    fig.add_vline(x=0.45, line_dash="dash", line_color=TEAL, row=1, col=1)
+    fig.add_annotation(x=0.45, y=pnl_arr.max() * 0.9,
+                       text="Seuil 0.45", showarrow=True, arrowhead=1,
+                       font=dict(color=TEAL, size=10), row=1, col=1)
+
+    # Bar chart: avg win-rate MR vs Trend
+    mr_wr = wr_arr[mr_arr].mean() * 100
+    tr_wr = wr_arr[~mr_arr].mean() * 100
+    fig.add_trace(go.Bar(
+        x=["H < 0.45 (MR)", "H >= 0.45 (Trend)"],
+        y=[mr_wr, tr_wr],
+        marker_color=[GREEN, RED],
+        text=[f"{mr_wr:.0f}%", f"{tr_wr:.0f}%"],
+        textposition="outside",
+        showlegend=False,
+    ), row=1, col=2)
+    fig.add_hline(y=50, line_dash="dash", line_color=YELLOW, annotation_text="50%", row=1, col=2)
+
+    fig.update_layout(height=420, title="Edge Hurst_MR — PnL et win-rate par regime", **DARK)
+    return fig
+
+
 # ── Chart registry ──────────────────────────────────────────────────
 CHARTS = {
     "00b_retail_vs_institutional.md": [
@@ -1489,6 +1860,9 @@ CHARTS = {
         ("Matrice de decision", pipeline_decision_matrix),
         ("Pipeline complet", pipeline_full_simulation),
     ],
+    "25_hurst_mr.md": [
+        ("Edge stats — PnL et win-rate par regime", hurst_edge_stats),
+    ],
 }
 
 # Inline charts: injected directly in markdown content via <!-- CHART:name --> markers
@@ -1496,4 +1870,10 @@ INLINE_CHARTS = {
     "ergo_ensemble_illusion": ergo_ensemble_illusion,
     "ergo_multiplicative_vs_additive": ergo_multiplicative_vs_additive,
     "ergo_kelly_impact_sim": ergo_kelly_impact_sim,
+    # Hurst MR — inline dans les tabs
+    "hurst_regime_spectrum": hurst_regime_spectrum,
+    "hurst_session_visual":  hurst_session_visual,
+    "hurst_fbm_paths":       hurst_fbm_paths,
+    "hurst_rs_analysis":     hurst_rs_analysis,
+    "hurst_mr_strategy":     hurst_mr_strategy,
 }

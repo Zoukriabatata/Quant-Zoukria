@@ -337,6 +337,7 @@ MODULES = {
     "06b_kalman_mean_reversion.md":   ("06b", "Kalman MR",        "Mean reversion trading",       3),
     "06c_halflife_ou.md":             ("06c", "Demi-vie OU",      "Filtrer les signaux lents",    3),
     "06d_confirmation_reversal.md":   ("06d", "Confirmation",     "Timing d'entree optimal",      3),
+    "25_hurst_mr.md":                 ("25",  "★ Hurst_MR",       "Ton edge live (Lec 25+51)",    5),
     "07_pipeline_integration.md":     ("07",  "Pipeline",         "Tout connecter",               4),
     "08_kelly_criterion.md":          ("08",  "Kelly Criterion",  "Combien risquer par trade",    4),
     "09_backtesting_pitfalls.md":     ("09",  "Backtest Pitfalls","Pourquoi ton backtest ment",   4),
@@ -345,12 +346,13 @@ MODULES = {
 
 LEVEL_LABELS = {
     0: "",
-    1: "NIVEAU 1 — FONDATIONS",
-    2: "NIVEAU 2 — OUTILS",
-    3: "NIVEAU 3 — SIGNAL",
-    4: "NIVEAU 4 — LIVE",
+    1: "CHAPITRE 1 · FONDATIONS",
+    2: "CHAPITRE 1 · OUTILS",
+    3: "CHAPITRE 1 · SIGNAL",
+    4: "CHAPITRE 1 · LIVE",
+    5: "★ CHAPITRE 2 — TON EDGE",
 }
-LEVEL_COLORS = {0: "#555", 1: "#00e5ff", 2: "#ff00e5", 3: "#ffd600", 4: "#ff3366"}
+LEVEL_COLORS = {0: "#555", 1: "#00e5ff", 2: "#ff00e5", 3: "#ffd600", 4: "#ff3366", 5: "#3CC4B7"}
 
 VIDEO_LINKS = {
     "00b_retail_vs_institutional.md": ("https://youtu.be/j1XAcdEHzbU",  "#40 Retail vs Institutional"),
@@ -367,6 +369,7 @@ VIDEO_LINKS = {
     "06b_kalman_mean_reversion.md":   ("https://youtu.be/BuPil7nXvMU",  "#95 Kalman Mean Reversion"),
     "06c_halflife_ou.md":             ("https://youtu.be/BuPil7nXvMU",  "#95 Half-life OU"),
     "06d_confirmation_reversal.md":   ("https://youtu.be/mais1dsB_1g",  "#72 Confirmation Timing"),
+    "25_hurst_mr.md":                 ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main", "Lec 25 (fBm) + Lec 51 (HMM)"),
     "08_kelly_criterion.md":          ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/36.%20How%20to%20Trade%20with%20the%20Kelly%20Criterion", "#36 Kelly Criterion"),
     "09_backtesting_pitfalls.md":     ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2026%20Video%20Lectures/97.%203%20Backtesting%20Pitfalls%20That%20Ruin%20Your%20Strategy", "#97 Backtesting Pitfalls"),
     "09b_profitable_vs_tradable.md":  ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/77.%20Profitable%20vs%20Tradable%20-%20Why%20Most%20Strategies%20Fail%20Live", "#77 Profitable vs Tradable"),
@@ -620,6 +623,16 @@ def render_quiz(selected: str):
         if val > 0:
             exp = round(0.9/1.4, 2)
             st.success(f"Correct — {exp} (robuste > 0.7)") if abs(val-exp)<0.05 else st.error(f"0.9/1.4 = {exp}")
+
+    elif "hurst" in selected:
+        val = st.number_input("rho(1) si H=0.2 ? (autocorr lag-1, arrondi 2 decimales)",
+                              min_value=-1.0, max_value=1.0, step=0.01, key="quiz_hurst")
+        if val != 0.0:
+            exp = round(2 ** (2 * 0.2 - 1) - 1, 2)
+            if abs(val - exp) < 0.02:
+                st.success(f"Correct — 2^(2x0.2-1) - 1 = {exp}")
+            else:
+                st.error(f"rho(1) = 2^(2H-1) - 1 = 2^(-0.6) - 1 = {exp}")
 
     st.markdown("</div>", unsafe_allow_html=True)
 

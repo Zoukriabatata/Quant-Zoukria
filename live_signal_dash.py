@@ -35,11 +35,11 @@ LOOKBACK        = 30
 BAND_K          = 2.5
 HMM_LOOKBACK    = 60
 
-SESSION_START   = (9,  30)
-SESSION_END     = (16,  0)
+SESSION_START   = (15, 30)   # 9:30 NY = 15:30 Paris
+SESSION_END     = (22,  0)   # 16:00 NY = 22:00 Paris
 SKIP_OPEN_BARS  = 5
 
-NY = pytz.timezone("America/New_York")
+NY = pytz.timezone("Europe/Paris")
 
 TEAL   = "#3CC4B7"
 GREEN  = "#00ff88"
@@ -202,10 +202,15 @@ def _fetch_dxfeed() -> tuple:
         df["high"]  = df["high"].astype(float)
         df["low"]   = df["low"].astype(float)
 
-        # Filtre session NY
+        # Filtre session NY (gère ETH: START > END = passe minuit)
         t = df["bar"].dt.hour * 60 + df["bar"].dt.minute
-        df = df[(t >= SESSION_START[0]*60 + SESSION_START[1]) &
-                (t <  SESSION_END[0]  *60 + SESSION_END[1])].copy()
+        s = SESSION_START[0]*60 + SESSION_START[1]
+        e = SESSION_END[0]  *60 + SESSION_END[1]
+        if s < e:
+            mask = (t >= s) & (t < e)
+        else:  # passe minuit (ex: 18:00 → 16:00)
+            mask = (t >= s) | (t < e)
+        df = df[mask].copy()
         if len(df) < 5:
             return None, "Hors session NY"
 
