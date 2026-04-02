@@ -58,20 +58,18 @@ function main() {
         // API : new Endpoint(url), connect(callback), createSubscription(eventType)
         const url      = `${HOST}[login=${LOGIN},password=${PASSWORD}]`;
         const endpoint = new DXFeed.Endpoint(url);
-        // Abonnement créé avant connect (dxFeed bufferise jusqu'à connexion)
+        // connect() est synchrone — il met isConnected=true immédiatement
+        endpoint.connect((state) => {
+            process.stdout.write(`\r  État: ${state}   `);
+            if (state === "CONNECTED") process.stdout.write("\n");
+        });
+        console.log("✓ Connecté —", HOST);
+
+        // createSubscription() doit être appelé APRÈS connect()
         const sub = endpoint.createSubscription("Candle");
         sub.addSymbols(["/MNQ{=1m}"]);
-        console.log("✓ Abonnement /MNQ{=1m} enregistré");
-
-        endpoint.connect((state) => {
-            if (state === "CONNECTED") {
-                console.log("\n✅ Connecté à dxFeed —", HOST);
-                console.log("En attente de barres M1...\n");
-            } else {
-                process.stdout.write(`\r  État: ${state}   `);
-            }
-        });
-        console.log("✓ Connexion dxFeed en cours →", HOST);
+        console.log("✓ Abonné à /MNQ{=1m}");
+        console.log("En attente de barres M1...\n");
 
         sub.addEventListener((events) => {
             for (const event of events) {
