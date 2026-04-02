@@ -1,6 +1,7 @@
 """
 Live Signal Dashboard — Hurst_MR (Lec 25 + Lec 51)
-Source : yfinance NQ=F M1 (~15 min delay)
+Source prioritaire : dxFeed 4PropTrader via dxfeed_bridge.js → C:/tmp/mnq_live.json
+Fallback          : yfinance NQ=F M1 (~15 min delay)
 """
 
 import time
@@ -28,6 +29,7 @@ except ImportError:
 st.set_page_config(page_title="Live Signal", page_icon="⚡", layout="wide")
 
 SYMBOL          = "NQ=F"
+DXFEED_FILE     = r"C:\tmp\mnq_live.json"   # écrit par dxfeed_bridge.js
 HURST_THRESHOLD = 0.45
 LOOKBACK        = 30
 BAND_K          = 2.5
@@ -181,13 +183,53 @@ def find_signals(closes, times_str):
 # DATA
 # ═══════════════════════════════════════════════════════
 
+def _fetch_dxfeed() -> tuple:
+    """Lit C:/tmp/mnq_live.json écrit par dxfeed_bridge.js (Node.js)."""
+    import json, os
+    if not os.path.exists(DXFEED_FILE):
+        return None, "dxfeed_bridge.js non lancé"
+    try:
+        with open(DXFEED_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        bars = data.get("bars", [])
+        if len(bars) < 5:
+            return None, "Pas assez de barres dxFeed"
+
+        df = pd.DataFrame(bars)
+        df["bar"] = pd.to_datetime(df["time"], utc=True).dt.tz_convert(NY)
+        df["close"] = df["close"].astype(float)
+        df["open"]  = df["open"].astype(float)
+        df["high"]  = df["high"].astype(float)
+        df["low"]   = df["low"].astype(float)
+
+        # Filtre session NY
+        t = df["bar"].dt.hour * 60 + df["bar"].dt.minute
+        df = df[(t >= SESSION_START[0]*60 + SESSION_START[1]) &
+                (t <  SESSION_END[0]  *60 + SESSION_END[1])].copy()
+        if len(df) < 5:
+            return None, "Hors session NY"
+
+        # NQ dxFeed = valeur NQ (×1) → MNQ = /10, cohérent avec yfinance
+        df["time_str"] = [str(x)[:16] for x in df["bar"]]
+        df.reset_index(drop=True, inplace=True)
+        return df, None
+    except Exception as e:
+        return None, f"dxFeed lecture: {e}"
+
+
 @st.cache_data(ttl=55, show_spinner=False)
 def fetch_session_data():
+    # 1. Essaie dxFeed temps réel (bridge Node.js)
+    df, err = _fetch_dxfeed()
+    if df is not None:
+        return df, None, "dxFeed 4PropTrader ⚡"
+
+    # 2. Fallback yfinance (15 min delay)
     try:
         df = yf.download(SYMBOL, period="1d", interval="1m",
                          progress=False, auto_adjust=True)
         if df is None or len(df) < 5:
-            return None, "Pas de données yfinance"
+            return None, "Pas de données yfinance", "yfinance"
 
         df.index = pd.to_datetime(df.index)
         if df.index.tz is None:
@@ -199,9 +241,8 @@ def fetch_session_data():
                 (t <  SESSION_END[0]  *60 + SESSION_END[1])].copy()
 
         if len(df) < 5:
-            return None, "Session non démarrée ou fermée"
+            return None, "Session non démarrée ou fermée", "yfinance"
 
-        # Flatten MultiIndex si besoin (yfinance v0.2+)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
@@ -210,9 +251,9 @@ def fetch_session_data():
         df["high"]  = df["High"].astype(float)
         df["low"]   = df["Low"].astype(float)
         df["time_str"] = [str(x)[:16] for x in df.index]
-        return df, None
+        return df, None, "yfinance NQ=F ~15 min delay ⚠️"
     except Exception as e:
-        return None, str(e)
+        return None, str(e), "yfinance"
 
 
 # ═══════════════════════════════════════════════════════
@@ -256,13 +297,20 @@ with col_refresh:
     manual_refresh = st.button("🔄 Refresh")
 
 # ── Fetch data ────────────────────────────────────────
-with st.spinner("Chargement NQ=F..."):
-    df, err = fetch_session_data()
+with st.spinner("Chargement données..."):
+    df, err, data_source = fetch_session_data()
+
+# Badge source données
+src_color = TEAL if "dxFeed" in data_source else YELLOW
+st.markdown(f'<div style="font-size:.75rem;color:{src_color};margin-bottom:.5rem">📡 Source : {data_source}</div>',
+            unsafe_allow_html=True)
 
 if err or df is None:
     st.warning(f"⚠️ {err or 'Données indisponibles'}")
     if not in_session:
         st.info("Session NY fermée. Les données seront disponibles dès 9:30 NY.")
+    if "dxFeed" not in data_source:
+        st.info("💡 Pour données temps réel : lance `node dxfeed_bridge.js` dans un terminal séparé.")
     if auto_refresh:
         time.sleep(refresh_sec)
         st.rerun()
@@ -277,6 +325,44 @@ price_now = float(closes[-1])
 bars_count = len(closes)
 
 last_signal = signals[-1] if signals else None
+
+# ── Alerte sonore — ne sonne qu'une fois par signal ───
+def _play_signal_sound(direction: str):
+    """Joue un son via Web Audio API dans le navigateur."""
+    freq1 = 880 if direction == "LONG" else 440
+    freq2 = 1100 if direction == "LONG" else 330
+    import streamlit.components.v1 as _comp
+    _comp.html(f"""
+    <script>
+    (function() {{
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        function beep(freq, start, dur) {{
+            const osc  = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+            gain.gain.setValueAtTime(0.35, ctx.currentTime + start);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+            osc.start(ctx.currentTime + start);
+            osc.stop(ctx.currentTime + start + dur + 0.05);
+        }}
+        beep({freq1}, 0.0, 0.25);
+        beep({freq2}, 0.3, 0.20);
+        beep({freq1}, 0.6, 0.35);
+    }})();
+    </script>
+    """, height=0)
+
+# Initialise session_state pour tracking signal
+if "last_announced_sig" not in st.session_state:
+    st.session_state.last_announced_sig = None
+
+if last_signal:
+    sig_id = f"{last_signal['time']}_{last_signal['direction']}"
+    if sig_id != st.session_state.last_announced_sig:
+        st.session_state.last_announced_sig = sig_id
+        _play_signal_sound(last_signal["direction"])
 
 # ── KPI Cards ─────────────────────────────────────────
 c1, c2, c3, c4, c5 = st.columns(5)
