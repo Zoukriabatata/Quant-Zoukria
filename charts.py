@@ -1496,8 +1496,7 @@ def hurst_regime_spectrum():
                    tickfont=dict(color="#555", size=10, family="JetBrains Mono"),
                    gridcolor="#111", title="H", zeroline=False),
         yaxis=dict(visible=False, range=[0, 1]),
-        **DARK,
-        margin=dict(t=50, b=40, l=40, r=20),
+        **{**DARK, "margin": dict(t=50, b=40, l=40, r=20)},
     )
     return fig
 
@@ -1631,8 +1630,7 @@ def hurst_covariance_heatmap():
             text=f"fBm H={H} — Empirical vs Theoretical Covariance  (RMSE = {rmse:.4f})",
             font=dict(size=12, color="#aaa"),
         ),
-        **DARK,
-        margin=dict(t=60, b=30, l=40, r=60),
+        **{**DARK, "margin": dict(t=60, b=30, l=40, r=60)},
     )
     return fig
 
