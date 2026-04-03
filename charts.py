@@ -1551,11 +1551,91 @@ def hurst_session_visual():
     fig.update_layout(
         height=380,
         showlegend=False,
-        **DARK,
-        margin=dict(t=60, b=30, l=40, r=20),
+        **{**DARK, "margin": dict(t=60, b=30, l=40, r=20)},
     )
     fig.update_annotations(font=dict(size=11, family="JetBrains Mono"))
     return fig
+
+def _davies_harte_batch(N, H, n_paths, seed=42):
+    """Generate n_paths fBm via Davies-Harte (vectorized, exact algorithm from Lec 25)."""
+    np.random.seed(seed)
+    # Autocovariance of fGn: gamma(0)=1, gamma(k)=0.5*(|k+1|^{2H}-2k^{2H}+|k-1|^{2H})
+    k = np.arange(N + 1, dtype=float)
+    gamma = np.zeros(N + 1)
+    gamma[0] = 1.0
+    gamma[1:] = 0.5 * ((k[1:] + 1) ** (2*H) - 2 * k[1:] ** (2*H) + (k[1:] - 1) ** (2*H))
+    # Circulant embedding
+    M = 2 * N
+    c = np.concatenate([gamma, gamma[N-1:0:-1]])
+    L = np.maximum(np.fft.fft(c).real, 0)   # eigenvalues (non-negative)
+    sqrtL = np.sqrt(L)
+    # Random arrays for all paths at once
+    X0 = np.random.normal(0, 1, n_paths)
+    XN = np.random.normal(0, 1, n_paths)
+    Xk = np.random.normal(0, 1, (N - 1, n_paths))
+    Yk = np.random.normal(0, 1, (N - 1, n_paths))
+    Z = np.zeros((M, n_paths), dtype=np.complex128)
+    Z[0] = sqrtL[0] * X0
+    Z[N] = sqrtL[N] * XN
+    for ki in range(1, N):
+        Z[ki]   = sqrtL[ki] / np.sqrt(2) * (Xk[ki-1] + 1j * Yk[ki-1])
+        Z[M-ki] = np.conj(Z[ki])
+    fGn = np.fft.ifft(Z, axis=0).real[:N] * np.sqrt(M)   # (N, n_paths)
+    fbm = np.cumsum(fGn, axis=0)                           # (N, n_paths)
+    return fbm.T   # (n_paths, N)
+
+
+def hurst_covariance_heatmap():
+    """Empirical vs Theoretical Covariance of fBm — Davies-Harte (Lec 25)."""
+    N, H, n_paths = 64, 0.25, 600
+
+    paths = _davies_harte_batch(N, H, n_paths, seed=42)   # (n_paths, N)
+
+    # Empirical covariance (N x N)
+    emp_cov = np.cov(paths.T)
+
+    # Theoretical covariance: Cov(B_H(t), B_H(s)) = 0.5*(t^{2H}+s^{2H}-|t-s|^{2H})
+    t = np.arange(1, N + 1, dtype=float)
+    ti, tj = np.meshgrid(t, t)
+    theo_cov = 0.5 * (ti ** (2*H) + tj ** (2*H) - np.abs(ti - tj) ** (2*H))
+
+    rmse = float(np.sqrt(np.mean((emp_cov - theo_cov) ** 2)))
+
+    tick_vals = list(range(0, N, 6))
+    tick_text = [str(v) for v in tick_vals]
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["Empirical Covariance", "Theoretical Covariance"],
+        horizontal_spacing=0.12,
+    )
+    common = dict(colorscale="Viridis", zmin=0, showscale=True)
+    fig.add_trace(go.Heatmap(z=emp_cov,  name="Empirical",
+                              colorbar=dict(x=0.44, len=0.9, thickness=12,
+                                            tickfont=dict(color="#555", size=9)),
+                              **common), row=1, col=1)
+    fig.add_trace(go.Heatmap(z=theo_cov, name="Theoretical",
+                              colorbar=dict(x=1.00, len=0.9, thickness=12,
+                                            tickfont=dict(color="#555", size=9)),
+                              **common), row=1, col=2)
+
+    for col in [1, 2]:
+        fig.update_xaxes(tickvals=tick_vals, ticktext=tick_text,
+                         tickfont=dict(color="#444", size=9), row=1, col=col)
+        fig.update_yaxes(tickvals=tick_vals, ticktext=tick_text,
+                         tickfont=dict(color="#444", size=9), row=1, col=col)
+
+    fig.update_layout(
+        height=480,
+        title=dict(
+            text=f"fBm H={H} — Empirical vs Theoretical Covariance  (RMSE = {rmse:.4f})",
+            font=dict(size=12, color="#aaa"),
+        ),
+        **DARK,
+        margin=dict(t=60, b=30, l=40, r=60),
+    )
+    return fig
+
 
 def _fbm_ar1(n, H, seed=42):
     """Approximate fBm via AR(1) with exact lag-1 autocorrelation of fGn."""
@@ -1861,6 +1941,7 @@ CHARTS = {
         ("Pipeline complet", pipeline_full_simulation),
     ],
     "25_hurst_mr.md": [
+        ("Empirical vs Theoretical Covariance fBm", hurst_covariance_heatmap),
         ("Edge stats — PnL et win-rate par regime", hurst_edge_stats),
     ],
 }
@@ -1871,9 +1952,10 @@ INLINE_CHARTS = {
     "ergo_multiplicative_vs_additive": ergo_multiplicative_vs_additive,
     "ergo_kelly_impact_sim": ergo_kelly_impact_sim,
     # Hurst MR — inline dans les tabs
-    "hurst_regime_spectrum": hurst_regime_spectrum,
-    "hurst_session_visual":  hurst_session_visual,
-    "hurst_fbm_paths":       hurst_fbm_paths,
-    "hurst_rs_analysis":     hurst_rs_analysis,
-    "hurst_mr_strategy":     hurst_mr_strategy,
+    "hurst_regime_spectrum":    hurst_regime_spectrum,
+    "hurst_session_visual":     hurst_session_visual,
+    "hurst_fbm_paths":          hurst_fbm_paths,
+    "hurst_covariance_heatmap": hurst_covariance_heatmap,
+    "hurst_rs_analysis":        hurst_rs_analysis,
+    "hurst_mr_strategy":        hurst_mr_strategy,
 }

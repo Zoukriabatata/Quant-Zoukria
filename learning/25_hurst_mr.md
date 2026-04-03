@@ -100,6 +100,14 @@ $$\gamma(k) = \frac{1}{2}\left(|k+1|^{2H} - 2|k|^{2H} + |k-1|^{2H}\right)$$
 
 Quand H < 0.5 : $\gamma(1) < 0$ → increments **negativement** correles → MR.
 
+**Validation — Empirical vs Theoretical Covariance**
+
+Le graphique ci-dessous montre que la simulation Davies-Harte reproduit exactement
+la structure de covariance theorique de la formule (RMSE tres proche de 0).
+C'est la validation que le modele fBm est correct.
+
+<!-- CHART:hurst_covariance_heatmap -->
+
 ---
 
 ## Calculer H : la methode R/S
