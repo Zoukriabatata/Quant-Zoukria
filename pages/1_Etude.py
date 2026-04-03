@@ -526,6 +526,7 @@ with st.sidebar:
 
 def render_math_markdown(text: str):
     """Render markdown with LaTeX support + inline chart markers."""
+    _chart_counters: dict = {}
     parts = re.split(r'(\$\$.*?\$\$)', text, flags=re.DOTALL)
     for part in parts:
         if not part.strip():
@@ -543,10 +544,12 @@ def render_math_markdown(text: str):
                     if buffer:
                         st.markdown('\n'.join(buffer), unsafe_allow_html=True)
                         buffer = []
-                    chart_fn = INLINE_CHARTS.get(chart_match.group(1))
+                    chart_name = chart_match.group(1)
+                    chart_fn = INLINE_CHARTS.get(chart_name)
                     if chart_fn:
-                        st.plotly_chart(chart_fn(), use_container_width=True,
-                                        key=f"inline_{chart_match.group(1)}")
+                        _chart_counters[chart_name] = _chart_counters.get(chart_name, 0) + 1
+                        key = f"inline_{chart_name}_{_chart_counters[chart_name]}"
+                        st.plotly_chart(chart_fn(), use_container_width=True, key=key)
                     continue
                 is_table      = line.strip().startswith('|')
                 has_inline_math = re.search(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)', line)
