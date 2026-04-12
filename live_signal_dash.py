@@ -4,6 +4,7 @@ Source prioritaire : dxFeed 4PropTrader via dxfeed_bridge.js → C:/tmp/mnq_live
 Fallback          : yfinance NQ=F M1 (~15 min delay)
 """
 
+import os
 import time
 import warnings
 import threading
@@ -54,8 +55,11 @@ SESSION_END     = (22,  0)   # 16:00 NY = 22:00 Paris
 
 TICK_VALUE      = 2.0       # $/pt MNQ (NQ full = 20.0)
 
-DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1491461457135796349/_yPZm5HR2w_rZT5qd9f97i72rMNeKIl4QS5wS0n1gMukj6x9dSIDPSMuTyMrm5-6BHeT"
-NTFY_TOPIC      = "hurst-mnq-ryad"
+DISCORD_WEBHOOK = (
+    st.secrets.get("DISCORD_WEBHOOK", None) or
+    os.environ.get("DISCORD_WEBHOOK", "")
+)
+NTFY_TOPIC      = os.environ.get("NTFY_TOPIC", "hurst-mnq-ryad")
 
 JOURNAL_DB      = r"C:\tmp\mnq_journal.db"
 CHALLENGE_DD    = 2500.0   # DD max 4PropTrader

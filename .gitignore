@@ -4,3 +4,8 @@ __pycache__/
 *.ipynb
 .streamlit/secrets.toml
 .env
+node_modules/
+.checklist.json
+.progress.json
+.watched.json
+*.log
