@@ -1872,6 +1872,439 @@ def hurst_edge_stats():
     return fig
 
 
+# ===================================================================
+# 05d — GMM STICKY REGIME
+# ===================================================================
+
+def gmm_three_regimes():
+    """Distribution des |returns| avec 3 composantes GMM."""
+    np.random.seed(42)
+    n_per = 2000
+    sigs = [0.0005, 0.0015, 0.0040]
+    labels = ["LOW (vol faible)", "MED (vol moyenne)", "HIGH (vol forte)"]
+    colors = [TEAL, YELLOW, RED]
+    x = np.linspace(0, 0.012, 400)
+    fig = go.Figure()
+    for sig, lbl, col in zip(sigs, labels, colors):
+        pdf = np.exp(-0.5 * (x / sig) ** 2) / (sig * np.sqrt(2 * np.pi))
+        fig.add_trace(go.Scatter(x=x, y=pdf, mode="lines", name=lbl,
+                                 line=dict(color=col, width=2),
+                                 fill="tozeroy",
+                                 fillcolor=col.replace("#", "rgba(") + ",0.06)".replace("rgba(#", "rgba(")
+                                 if col.startswith("#") else col))
+    # Reformat fill with proper rgba
+    fig.data[0].fillcolor = "rgba(60,196,183,0.06)"
+    fig.data[1].fillcolor = "rgba(255,214,0,0.06)"
+    fig.data[2].fillcolor = "rgba(255,51,102,0.06)"
+    fig.update_layout(
+        **DARK, height=340,
+        title="GMM — 3 distributions de |returns| MNQ",
+        xaxis=dict(**AXIS, title="|return| (log)"),
+        yaxis=dict(**AXIS, title="Densite"),
+    )
+    return fig
+
+
+def gmm_sticky_effect():
+    """Regime brut vs regime sticky — effet lissant."""
+    np.random.seed(7)
+    n = 200
+    # Regime bruité : alterne LOW/MED/HIGH
+    raw = np.random.choice([0, 1, 2], size=n, p=[0.55, 0.30, 0.15])
+    # Sticky : on reste en LOW tant que <5 barres consécutives non-LOW
+    smoothed = raw.copy()
+    streak = 0
+    for i in range(1, n):
+        if smoothed[i-1] == 0:
+            if raw[i] != 0:
+                streak += 1
+                if streak < 5:
+                    smoothed[i] = 0
+                else:
+                    streak = 0
+            else:
+                streak = 0
+        else:
+            streak = 0
+
+    color_map = {0: TEAL, 1: YELLOW, 2: RED}
+    t = np.arange(n)
+    fig = make_subplots(rows=2, cols=1, subplot_titles=["Regime brut (oscille)", "Regime sticky (stable)"],
+                        vertical_spacing=0.12)
+    for row, arr in [(1, raw), (2, smoothed)]:
+        colors_arr = [color_map[v] for v in arr]
+        fig.add_trace(go.Bar(x=t, y=np.ones(n), marker_color=colors_arr,
+                             showlegend=(row == 1), name="Regime",
+                             marker_line_width=0), row=row, col=1)
+    for row in [1, 2]:
+        fig.update_yaxes(showticklabels=False, row=row, col=1)
+
+    # Légende manuelle
+    for lbl, col in [("LOW", TEAL), ("MED", YELLOW), ("HIGH", RED)]:
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
+                                 marker=dict(color=col, size=10, symbol="square"),
+                                 name=lbl, showlegend=True))
+    fig.update_layout(**DARK, height=340, title="Effet sticky_window=5 — stabilisation des regimes",
+                      xaxis=dict(**AXIS, title="Barre"),
+                      xaxis2=dict(**AXIS, title="Barre"))
+    return fig
+
+
+# ===================================================================
+# 06c — DEMI-VIE OU
+# ===================================================================
+
+def halflife_phi_table():
+    """Demi-vie en fonction de phi — courbe + zone valide."""
+    phis = np.linspace(0.50, 0.999, 300)
+    hls = -np.log(2) / np.log(phis)
+    fig = go.Figure()
+    # Zone valide (HL < 60)
+    valid_mask = hls < 60
+    fig.add_trace(go.Scatter(
+        x=phis[valid_mask], y=hls[valid_mask],
+        mode="lines", line=dict(color=TEAL, width=3), name="Zone valide (HL<60)"
+    ))
+    fig.add_trace(go.Scatter(
+        x=phis[~valid_mask], y=hls[~valid_mask],
+        mode="lines", line=dict(color=RED, width=2, dash="dot"), name="Trop lent"
+    ))
+    fig.add_hline(y=60, line=dict(color=YELLOW, dash="dash", width=1),
+                  annotation_text="Seuil 60 barres", annotation_position="right")
+    # Points remarquables
+    for phi_pt, label in [(0.90, "phi=0.90\n7 barres"), (0.95, "phi=0.95\n14 barres"),
+                           (0.98, "phi=0.98\n34 barres"), (0.99, "phi=0.99\n69 barres")]:
+        hl_pt = -np.log(2) / np.log(phi_pt)
+        fig.add_trace(go.Scatter(
+            x=[phi_pt], y=[hl_pt], mode="markers+text",
+            marker=dict(color=WHITE_50, size=9, symbol="circle"),
+            text=[f"  {hl_pt:.0f}b"], textposition="middle right",
+            showlegend=False,
+        ))
+    fig.update_layout(
+        **DARK, height=360,
+        title="Demi-vie OU en fonction de phi (AR1)",
+        xaxis=dict(**AXIS, title="phi (persistance AR1)", range=[0.49, 1.0]),
+        yaxis=dict(**AXIS, title="Demi-vie (barres M1)", range=[0, 150]),
+    )
+    return fig
+
+
+def halflife_reversion_paths():
+    """Simulation de reversion à différentes vitesses (phi=0.90/0.95/0.99)."""
+    np.random.seed(3)
+    n = 80
+    t = np.arange(n)
+    start_dev = 3.0   # prix à 3σ de FV
+    phis = [0.90, 0.95, 0.99]
+    cols = [TEAL, YELLOW, RED]
+    lbls = ["phi=0.90 — rapide", "phi=0.95 — normal", "phi=0.99 — lent"]
+    fig = go.Figure()
+    fig.add_hline(y=0, line=dict(color=WHITE_50, dash="dash", width=1),
+                  annotation_text="Fair Value")
+    fig.add_hline(y=2.5, line=dict(color=YELLOW, dash="dot", width=1),
+                  annotation_text="Bande +2.5σ")
+    for phi, col, lbl in zip(phis, cols, lbls):
+        path = np.zeros(n)
+        path[0] = start_dev
+        for i in range(1, n):
+            path[i] = phi * path[i-1] + np.random.normal(0, 0.15)
+        fig.add_trace(go.Scatter(x=t, y=path, mode="lines", name=lbl,
+                                 line=dict(color=col, width=2)))
+    fig.update_layout(
+        **DARK, height=340,
+        title="Reversion vers FV — 3 vitesses (signal entre a la barre 0)",
+        xaxis=dict(**AXIS, title="Barres M1 apres le signal"),
+        yaxis=dict(**AXIS, title="Deviation (sigma)"),
+    )
+    return fig
+
+
+# ===================================================================
+# 06d — CONFIRMATION DE REVERSION
+# ===================================================================
+
+def confirmation_scenario():
+    """Deux scenarios : avec et sans confirmation."""
+    np.random.seed(12)
+    n = 40
+    t = np.arange(n)
+
+    # Scenario 1 : prix va plus loin avant de revenir (sans confirmation → loss)
+    path_no = np.zeros(n)
+    path_no[:5] = np.linspace(0, 3.5, 5)
+    path_no[5:15] = np.linspace(3.5, 4.2, 10)   # continue de monter (SL)
+    path_no[15:] = np.linspace(4.2, 0.5, 25)     # revient trop tard
+
+    # Scenario 2 : prix confirme et revient vite (avec confirmation → win)
+    path_ok = np.zeros(n)
+    path_ok[:5] = np.linspace(0, 3.5, 5)
+    path_ok[5] = 3.2          # barre de confirmation : deja en reversion
+    path_ok[6:] = np.linspace(3.0, 0.2, n - 6) + np.random.normal(0, 0.15, n - 6)
+
+    fig = make_subplots(rows=1, cols=2,
+                        subplot_titles=["SANS confirmation — SL souvent touche",
+                                        "AVEC confirmation — TP atteint"])
+    # Scenario sans confirmation
+    for i, (path, col_line) in enumerate([(path_no, RED), (path_ok, TEAL)], 1):
+        fig.add_trace(go.Scatter(x=t, y=path, mode="lines",
+                                 line=dict(color=col_line, width=2), showlegend=False), row=1, col=i)
+        fig.add_hline(y=2.5, line=dict(color=YELLOW, dash="dash", width=1),
+                      annotation_text="Signal k=2.5σ", row=1, col=i)
+        fig.add_hline(y=0, line=dict(color=WHITE_50, dash="dot", width=1),
+                      annotation_text="FV (TP)", row=1, col=i)
+
+    # Marqueurs entrée
+    fig.add_trace(go.Scatter(
+        x=[5], y=[path_no[5]], mode="markers",
+        marker=dict(color=RED, size=12, symbol="x"),
+        name="Entree sans confirm", showlegend=False,
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=[6], y=[path_ok[6]], mode="markers",
+        marker=dict(color=TEAL, size=12, symbol="triangle-up"),
+        name="Entree avec confirm", showlegend=False,
+    ), row=1, col=2)
+
+    fig.update_layout(**DARK, height=340,
+                      title="Confirmation de reversion — impact sur le timing d'entree")
+    for col in [1, 2]:
+        fig.update_xaxes(dict(**AXIS, title="Barres apres detection"), row=1, col=col)
+        fig.update_yaxes(dict(**AXIS, title="Deviation (sigma)"), row=1, col=col)
+    return fig
+
+
+def confirmation_winrate_impact():
+    """Bar chart : WR et EV avec/sans confirmation."""
+    categories = ["Sans confirmation", "Avec confirmation"]
+    wr_vals = [42, 52]
+    ev_vals = [10.3, 18.4]
+    trades = [1095, 876]
+
+    fig = make_subplots(rows=1, cols=3,
+                        subplot_titles=["Win Rate (%)", "EV par trade (pts)", "Nb trades/an"])
+    colors_pair = [RED, TEAL]
+    for col, (vals, fmt) in enumerate([(wr_vals, "{:.0f}%"), (ev_vals, "{:.1f}"), (trades, "{:.0f}")], 1):
+        fig.add_trace(go.Bar(
+            x=categories, y=vals,
+            marker_color=colors_pair,
+            text=[fmt.format(v) for v in vals],
+            textposition="outside",
+            showlegend=False,
+        ), row=1, col=col)
+    fig.update_layout(**DARK, height=320,
+                      title="Impact du filtre confirmation sur l'edge (backtest 5 ans MNQ)")
+    for col in [1, 2, 3]:
+        fig.update_yaxes(dict(**AXIS), row=1, col=col)
+        fig.update_xaxes(dict(**AXIS), row=1, col=col)
+    return fig
+
+
+# ===================================================================
+# 08 — KELLY CRITERION
+# ===================================================================
+
+def kelly_sizing_curve():
+    """Fraction Kelly optimale en fonction du WR et du ratio R:R."""
+    wrs = np.linspace(0.30, 0.70, 200)
+    rr_ratios = [1.5, 2.0, 2.5, 3.0]
+    cols_kelly = [RED, YELLOW, TEAL, GREEN]
+    fig = go.Figure()
+    for rr, col in zip(rr_ratios, cols_kelly):
+        # Kelly = p - (1-p)/b   où b = gain/loss ratio
+        k = wrs - (1 - wrs) / rr
+        k = np.clip(k, 0, 1)
+        fig.add_trace(go.Scatter(x=wrs * 100, y=k * 100, mode="lines",
+                                 name=f"R:R = {rr:.1f}",
+                                 line=dict(color=col, width=2)))
+    # Marquer position Hurst_MR (WR=52%, RR~2.5)
+    k_hurst = 0.52 - 0.48 / 2.5
+    fig.add_trace(go.Scatter(
+        x=[52], y=[k_hurst * 100],
+        mode="markers+text",
+        marker=dict(color=WHITE_50, size=14, symbol="star"),
+        text=["  Hurst_MR\n  validé"],
+        textfont=dict(color=WHITE_50, size=10),
+        showlegend=False,
+    ))
+    fig.add_vline(x=50, line=dict(color=WHITE_50, dash="dot", width=1),
+                  annotation_text="WR=50%")
+    fig.update_layout(
+        **DARK, height=360,
+        title="Fraction Kelly (%) — WR vs ratio gain/perte",
+        xaxis=dict(**AXIS, title="Win Rate (%)"),
+        yaxis=dict(**AXIS, title="Kelly optimal (% du capital)"),
+    )
+    return fig
+
+
+def kelly_fractional_growth():
+    """Croissance du capital selon la fraction f du Kelly (f=full/half/quarter)."""
+    np.random.seed(42)
+    n_trades = 300
+    wr = 0.52
+    rr = 2.5
+    k_full = wr - (1 - wr) / rr
+    fractions = [k_full, k_full / 2, k_full / 4, 0.01]
+    labels = ["Full Kelly", "Half Kelly", "Quarter Kelly", "1% fixe"]
+    cols_f = [RED, YELLOW, TEAL, GREEN]
+
+    outcomes = np.where(np.random.rand(n_trades) < wr, 1, -1 / rr)
+    fig = go.Figure()
+    for f, lbl, col in zip(fractions, labels, cols_f):
+        capital = np.ones(n_trades + 1)
+        for i, r in enumerate(outcomes):
+            mult = 1 + f * r if r > 0 else 1 - f / rr
+            capital[i + 1] = capital[i] * (1 + f * r)
+        fig.add_trace(go.Scatter(
+            y=capital, mode="lines", name=lbl,
+            line=dict(color=col, width=2)
+        ))
+    fig.update_layout(
+        **DARK, height=340,
+        title=f"Croissance capital — fractions Kelly (WR={wr:.0%}, R:R={rr})",
+        xaxis=dict(**AXIS, title="Trades"),
+        yaxis=dict(**AXIS, title="Capital (normalise)"),
+    )
+    return fig
+
+
+# ===================================================================
+# 09 — BACKTESTING PITFALLS
+# ===================================================================
+
+def pitfall_lookahead_bias():
+    """Simulation : strategie avec et sans look-ahead bias."""
+    np.random.seed(8)
+    n = 100
+    t = np.arange(n)
+    # Prix aléatoire
+    price = 100 + np.cumsum(np.random.normal(0, 1, n))
+    # Signal SANS bias : moyenne sur passé seulement
+    ma_true = np.array([price[max(0, i-20):i].mean() if i > 0 else price[0] for i in range(n)])
+    # Signal AVEC look-ahead : utilise les 10 prochaines barres aussi
+    ma_biased = np.array([price[max(0, i-10):min(n, i+10)].mean() for i in range(n)])
+
+    equity_clean = np.zeros(n)
+    equity_biased = np.zeros(n)
+    pos_clean = pos_biased = 0
+    for i in range(1, n):
+        sig_c = 1 if price[i-1] > ma_true[i-1] else -1
+        sig_b = 1 if price[i-1] > ma_biased[i-1] else -1
+        ret = price[i] - price[i-1]
+        equity_clean[i] = equity_clean[i-1] + sig_c * ret
+        equity_biased[i] = equity_biased[i-1] + sig_b * ret
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=t, y=equity_biased, name="Avec look-ahead bias",
+                             line=dict(color=GREEN, width=2)))
+    fig.add_trace(go.Scatter(x=t, y=equity_clean, name="Reel (sans bias)",
+                             line=dict(color=RED, width=2)))
+    fig.add_hline(y=0, line=dict(color=WHITE_50, dash="dot", width=1))
+    fig.update_layout(
+        **DARK, height=320,
+        title="Look-ahead bias — l'equity parfaite qui disparait en live",
+        xaxis=dict(**AXIS, title="Trades"),
+        yaxis=dict(**AXIS, title="P&L cumule"),
+    )
+    return fig
+
+
+def pitfall_overfitting_curves():
+    """In-sample parfait vs out-of-sample catastrophique."""
+    np.random.seed(5)
+    n = 200
+    split = 100
+    t = np.arange(n)
+    # Vrai processus : léger drift positif
+    true_returns = np.random.normal(0.05, 1.0, n)
+    # Overfit in-sample : optimise sur les 100 premières barres (parait parfait)
+    equity_is = np.cumsum(np.abs(true_returns[:split]))  # toujours positif (triché)
+    # OOS : performance réelle aléatoire
+    equity_oos = np.cumsum(true_returns[split:])
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=t[:split], y=equity_is, name="In-sample (optimise)",
+                             line=dict(color=GREEN, width=2)))
+    fig.add_trace(go.Scatter(x=t[split:], y=equity_oos + equity_is[-1],
+                             name="Out-of-sample (reel)",
+                             line=dict(color=RED, width=2)))
+    fig.add_vline(x=split, line=dict(color=YELLOW, dash="dash", width=2),
+                  annotation_text="  Split IS/OOS", annotation_position="top right")
+    fig.add_hline(y=0, line=dict(color=WHITE_50, dash="dot", width=1))
+    fig.update_layout(
+        **DARK, height=320,
+        title="Overfitting — curve-fitted in-sample vs reel en OOS",
+        xaxis=dict(**AXIS, title="Barres"),
+        yaxis=dict(**AXIS, title="P&L cumule"),
+    )
+    return fig
+
+
+# ===================================================================
+# 09b — PROFITABLE VS TRADABLE
+# ===================================================================
+
+def tradable_slippage_impact():
+    """Impact du slippage sur le profit factor selon le nb de trades."""
+    slip_range = np.linspace(0, 3.0, 100)  # pts de slippage par trade
+    avg_trade_pnl = 6.0    # gain moyen par trade avant slippage (pts)
+    n_trades = 1095
+
+    pf_raw = 2.03
+    fig = go.Figure()
+    # PF degradé par slippage
+    pf_adj = np.clip(pf_raw - slip_range / avg_trade_pnl * pf_raw, 0.5, pf_raw)
+    fig.add_trace(go.Scatter(
+        x=slip_range, y=pf_adj,
+        mode="lines", line=dict(color=TEAL, width=2), name="PF ajuste slippage"
+    ))
+    fig.add_hline(y=1.0, line=dict(color=RED, dash="dash", width=1),
+                  annotation_text="PF=1 (breakeven)")
+    fig.add_hline(y=1.5, line=dict(color=YELLOW, dash="dot", width=1),
+                  annotation_text="PF=1.5 (min viable)")
+    fig.add_vline(x=0.5, line=dict(color=GREEN, dash="dot", width=1),
+                  annotation_text="  0.5pts (MNQ typique)")
+    fig.update_layout(
+        **DARK, height=320,
+        title="Slippage vs Profit Factor — quand la strategie devient non-tradable",
+        xaxis=dict(**AXIS, title="Slippage par trade (pts MNQ)"),
+        yaxis=dict(**AXIS, title="Profit Factor", range=[0.5, 2.2]),
+    )
+    return fig
+
+
+def tradable_regime_drift():
+    """Walk-forward : performance par fenêtre de 6 mois — détection de drift."""
+    np.random.seed(21)
+    n_windows = 10
+    windows = [f"W{i+1}" for i in range(n_windows)]
+    # Simulate: bon régime pendant 6 fenêtres, drift ensuite
+    pfs = np.array([2.1, 2.3, 1.9, 2.0, 2.2, 1.8, 1.4, 1.1, 0.9, 0.8])
+    shs = np.array([2.4, 2.6, 2.1, 2.3, 2.5, 1.9, 1.5, 1.0, 0.7, 0.5])
+
+    fig = make_subplots(rows=1, cols=2,
+                        subplot_titles=["Profit Factor par fenetre 6 mois",
+                                        "Sharpe par fenetre 6 mois"])
+    colors_wf = [GREEN if p > 1.5 else YELLOW if p > 1.0 else RED for p in pfs]
+    fig.add_trace(go.Bar(x=windows, y=pfs, marker_color=colors_wf,
+                         text=[f"{p:.1f}" for p in pfs],
+                         textposition="outside", showlegend=False), row=1, col=1)
+    fig.add_hline(y=1.5, line=dict(color=YELLOW, dash="dash", width=1), row=1, col=1)
+
+    colors_sh = [GREEN if s > 1.5 else YELLOW if s > 1.0 else RED for s in shs]
+    fig.add_trace(go.Bar(x=windows, y=shs, marker_color=colors_sh,
+                         text=[f"{s:.1f}" for s in shs],
+                         textposition="outside", showlegend=False), row=1, col=2)
+    fig.add_hline(y=1.5, line=dict(color=YELLOW, dash="dash", width=1), row=1, col=2)
+
+    fig.update_layout(
+        **DARK, height=340,
+        title="Walk-forward — detection de drift du regime (re-optimisation necessaire apres W6)",
+    )
+    return fig
+
+
 # ── Chart registry ──────────────────────────────────────────────────
 CHARTS = {
     "00b_retail_vs_institutional.md": [
@@ -1941,6 +2374,30 @@ CHARTS = {
     "25_hurst_mr.md": [
         ("Empirical vs Theoretical Covariance fBm", hurst_covariance_heatmap),
         ("Edge stats — PnL et win-rate par regime", hurst_edge_stats),
+    ],
+    "05d_gmm_regime.md": [
+        ("3 regimes GMM — distributions des |returns|", gmm_three_regimes),
+        ("Effet sticky_window — stabilisation des regimes", gmm_sticky_effect),
+    ],
+    "06c_halflife_ou.md": [
+        ("Demi-vie vs phi — zone valide", halflife_phi_table),
+        ("Reversion a 3 vitesses (phi=0.90/0.95/0.99)", halflife_reversion_paths),
+    ],
+    "06d_confirmation_reversal.md": [
+        ("Confirmation — 2 scenarios (avec/sans)", confirmation_scenario),
+        ("Impact winrate/EV du filtre confirmation", confirmation_winrate_impact),
+    ],
+    "08_kelly_criterion.md": [
+        ("Kelly optimal — WR vs ratio gain/perte", kelly_sizing_curve),
+        ("Croissance capital — fractions du Kelly", kelly_fractional_growth),
+    ],
+    "09_backtesting_pitfalls.md": [
+        ("Look-ahead bias — equity parfaite vs reelle", pitfall_lookahead_bias),
+        ("Overfitting — in-sample vs out-of-sample", pitfall_overfitting_curves),
+    ],
+    "09b_profitable_vs_tradable.md": [
+        ("Slippage vs Profit Factor", tradable_slippage_impact),
+        ("Walk-forward — detection de drift", tradable_regime_drift),
     ],
 }
 
