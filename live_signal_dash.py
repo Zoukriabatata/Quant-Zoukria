@@ -5,7 +5,6 @@ Fallback          : yfinance NQ=F M1 (~15 min delay)
 """
 
 import os
-import time
 import warnings
 import threading
 import urllib.request
@@ -19,6 +18,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
 import sqlite3
+from streamlit_autorefresh import st_autorefresh
 
 warnings.filterwarnings("ignore")
 
@@ -36,14 +36,18 @@ except ImportError:
 st.set_page_config(page_title="Live Signal", page_icon="⚡", layout="wide")
 from styles import inject as _inj; _inj()
 
+# Auto-refresh toutes les 2s (non-bloquant, pas de time.sleep)
+st_autorefresh(interval=2000, key="live_autorefresh")
+
 from config import (DXFEED_FILE, JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET,
                    NTFY_TOPIC as _NTFY_TOPIC,
-                   HURST_THRESHOLD, HURST_WIN, LOOKBACK, BAND_K, SL_MULT)
+                   HURST_THRESHOLD, HURST_WIN, LOOKBACK, BAND_K, SL_MULT,
+                   DISCORD_STATUS_FILE, DAILY_LOSS_LIM as _DAILY_LOSS_LIM)
 
 SYMBOL          = "NQ=F"
 TP_OVERSHOOT    = 0.0       # fair value pure
 MAX_TRADES_DAY  = 5         # stop après N signaux — identique backtest
-DAILY_LOSS_LIM  = 600.0     # stop si perte journalière > 600$ — identique backtest
+DAILY_LOSS_LIM  = _DAILY_LOSS_LIM   # stop si perte journalière > limite — identique backtest
 SKIP_OPEN_BARS  = 5
 SKIP_CLOSE_BARS = 3         # ignore les 3 dernières barres — identique backtest
 SIGNAL_MAX_AGE_MIN = 120   # signal expiré après 120 min — identique timeout backtest
@@ -113,6 +117,7 @@ def journal_add(date, time_ny, direction, entry, sl_pts, tp,
     )
     con.commit(); con.close()
 
+@st.cache_data(ttl=10, show_spinner=False)
 def journal_load():
     con = _db()
     df = pd.read_sql("SELECT * FROM trades ORDER BY id DESC", con)
@@ -460,9 +465,7 @@ if err or df is None:
     st.info("▶ Lance le bridge : `cd QUANT MATHS` → `node dxfeed_bridge.js` → attends '✓ Ticks reçus'")
     if not in_session:
         st.info("Session NY fermée (9:30-16:00 NY = 15:30-22:00 Paris).")
-    time.sleep(2)
-    st.rerun()
-    st.stop()
+    st.stop()  # autorefresh gère le retry toutes les 2s
 
 closes    = df["close"].values.flatten()
 opens_arr = df["open"].values.flatten()
@@ -504,8 +507,6 @@ if last_signal:
         pass
 
 # ── Alerte Discord — envoi en thread pour ne pas bloquer ───
-DISCORD_STATUS_FILE = r"C:\tmp\discord_status.json"
-
 def _discord_write_status(ok: bool, err: str = ""):
     try:
         with open(DISCORD_STATUS_FILE, "w") as f:
@@ -782,13 +783,11 @@ col_chart, col_panel = st.columns([0.63, 0.37], gap="small")
 _chart_error = None  # capturé si le rendu plante — signal/Discord déjà partis avant
 
 try:
-    # Z-score rolling (une valeur par barre)
-    z_rolling = np.full(len(closes), np.nan)
-    for i in range(LOOKBACK, len(closes)):
-        w = closes[i - LOOKBACK: i]
-        s = w.std()
-        if s > 0:
-            z_rolling[i] = (closes[i] - w.mean()) / s
+    # Z-score rolling vectorisé — pandas rolling O(n)
+    _s       = pd.Series(closes)
+    _rm      = _s.rolling(LOOKBACK).mean()
+    _rstd    = _s.rolling(LOOKBACK).std(ddof=0)
+    z_rolling = np.where(_rstd > 0, (_s - _rm) / _rstd, np.nan)
 
     # ── Fenêtre d'affichage : 60 dernières barres seulement ─
     DISPLAY_BARS = 60
@@ -1179,6 +1178,7 @@ with tab_journal:
         if st.button("💾 Enregistrer", type="primary"):
             journal_add(datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M"),
                         j_dir, j_entry, j_sl, j_tp, j_contracts, j_exit, pre_h, pre_z, j_notes)
+            journal_load.clear()
             st.success("Trade enregistré ✓")
             st.rerun()
 
@@ -1205,6 +1205,7 @@ with tab_journal:
             if st.button(f"🗑 Supprimer {len(to_delete)} trade(s) sélectionné(s)", type="primary"):
                 for tid in to_delete:
                     journal_delete(tid)
+                journal_load.clear()
                 st.rerun()
 
 # ─────────────────────────────────────────────────────
@@ -1405,7 +1406,3 @@ st.markdown(f"""
     <span class="live-dot" style="width:5px;height:5px"></span>LIVE 2s
 </div>
 """, unsafe_allow_html=True)
-
-# ── Live 2s ───────────────────────────────────────────
-time.sleep(2)
-st.rerun()

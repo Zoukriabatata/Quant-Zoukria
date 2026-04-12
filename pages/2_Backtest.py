@@ -215,9 +215,7 @@ def build_study_cache(csv_path, sh, sm, eh, em, hwin=60):
                        np.abs(lows[1:]  - closes[:-1]))
         )
         tr = np.concatenate([[highs[0] - lows[0]], tr])
-        atr_arr = np.full(n, np.nan)
-        for _i in range(14, n):
-            atr_arr[_i] = tr[_i - 13: _i + 1].mean()
+        atr_arr = pd.Series(tr).rolling(14).mean().values
         days[str(day)] = dict(
             bars=bars, closes=closes, highs=highs, lows=lows,
             rets=rets, hurst=h_full, hurst_arr=hurst_arr, atr_arr=atr_arr,
@@ -1530,10 +1528,16 @@ with t7:
             pfm_col  = GREEN if pf_mean >= 1.5 else YELLOW if pf_mean >= 1.2 else RED
             shm_col  = GREEN if sh_mean >= 2.0 else YELLOW if sh_mean >= 1.0 else RED
 
+            # Calmar OOS = Sharpe annualisé / MaxDD moyen
+            _dd_mean = wf_df["OOS MaxDD"].mean() if "OOS MaxDD" in wf_df.columns else 0.0
+            calmar_oos = sh_mean / max(_dd_mean / 100, 0.001)
+            calm_col = GREEN if calmar_oos >= 2.0 else YELLOW if calmar_oos >= 1.0 else RED
+
             st.markdown(f"""<div class="stat-row">
                 {kpi_wf(len(wf_df), "Fenêtres testées")}
                 {kpi_wf(f"{pf_mean:.2f}", "PF moyen OOS", pfm_col)}
                 {kpi_wf(f"{sh_mean:.2f}", "Sharpe moyen OOS", shm_col)}
+                {kpi_wf(f"{calmar_oos:.2f}", "Calmar OOS", calm_col)}
                 {kpi_wf(f"{consistency:.0f}%", "Fenêtres OOS > PF 1.0", cons_col)}
                 {kpi_wf(f"{'Optimisé' if wf_opt else 'Fixe'}", "Paramètres")}
             </div>""", unsafe_allow_html=True)

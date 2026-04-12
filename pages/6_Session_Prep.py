@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime
 import streamlit as st
 import pytz
-from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET
+from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET, DAILY_LOSS_LIM
 
 st.set_page_config(page_title="Session Prep", page_icon="🎯", layout="wide")
 from styles import inject as _inj; _inj()
@@ -128,7 +128,7 @@ pnl_col  = "#00ff88" if s["pnl"] >= 0 else "#ff3366"
 dd_pct   = s["dd_used"] / CHALLENGE_DD * 100
 dd_col   = "#00ff88" if dd_pct < 40 else ("#ffd600" if dd_pct < 70 else "#ff3366")
 prog_pct = min(100., s["pnl"] / CHALLENGE_TARGET * 100)
-daily_max = 600.0  # limite journalière en phase 1
+daily_max = DAILY_LOSS_LIM
 
 st.markdown(f"""
 <div class="progress-bar-wrap">

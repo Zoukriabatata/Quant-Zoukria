@@ -14,7 +14,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET
+from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET, HURST_THRESHOLD
 
 st.set_page_config(page_title="Journal", page_icon="📒", layout="wide")
 from styles import inject as _inj; _inj()
@@ -168,10 +168,10 @@ else:
     neg    = abs(df[df["pnl"] < 0]["pnl"].sum())
     pf     = pos / max(neg, 0.01)
     total  = df["pnl"].sum()
-    eq_    = np.cumsum(df["pnl"].values[::-1])  # croissant dans le temps
+    eq_    = np.cumsum(df["pnl"].values[::-1])  # DESC→ASC : index 0=oldest
     eq     = np.concatenate([[0], eq_])
     peak   = np.maximum.accumulate(eq)
-    dd_    = (peak - eq) / np.maximum(peak, 1) * 100
+    dd_    = np.where(peak > 0, (peak - eq) / peak * 100, 0.0)
     max_dd_pct = float(dd_.max())
     daily  = df.groupby("date")["pnl"].sum()
     sharpe = float(daily.mean() / daily.std() * np.sqrt(252)) if daily.std() > 0 else 0.0
@@ -212,7 +212,7 @@ with t_equity:
         with c1:
             fig_eq = go.Figure()
             fig_eq.add_trace(go.Scatter(
-                y=eq[::-1], mode="lines",
+                y=eq, mode="lines",
                 line=dict(color=TEAL, width=2),
                 fill="tozeroy", fillcolor="rgba(60,196,183,0.05)",
                 name="Equity"
@@ -247,11 +247,12 @@ with t_equity:
         # Drawdown chart
         fig_dd = go.Figure()
         fig_dd.add_trace(go.Scatter(
-            y=-dd_[::-1], mode="lines", fill="tozeroy",
+            y=-dd_, mode="lines", fill="tozeroy",
             fillcolor="rgba(255,51,102,0.08)",
             line=dict(color=RED, width=1.5), name="Drawdown"
         ))
-        fig_dd.add_hline(y=-CHALLENGE_DD / max(abs(eq).max(), 1) * 100 * 0,
+        _dd_lim = -CHALLENGE_DD / max(eq.max(), 1) * 100
+        fig_dd.add_hline(y=_dd_lim,
                          line=dict(color=YELLOW, dash="dot", width=1))
         fig_dd.update_layout(**DARK, height=200, title="Drawdown (%)",
                              xaxis=dict(**AXIS), yaxis=dict(**AXIS, ticksuffix="%"))
@@ -265,11 +266,11 @@ with t_trades:
         # Filtres
         fc1, fc2, fc3 = st.columns(3)
         with fc1:
-            dir_filter = st.selectbox("Direction", ["Tout", "LONG", "SHORT"])
+            dir_filter = st.selectbox("Direction", ["Tout", "LONG", "SHORT"], key="j_dir")
         with fc2:
-            res_filter = st.selectbox("Résultat", ["Tout", "Win", "Loss"])
+            res_filter = st.selectbox("Résultat", ["Tout", "Win", "Loss"], key="j_res")
         with fc3:
-            n_show = st.select_slider("Afficher", [10, 25, 50, 100, 999], value=25)
+            n_show = st.select_slider("Afficher", [10, 25, 50, 100, 999], value=25, key="j_nshow")
 
         fdf = df.copy()
         if dir_filter != "Tout":
@@ -346,8 +347,8 @@ with t_stats:
         # Trades par heure
         with c2:
             if "time_ny" in df.columns and df["time_ny"].notna().any():
-                df["hour"] = pd.to_datetime(df["time_ny"], errors="coerce").dt.hour
-                hourly = df.groupby("hour").agg(
+                _hour_s = pd.to_datetime(df["time_ny"], errors="coerce").dt.hour
+                hourly = df.assign(hour=_hour_s).groupby("hour").agg(
                     n=("pnl", "count"),
                     wr=("win", "mean"),
                     pnl=("pnl", "sum")
@@ -395,8 +396,9 @@ with t_stats:
 
         with c4:
             # P&L mensuel
-            df["month"] = df["date"].dt.to_period("M").astype(str)
-            monthly = df.groupby("month")["pnl"].sum().reset_index()
+            monthly = (df.groupby(df["date"].dt.to_period("M").astype(str))["pnl"]
+                       .sum().reset_index())
+            monthly.columns = ["month", "pnl"]
             colors_m = [GREEN if v > 0 else RED for v in monthly["pnl"]]
             fig_m = go.Figure(go.Bar(
                 x=monthly["month"], y=monthly["pnl"],
@@ -420,8 +422,8 @@ with t_stats:
                 x=h_vals[~df.loc[df["hurst"].notna(), "win"].values],
                 name="Losses", marker_color=RED, opacity=0.7, nbinsx=15
             ))
-            fig_hh.add_vline(x=0.45, line=dict(color=TEAL, dash="dash"),
-                             annotation_text="Seuil H=0.45")
+            fig_hh.add_vline(x=HURST_THRESHOLD, line=dict(color=TEAL, dash="dash"),
+                             annotation_text=f"Seuil H={HURST_THRESHOLD}")
             fig_hh.update_layout(**DARK, height=280, barmode="overlay",
                                  title="Hurst au moment du signal (wins vs losses)",
                                  xaxis=dict(**AXIS, title="Hurst H"),
@@ -515,7 +517,6 @@ with t_export:
             )
 
         with ex3:
-            import json as _json
             summary_export = {
                 "export_date": pd.Timestamp.now().isoformat(),
                 "n_trades":    int(n),
@@ -529,7 +530,7 @@ with t_export:
             }
             st.download_button(
                 "⬇ Résumé JSON",
-                data=_json.dumps(summary_export, indent=2).encode("utf-8"),
+                data=json.dumps(summary_export, indent=2).encode("utf-8"),
                 file_name=f"journal_summary_{pd.Timestamp.now().strftime('%Y%m%d')}.json",
                 mime="application/json",
                 use_container_width=True,

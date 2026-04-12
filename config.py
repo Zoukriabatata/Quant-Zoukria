@@ -32,4 +32,8 @@ BAND_K          = float(os.environ.get("BAND_K",          "3.25"))
 SL_MULT         = float(os.environ.get("SL_MULT",         "0.75"))
 
 # ── Alertes ───────────────────────────────────────────────────────────
-NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "hurst-mnq-ryad")
+NTFY_TOPIC           = os.environ.get("NTFY_TOPIC", "hurst-mnq-ryad")
+DISCORD_STATUS_FILE  = os.environ.get("DISCORD_STATUS_FILE", str(_TMP / "discord_status.json"))
+
+# ── Limites journalières (Live Signal + Session Prep) ─────────────────
+DAILY_LOSS_LIM = float(os.environ.get("DAILY_LOSS_LIM", "600"))
