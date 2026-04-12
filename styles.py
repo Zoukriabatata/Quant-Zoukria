@@ -20,12 +20,12 @@ import streamlit as st
 # ════════════════════════════════════════════════════════════════════════════
 _TOKENS = """
 :root {
-  /* Backgrounds */
-  --bg-void:     #080b12;
-  --bg-base:     #0d1117;
-  --bg-surface:  #111827;
-  --bg-elevated: #161f2e;
-  --bg-glass:    rgba(17,24,39,0.70);
+  /* Backgrounds — pure black */
+  --bg-void:     #000000;
+  --bg-base:     #050505;
+  --bg-surface:  #0a0a0a;
+  --bg-elevated: #111111;
+  --bg-glass:    rgba(10,10,10,0.80);
 
   /* Accents */
   --accent-blue:   #3b82f6;

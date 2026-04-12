@@ -28,11 +28,11 @@ CYAN   = "#06b6d4"
 DARK   = dict(
     template="plotly_dark",
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="#0d1117",
+    plot_bgcolor="#050505",
     font=dict(color="#94a3b8", size=11,
               family="'JetBrains Mono','Space Grotesk',monospace"),
     margin=dict(t=40, b=30, l=50, r=20),
-    hoverlabel=dict(bgcolor="#161f2e", bordercolor="rgba(59,130,246,0.4)",
+    hoverlabel=dict(bgcolor="#0a0a0a", bordercolor="rgba(59,130,246,0.4)",
                     font=dict(size=12, family="JetBrains Mono", color="#f1f5f9")),
 )
 AXIS = dict(gridcolor="rgba(148,163,184,0.05)", linecolor="rgba(148,163,184,0.08)",

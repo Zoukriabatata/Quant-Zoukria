@@ -12,7 +12,7 @@ from scipy.stats import norm, gaussian_kde
 DARK = dict(
     template="plotly_dark",
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="#0d1117",
+    plot_bgcolor="#050505",
     font=dict(
         color="#94a3b8",
         size=11,
@@ -20,14 +20,14 @@ DARK = dict(
     ),
     margin=dict(t=48, b=40, l=52, r=24),
     legend=dict(
-        bgcolor="rgba(13,17,23,0.85)",
+        bgcolor="rgba(0,0,0,0.9)",
         bordercolor="rgba(148,163,184,0.10)",
         borderwidth=1,
         font=dict(size=11, color="#94a3b8"),
         itemsizing="constant",
     ),
     hoverlabel=dict(
-        bgcolor="#161f2e",
+        bgcolor="#0a0a0a",
         bordercolor="rgba(59,130,246,0.40)",
         font=dict(size=12, family="JetBrains Mono", color="#f1f5f9"),
     ),

@@ -26,11 +26,11 @@ from styles import inject as _inj; _inj()
 DARK = dict(
     template="plotly_dark",
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="#0d1117",
+    plot_bgcolor="#050505",
     font=dict(color="#94a3b8", size=11,
               family="'JetBrains Mono','Space Grotesk',monospace"),
     margin=dict(t=48, b=40, l=52, r=24),
-    hoverlabel=dict(bgcolor="#161f2e", bordercolor="rgba(59,130,246,0.4)",
+    hoverlabel=dict(bgcolor="#0a0a0a", bordercolor="rgba(59,130,246,0.4)",
                     font=dict(size=12, family="JetBrains Mono", color="#f1f5f9")),
 )
 TEAL, CYAN, GREEN, RED, YELLOW, ORANGE, MAGENTA = (
