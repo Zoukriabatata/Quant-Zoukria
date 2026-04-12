@@ -36,8 +36,10 @@ except ImportError:
 st.set_page_config(page_title="Live Signal", page_icon="⚡", layout="wide")
 from styles import inject as _inj; _inj()
 
+from config import (DXFEED_FILE, JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET,
+                   NTFY_TOPIC as _NTFY_TOPIC)
+
 SYMBOL          = "NQ=F"
-DXFEED_FILE     = r"C:\tmp\mnq_live.json"   # écrit par dxfeed_bridge.js
 HURST_THRESHOLD = 0.52
 HURST_WIN       = 60        # fenêtre rolling returns — identique backtest
 LOOKBACK        = 30
@@ -59,11 +61,7 @@ DISCORD_WEBHOOK = (
     st.secrets.get("DISCORD_WEBHOOK", None) or
     os.environ.get("DISCORD_WEBHOOK", "")
 )
-NTFY_TOPIC      = os.environ.get("NTFY_TOPIC", "hurst-mnq-ryad")
-
-JOURNAL_DB      = r"C:\tmp\mnq_journal.db"
-CHALLENGE_DD    = 2500.0   # DD max 4PropTrader
-CHALLENGE_TARGET = 3000.0  # Profit target
+NTFY_TOPIC      = _NTFY_TOPIC
 
 PARIS = pytz.timezone("Europe/Paris")
 

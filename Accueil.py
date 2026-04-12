@@ -2,14 +2,10 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from styles import inject as _inject_styles
+from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET
 
 st.set_page_config(page_title="Quant Maths", page_icon="⚡", layout="wide")
 _inject_styles()
-
-# ── Journal stats ─────────────────────────────────────────────────────
-JOURNAL_DB       = r"C:\tmp\mnq_journal.db"
-CHALLENGE_DD     = 2500.0
-CHALLENGE_TARGET = 3000.0
 
 def _load_stats():
     try:

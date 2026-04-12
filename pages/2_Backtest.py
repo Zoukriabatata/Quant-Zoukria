@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from config import MNQ_CSV
 
 st.set_page_config(page_title="Backtest Hurst_MR", page_icon="📊", layout="wide")
 from styles import inject as _inj; _inj()
@@ -60,11 +61,9 @@ st.markdown("""
 # ═══════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ═══════════════════════════════════════════════════════════════════════
-CSV_DEFAULT = r"C:\Users\ryadb\Downloads\5 ANS DATA MNQ OHLCV M1\glbx-mdp3-20210405-20260404.ohlcv-1m.csv"
-
 with st.sidebar:
     st.header("Données")
-    csv_path = st.text_input("CSV MNQ M1", value=CSV_DEFAULT)
+    csv_path = st.text_input("CSV MNQ M1", value=MNQ_CSV)
     st.markdown("---")
     st.header("Hurst_MR")
     hurst_threshold = st.slider("Seuil Hurst H <", 0.35, 0.60, 0.52, 0.01,

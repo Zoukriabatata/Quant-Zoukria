@@ -7,16 +7,14 @@ from pathlib import Path
 from datetime import datetime
 import streamlit as st
 import pytz
+from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET
 
 st.set_page_config(page_title="Session Prep", page_icon="🎯", layout="wide")
 from styles import inject as _inj; _inj()
 
 # ── Config ────────────────────────────────────────────────────────────
-JOURNAL_DB       = r"C:\tmp\mnq_journal.db"
-CHALLENGE_DD     = 2500.0
-CHALLENGE_TARGET = 3000.0
-PARIS            = pytz.timezone("Europe/Paris")
-CHECKLIST_FILE   = Path(__file__).parent.parent / ".checklist.json"
+PARIS          = pytz.timezone("Europe/Paris")
+CHECKLIST_FILE = Path(__file__).parent.parent / ".checklist.json"
 
 # ── Journal stats ─────────────────────────────────────────────────────
 def _load_stats():
