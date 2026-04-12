@@ -38,145 +38,153 @@ st.markdown("""
 .block-container { padding-top: 0 !important; max-width: 1100px; }
 
 /* ── Hero ── */
-.hero {
-    padding: 3.5rem 2rem 1.5rem;
-    text-align: center;
-}
+.hero { padding: 3rem 1.5rem 1.2rem; text-align: center; }
 .hero-tag {
-    display: inline-block; padding: 0.3rem 1rem;
-    border: 1px solid rgba(60,196,183,0.35); border-radius: 999px;
-    font-size: 0.65rem; letter-spacing: 0.2em; color: #3CC4B7;
-    margin-bottom: 1.5rem; font-family: 'JetBrains Mono', monospace;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: .32rem 1rem;
+    border: 1px solid var(--border-active); border-radius: var(--r-pill);
+    font-size: .64rem; letter-spacing: .18em; color: var(--accent-cyan);
+    margin-bottom: 1.4rem; font-family: 'JetBrains Mono',monospace;
+    background: rgba(59,130,246,0.06);
 }
 .hero-title {
-    font-size: clamp(2.8rem, 6vw, 5.5rem); font-weight: 700;
-    line-height: 1.0; letter-spacing: -0.03em; color: #fff; margin: 0;
+    font-size: clamp(2.8rem,6vw,5.2rem); font-weight: 700;
+    line-height: 1.0; letter-spacing: -0.03em;
+    color: var(--text-primary); margin: 0;
 }
 .hero-title span {
-    background: linear-gradient(135deg, #3CC4B7 0%, #00e5ff 50%, #7b61ff 100%);
+    background: var(--grad-primary);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 .hero-sub {
-    color: #444; font-size: 0.88rem; margin-top: 1rem;
-    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.06em;
+    color: var(--text-muted); font-size: .85rem; margin-top: 1rem;
+    font-family: 'JetBrains Mono',monospace; letter-spacing: .06em;
 }
 
 /* ── Challenge bar ── */
 .challenge-wrap {
-    max-width: 700px; margin: 1.5rem auto 0;
-    background: #0a0a0a; border: 1px solid #1a1a1a;
-    border-radius: 10px; padding: 1rem 1.5rem;
+    max-width: 680px; margin: 1.4rem auto 0;
+    background: var(--bg-surface); border: 1px solid var(--border-default);
+    border-radius: var(--r-lg); padding: 1rem 1.5rem;
+    box-shadow: var(--shadow-card);
 }
 .challenge-header {
     display: flex; justify-content: space-between;
-    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
-    color: #444; margin-bottom: 0.6rem;
+    font-family: 'JetBrains Mono',monospace; font-size: .7rem;
+    color: var(--text-muted); margin-bottom: .6rem;
 }
-.challenge-pct { color: #3CC4B7; font-weight: 700; }
+.challenge-pct { color: var(--accent-cyan); font-weight: 700; }
 .bar-track {
-    background: #111; border-radius: 999px; height: 6px; overflow: hidden;
+    background: var(--bg-elevated); border-radius: var(--r-pill); height: 6px; overflow: hidden;
 }
 .bar-fill {
-    height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, #3CC4B7, #00e5ff);
-    transition: width 0.6s ease;
+    height: 100%; border-radius: var(--r-pill);
+    background: var(--grad-primary); transition: width .6s ease;
 }
 
 /* ── Stats row ── */
 .stats-row {
     display: flex; justify-content: center; gap: 0;
-    border: 1px solid #1a1a1a; border-radius: 12px; overflow: hidden;
-    margin: 1.5rem auto; max-width: 900px;
+    border: 1px solid var(--border-default); border-radius: var(--r-lg);
+    overflow: hidden; margin: 1.2rem auto; max-width: 920px;
+    box-shadow: var(--shadow-card);
 }
 .stat-cell {
     flex: 1; padding: 1.2rem 1rem; text-align: center;
-    border-right: 1px solid #1a1a1a; transition: background 0.2s;
+    border-right: 1px solid var(--border-subtle);
+    background: var(--bg-surface); transition: var(--t-fast);
 }
 .stat-cell:last-child { border-right: none; }
-.stat-cell:hover { background: #0f0f0f; }
+.stat-cell:hover { background: var(--bg-elevated); }
 .stat-num {
-    font-size: 1.8rem; font-weight: 700; color: #3CC4B7;
-    font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em;
+    font-size: 1.8rem; font-weight: 700; color: var(--accent-cyan);
+    font-family: 'JetBrains Mono',monospace; letter-spacing: -0.02em;
 }
-.stat-num.green { color: #00ff88; }
-.stat-num.red   { color: #ff3366; }
-.stat-num.white { color: #ffffff; }
+.stat-num.green { color: var(--accent-green); }
+.stat-num.red   { color: var(--accent-red);   }
+.stat-num.white { color: var(--text-primary);  }
 .stat-lbl {
-    font-size: 0.62rem; color: #444; letter-spacing: 0.15em;
-    text-transform: uppercase; margin-top: 0.3rem;
+    font-size: .62rem; color: var(--text-muted); letter-spacing: .15em;
+    text-transform: uppercase; margin-top: .3rem;
 }
 .stat-live {
-    font-size: 0.55rem; color: #3CC4B7; font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.1em; margin-top: 0.2rem;
-}
-
-/* ── Section label ── */
-.sec-label {
-    font-family: 'JetBrains Mono', monospace; font-size: 0.6rem;
-    font-weight: 700; letter-spacing: 0.2em; color: #3CC4B7;
-    text-transform: uppercase; margin: 2rem 0 0.8rem;
-    padding-bottom: 0.4rem; border-bottom: 1px solid #1a1a1a;
+    font-size: .55rem; color: var(--accent-cyan);
+    font-family: 'JetBrains Mono',monospace; letter-spacing: .1em; margin-top: .2rem;
 }
 
 /* ── Cards ── */
 .cards-grid {
-    display: grid; grid-template-columns: repeat(3, 1fr);
-    gap: 1px; background: #111; border: 1px solid #111;
-    border-radius: 12px; overflow: hidden; margin: 0.5rem 0;
+    display: grid; grid-template-columns: repeat(3,1fr);
+    gap: 12px; margin: .5rem 0;
 }
-.card { background: #060606; padding: 1.8rem; transition: background 0.2s; position: relative; }
-.card:hover { background: #0d0d0d; }
+.card {
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-lg); padding: 1.8rem;
+    box-shadow: var(--shadow-card);
+    background-image: var(--grad-surface);
+    transition: var(--t-normal); position: relative; overflow: hidden;
+}
 .card::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    opacity: 0; transition: opacity 0.3s;
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
 }
-.card:hover::before { opacity: 1; }
-.card-1::before { background: linear-gradient(90deg, #3CC4B7, transparent); }
-.card-2::before { background: linear-gradient(90deg, #7b61ff, transparent); }
-.card-3::before { background: linear-gradient(90deg, #00e5ff, transparent); }
-.card-num { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: #2a2a2a; letter-spacing: 0.1em; margin-bottom: 1.2rem; }
-.card-title { font-size: 1rem; font-weight: 600; color: #fff; margin-bottom: 0.6rem; }
-.card-desc { color: #555; font-size: 0.82rem; line-height: 1.75; }
+.card-1::before { background: var(--grad-primary); }
+.card-2::before { background: linear-gradient(135deg,#8b5cf6,#3b82f6); }
+.card-3::before { background: var(--grad-green); }
+.card:hover { border-color: var(--border-active); box-shadow: var(--shadow-card),var(--shadow-glow); transform: translateY(-3px); }
+.card-num {
+    font-family: 'JetBrains Mono',monospace; font-size: .62rem;
+    color: var(--text-muted); letter-spacing: .12em; margin-bottom: 1rem;
+    opacity: .5;
+}
+.card-title { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin-bottom: .55rem; }
+.card-desc { color: var(--text-muted); font-size: .82rem; line-height: 1.75; }
 .card-tag {
-    display: inline-block; margin-top: 1.2rem; padding: 0.2rem 0.7rem;
-    border-radius: 4px; font-size: 0.6rem; font-weight: 600;
-    letter-spacing: 0.1em; font-family: 'JetBrains Mono', monospace;
+    display: inline-flex; align-items: center; margin-top: 1.2rem;
+    padding: .25rem .75rem; border-radius: var(--r-pill);
+    font-size: .6rem; font-weight: 600; letter-spacing: .08em;
+    font-family: 'JetBrains Mono',monospace;
+    border: 1px solid transparent;
 }
-.tag-teal   { background: rgba(60,196,183,0.1);  color: #3CC4B7; }
-.tag-purple { background: rgba(123,97,255,0.1);  color: #7b61ff; }
-.tag-cyan   { background: rgba(0,229,255,0.1);   color: #00e5ff; }
+.tag-teal   { background:rgba(6,182,212,0.12);  color:#67e8f9; border-color:rgba(6,182,212,0.25); }
+.tag-purple { background:rgba(139,92,246,0.12); color:#c4b5fd; border-color:rgba(139,92,246,0.25); }
+.tag-cyan   { background:rgba(59,130,246,0.12); color:#93c5fd; border-color:rgba(59,130,246,0.25); }
 
 /* ── Arch ── */
 .arch {
-    background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 12px;
-    padding: 1.4rem 1.8rem; font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem; line-height: 2.1; margin-top: 0.5rem;
+    background: var(--bg-surface); border: 1px solid var(--border-default);
+    border-radius: var(--r-lg); padding: 1.4rem 1.8rem;
+    font-family: 'JetBrains Mono',monospace; font-size: .8rem; line-height: 2.1;
+    margin-top: .5rem; box-shadow: var(--shadow-card);
 }
 .arch-row { display: flex; gap: 1rem; align-items: center; }
-.arch-key   { color: #3CC4B7; min-width: 110px; font-weight: 700; }
-.arch-arrow { color: #2a2a2a; }
-.arch-val   { color: #666; }
+.arch-key   { color: var(--accent-cyan); min-width: 110px; font-weight: 700; }
+.arch-arrow { color: var(--border-default); }
+.arch-val   { color: var(--text-muted); }
 
 /* ── DD gauge ── */
 .dd-wrap {
-    background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 10px;
-    padding: 1rem 1.5rem; margin-top: 1rem;
+    background: var(--bg-surface); border: 1px solid var(--border-default);
+    border-radius: var(--r-lg); padding: 1rem 1.5rem; margin-top: 1rem;
+    box-shadow: var(--shadow-card);
 }
 .dd-header {
     display: flex; justify-content: space-between;
-    font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: #444;
-    margin-bottom: 0.5rem;
+    font-family: 'JetBrains Mono',monospace; font-size: .68rem;
+    color: var(--text-muted); margin-bottom: .5rem;
 }
 .dd-pct { font-weight: 700; }
-.dd-green { color: #00ff88; }
-.dd-yellow { color: #ffd600; }
-.dd-red { color: #ff3366; }
-.bar-track-dd { background: #111; border-radius: 999px; height: 5px; overflow: hidden; }
-.bar-fill-dd     { height:100%; border-radius:999px; background: linear-gradient(90deg,#ff3366,#ff9100); }
+.dd-green  { color: var(--accent-green); }
+.dd-yellow { color: var(--accent-amber); }
+.dd-red    { color: var(--accent-red);   }
+.bar-track-dd { background: var(--bg-elevated); border-radius: var(--r-pill); height: 5px; overflow: hidden; }
+.bar-fill-dd  { height:100%; border-radius:var(--r-pill); background: var(--grad-red); }
 
 .footer {
-    text-align: center; padding: 2rem; color: #1e1e1e;
-    font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.12em;
+    text-align: center; padding: 2rem; color: var(--border-default);
+    font-size: .7rem; font-family: 'JetBrains Mono',monospace; letter-spacing: .12em;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -198,10 +206,13 @@ prog_pct = round(s["prog"], 1)
 pnl_sign = "+" if s["pnl"] >= 0 else ""
 
 st.markdown(f"""
-<div class="hero">
-    <div class="hero-tag">HURST MR · MNQ FUTURES · 4PROPTRADER 50K</div>
+<div class="hero anim-fade-up">
+    <div class="hero-tag">
+        <span class="qm-live-dot qm-live-dot--green"></span>
+        HURST MR · MNQ FUTURES · 4PROPTRADER 50K
+    </div>
     <h1 class="hero-title">QUANT<br><span>MATHS</span></h1>
-    <p class="hero-sub">Hurst_MR · HMM Regime · 10% DD Risk · 4PropTrader Challenge</p>
+    <p class="hero-sub">Hurst_MR · K=3.25σ · Walk-Forward Validated · 4PropTrader Challenge</p>
     <div class="challenge-wrap">
         <div class="challenge-header">
             <span>CHALLENGE PROGRESS</span>
@@ -276,35 +287,35 @@ st.markdown('<div class="sec-label">Navigation</div>', unsafe_allow_html=True)
 
 st.markdown("""
 <div class="cards-grid">
-    <div class="card card-1">
-        <div class="card-num">01</div>
-        <div class="card-title">Étude</div>
+    <div class="card card-1 anim-fade-up anim-stagger-1">
+        <div class="card-num">01 — FORMATION</div>
+        <div class="card-title">📚 Étude</div>
         <div class="card-desc">
             Roadmap structurée — fBm, Hurst R/S,<br>
             HMM, GARCH, Z-score.<br>
-            Fiches · Formules · Quizz.
+            Fiches · Formules · Visualisations.
         </div>
-        <span class="card-tag tag-teal">THÉORIE</span>
+        <span class="card-tag tag-teal">THÉORIE QUANTITATIVE</span>
     </div>
-    <div class="card card-2">
-        <div class="card-num">02</div>
-        <div class="card-title">Backtest Hurst_MR</div>
+    <div class="card card-2 anim-fade-up anim-stagger-2">
+        <div class="card-num">02 — RECHERCHE</div>
+        <div class="card-title">📊 Backtest Hurst_MR</div>
         <div class="card-desc">
             5 ans MNQ M1 Databento.<br>
-            Walk-forward · HMM filter · Monte Carlo.<br>
-            Paramètres validés en production.
+            Walk-forward · PF 2.03 · Sharpe 2.50.<br>
+            Validé hors-sample sur 8 fenêtres OOS.
         </div>
-        <span class="card-tag tag-purple">5 ANS · MNQ M1</span>
+        <span class="card-tag tag-purple">5 ANS · WALK-FORWARD ✓</span>
     </div>
-    <div class="card card-3">
-        <div class="card-num">03</div>
-        <div class="card-title">Live Signal</div>
+    <div class="card card-3 anim-fade-up anim-stagger-3">
+        <div class="card-num">03 — EXÉCUTION</div>
+        <div class="card-title">⚡ Live Signal</div>
         <div class="card-desc">
             Ticks temps réel via dxFeed 4PropTrader.<br>
-            Hurst rolling · HMM · Bip + Discord.<br>
+            Hurst rolling · Z-score · Discord push.<br>
             Journal intégré · Stats challenge live.
         </div>
-        <span class="card-tag tag-cyan">DXFEED · MNQ</span>
+        <span class="card-tag tag-cyan">DXFEED · TEMPS RÉEL</span>
     </div>
 </div>
 """, unsafe_allow_html=True)

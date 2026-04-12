@@ -19,14 +19,21 @@ from styles import inject as _inj; _inj()
 # ═══════════════════════════════════════════════════════════════════════
 DARK = dict(
     template="plotly_dark",
-    paper_bgcolor="rgba(6,6,6,0)",
-    plot_bgcolor="rgba(10,10,10,1)",
-    font=dict(color="#888", size=11, family="JetBrains Mono"),
-    margin=dict(t=45, b=35, l=50, r=20),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="#0d1117",
+    font=dict(color="#94a3b8", size=11,
+              family="'JetBrains Mono','Space Grotesk',monospace"),
+    margin=dict(t=48, b=40, l=52, r=24),
+    legend=dict(bgcolor="rgba(13,17,23,0.85)",
+                bordercolor="rgba(148,163,184,0.10)", borderwidth=1,
+                font=dict(size=11, color="#94a3b8"), itemsizing="constant"),
+    hoverlabel=dict(bgcolor="#161f2e", bordercolor="rgba(59,130,246,0.4)",
+                    font=dict(size=12, family="JetBrains Mono", color="#f1f5f9")),
 )
 TEAL, GREEN, RED, YELLOW, CYAN, ORANGE, MAGENTA = (
-    "#3CC4B7", "#00ff88", "#ff3366", "#ffd600", "#00e5ff", "#ff9100", "#ff00e5"
+    "#06b6d4", "#10b981", "#ef4444", "#f59e0b", "#06b6d4", "#f97316", "#8b5cf6"
 )
+BLUE = "#3b82f6"
 
 def _css(raw):
     import re
@@ -35,20 +42,17 @@ def _css(raw):
 
 _css("""
 .block-container{padding-top:1.2rem;max-width:1300px}
-.ph{padding:1.2rem 0 .5rem;border-bottom:1px solid #1a1a1a;margin-bottom:1.2rem}
-.ph-tag{font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase}
-.ph-title{font-size:1.7rem;font-weight:700;color:#fff;letter-spacing:-.02em;margin:.2rem 0 0}
-.stat-row{display:flex;gap:0;border:1px solid #1a1a1a;border-radius:10px;overflow:hidden;margin:.5rem 0 1rem}
-.stat-cell{flex:1;padding:1.1rem .9rem;text-align:center;border-right:1px solid #1a1a1a;background:#060606}
-.stat-cell:last-child{border-right:none}
-.stat-num{font-size:1.5rem;font-weight:700;font-family:'JetBrains Mono',monospace}
-.stat-lbl{font-size:.55rem;color:#444;letter-spacing:.14em;text-transform:uppercase;margin-top:.2rem}
-.info-box{background:#080808;border:1px solid #141414;border-radius:10px;padding:1rem 1.3rem;margin:.4rem 0;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:2}
-.section-lbl{font-family:'JetBrains Mono',monospace;font-size:.58rem;font-weight:700;letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase;margin:1.5rem 0 .7rem}
+.stat-num{font-size:1.5rem;}
+.info-box{
+  background:var(--bg-surface);border:1px solid var(--border-default);
+  border-radius:var(--r-md);padding:1rem 1.3rem;margin:.4rem 0;
+  font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:2;
+  box-shadow:var(--shadow-card);
+}
 """)
 
 st.markdown("""
-<div class="ph">
+<div class="ph anim-fade-up">
   <div class="ph-tag">ÉTUDE · MNQ M1 CSV · LEC 25 + LEC 51</div>
   <div class="ph-title">Hurst_MR — Analyse Complète</div>
 </div>""", unsafe_allow_html=True)

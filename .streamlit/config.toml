@@ -1,9 +1,14 @@
 [theme]
-primaryColor = "#00e5ff"
-backgroundColor = "#0d1117"
-secondaryBackgroundColor = "#161b22"
-textColor = "#c9d1d9"
-font = "monospace"
+base                    = "dark"
+backgroundColor         = "#080b12"
+secondaryBackgroundColor = "#111827"
+textColor               = "#f1f5f9"
+primaryColor            = "#3b82f6"
+font                    = "sans serif"
 
 [server]
-headless = true
+headless   = true
+runOnSave  = true
+
+[browser]
+gatherUsageStats = false

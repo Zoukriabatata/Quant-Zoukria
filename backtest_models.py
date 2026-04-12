@@ -25,21 +25,25 @@ from styles import inject as _inj; _inj()
 # ── Theme ──────────────────────────────────────────────────────────────────
 DARK = dict(
     template="plotly_dark",
-    paper_bgcolor="rgba(6,6,6,0)",
-    plot_bgcolor="rgba(10,10,10,1)",
-    font=dict(color="#888", size=12, family="JetBrains Mono"),
-    margin=dict(t=50, b=40, l=50, r=30),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="#0d1117",
+    font=dict(color="#94a3b8", size=11,
+              family="'JetBrains Mono','Space Grotesk',monospace"),
+    margin=dict(t=48, b=40, l=52, r=24),
+    hoverlabel=dict(bgcolor="#161f2e", bordercolor="rgba(59,130,246,0.4)",
+                    font=dict(size=12, family="JetBrains Mono", color="#f1f5f9")),
 )
 TEAL, CYAN, GREEN, RED, YELLOW, ORANGE, MAGENTA = (
-    "#3CC4B7", "#00e5ff", "#00ff88", "#ff3366", "#ffd600", "#ff9100", "#ff00e5"
+    "#06b6d4", "#06b6d4", "#10b981", "#ef4444", "#f59e0b", "#f97316", "#8b5cf6"
 )
+BLUE = "#3b82f6"
 MODEL_COLORS = {
     "GARCH_MR":    ORANGE,
     "HMM_Regime":  MAGENTA,
-    "Markov_Bot":  "#ff6b35",
-    "Heston_Vol":  "#a8ff78",
+    "Markov_Bot":  "#f97316",
+    "Heston_Vol":  "#10b981",
     "ARIMA_MR":    CYAN,
-    "Hurst_MR":    YELLOW,
+    "Hurst_MR":    BLUE,
 }
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -8,37 +8,112 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.stats import norm, gaussian_kde
 
-# ── Shared dark theme ──────────────────────────────────────────────
+# ── Institutional dark theme — QuantMaster v2 ─────────────────────
 DARK = dict(
     template="plotly_dark",
-    paper_bgcolor="rgba(6,6,6,0)",
-    plot_bgcolor="rgba(8,8,8,1)",
-    font=dict(color="#888", size=12, family="JetBrains Mono"),
-    margin=dict(t=44, b=36, l=48, r=20),
-    legend=dict(
-        bgcolor="rgba(0,0,0,0)",
-        bordercolor="rgba(255,255,255,0.05)",
-        borderwidth=1,
-        font=dict(color="#555", size=11),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="#0d1117",
+    font=dict(
+        color="#94a3b8",
+        size=11,
+        family="'JetBrains Mono','Space Grotesk',monospace",
     ),
+    margin=dict(t=48, b=40, l=52, r=24),
+    legend=dict(
+        bgcolor="rgba(13,17,23,0.85)",
+        bordercolor="rgba(148,163,184,0.10)",
+        borderwidth=1,
+        font=dict(size=11, color="#94a3b8"),
+        itemsizing="constant",
+    ),
+    hoverlabel=dict(
+        bgcolor="#161f2e",
+        bordercolor="rgba(59,130,246,0.40)",
+        font=dict(size=12, family="JetBrains Mono", color="#f1f5f9"),
+    ),
+    colorway=[
+        "#3b82f6", "#10b981", "#ef4444", "#f59e0b",
+        "#8b5cf6", "#06b6d4", "#f97316",
+    ],
 )
-# Axis style appliqué individuellement par chart (ne pas mettre dans DARK
-# pour éviter les conflits quand une fonction passe xaxis/yaxis explicitement)
+
+# Axis style — appliqué individuellement (évite conflits multi-axes)
 AXIS = dict(
-    gridcolor="rgba(255,255,255,0.04)",
-    linecolor="#1a1a1a",
-    tickfont=dict(color="#444", size=11),
-    title_font=dict(color="#555", size=11),
-    zeroline=False,
+    gridcolor="rgba(148,163,184,0.05)",
+    gridwidth=1,
+    linecolor="rgba(148,163,184,0.08)",
+    linewidth=1,
+    tickfont=dict(color="#475569", size=10, family="JetBrains Mono"),
+    title_font=dict(color="#64748b", size=11),
+    zeroline=True,
+    zerolinecolor="rgba(148,163,184,0.10)",
+    zerolinewidth=1,
+    showgrid=True,
+    ticks="outside",
+    tickcolor="rgba(148,163,184,0.10)",
+    ticklen=4,
 )
-TEAL    = "#3CC4B7"
-CYAN    = "#00e5ff"
-MAGENTA = "#ff00e5"
-GREEN   = "#00ff88"
-RED     = "#ff3366"
-YELLOW  = "#ffd600"
-ORANGE  = "#ff9100"
-WHITE_50 = "rgba(255,255,255,0.4)"
+
+# ── Color palette (backward compat + new tokens) ───────────────────
+TEAL    = "#06b6d4"   # accent-cyan
+CYAN    = "#06b6d4"
+MAGENTA = "#8b5cf6"   # accent-purple
+GREEN   = "#10b981"   # accent-green
+RED     = "#ef4444"   # accent-red
+YELLOW  = "#f59e0b"   # accent-amber
+ORANGE  = "#f97316"
+BLUE    = "#3b82f6"   # accent-blue
+WHITE_50 = "rgba(241,245,249,0.35)"
+
+# Gradient fill colors for traces
+_FILL_BLUE  = "rgba(59,130,246,0.08)"
+_FILL_GREEN = "rgba(16,185,129,0.08)"
+_FILL_RED   = "rgba(239,68,68,0.08)"
+
+
+# ── upgrade_figure() — apply institutional finish to any fig ───────
+def upgrade_figure(fig: go.Figure, equity: bool = False) -> go.Figure:
+    """Apply consistent institutional styling to a Plotly figure.
+
+    Args:
+        fig:    Any go.Figure already configured with DARK layout.
+        equity: If True, first Scatter trace gets blue fill gradient.
+
+    Returns:
+        The same fig, mutated in place and returned for chaining.
+    """
+    for i, trace in enumerate(fig.data):
+        # Scatter / line traces
+        if isinstance(trace, go.Scatter):
+            if trace.mode and "lines" in str(trace.mode):
+                if trace.line and not trace.line.width:
+                    trace.line.width = 2
+                # Equity curve: blue gradient fill
+                if equity and i == 0 and trace.fill in (None, "tozeroy", "tonexty"):
+                    trace.update(
+                        fill="tozeroy",
+                        fillcolor=_FILL_BLUE,
+                        line=dict(color=BLUE, width=2),
+                    )
+            # Default hover template if none set
+            if not trace.hovertemplate:
+                trace.hovertemplate = "<b>%{x}</b><br>%{y:.4f}<extra></extra>"
+
+        # Bar traces — apply conditional green/red coloring if not already set
+        elif isinstance(trace, go.Bar):
+            if trace.marker and trace.marker.color is None:
+                trace.marker.color = BLUE
+            if not trace.hovertemplate:
+                trace.hovertemplate = "<b>%{x}</b><br>%{y:.4f}<extra></extra>"
+
+    # Title font upgrade
+    if fig.layout.title and fig.layout.title.text:
+        fig.update_layout(
+            title=dict(
+                font=dict(size=13, color="#94a3b8", family="Space Grotesk"),
+            )
+        )
+    return fig
 
 
 # ===================================================================

@@ -65,18 +65,25 @@ NTFY_TOPIC      = _NTFY_TOPIC
 
 PARIS = pytz.timezone("Europe/Paris")
 
-TEAL   = "#3CC4B7"
-GREEN  = "#00ff88"
-RED    = "#ff3366"
-YELLOW = "#ffd600"
-CYAN   = "#00e5ff"
-ORANGE = "#ff9100"
+TEAL   = "#06b6d4"
+GREEN  = "#10b981"
+RED    = "#ef4444"
+YELLOW = "#f59e0b"
+CYAN   = "#06b6d4"
+ORANGE = "#f97316"
+BLUE   = "#3b82f6"
 DARK   = dict(
     template="plotly_dark",
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(10,10,10,1)",
-    font=dict(color="#888", size=11, family="JetBrains Mono"),
-    margin=dict(t=40, b=30, l=50, r=20),
+    plot_bgcolor="#0d1117",
+    font=dict(color="#94a3b8", size=11,
+              family="'JetBrains Mono','Space Grotesk',monospace"),
+    margin=dict(t=48, b=40, l=52, r=24),
+    legend=dict(bgcolor="rgba(13,17,23,0.85)",
+                bordercolor="rgba(148,163,184,0.10)", borderwidth=1,
+                font=dict(size=11, color="#94a3b8"), itemsizing="constant"),
+    hoverlabel=dict(bgcolor="#161f2e", bordercolor="rgba(59,130,246,0.4)",
+                    font=dict(size=12, family="JetBrains Mono", color="#f1f5f9")),
 )
 
 # ═══════════════════════════════════════════════════════
@@ -137,44 +144,69 @@ st.markdown("""
 <style>
 .block-container { padding-top:1rem; max-width:1500px; }
 
+/* KPI cards — via design system tokens */
 .kpi-card {
-    background:#0a0a0a; border:1px solid #1a1a1a; border-radius:12px;
-    padding:1rem 1.2rem; text-align:center; transition:border-color .2s;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-lg);
+    padding: 1rem 1.2rem; text-align: center;
+    transition: var(--t-normal);
+    box-shadow: var(--shadow-card);
 }
-.kpi-card:hover { border-color:#2a2a2a; }
-.kpi-value { font-size:1.9rem; font-weight:700; font-family:'JetBrains Mono',monospace; line-height:1.1; }
-.kpi-label { font-size:0.68rem; color:#444; text-transform:uppercase; letter-spacing:.12em; margin-top:.35rem; }
+.kpi-card:hover {
+    border-color: var(--border-active);
+    box-shadow: var(--shadow-card), var(--shadow-glow);
+    transform: translateY(-2px);
+}
+.kpi-value {
+    font-size: 1.9rem; font-weight: 700;
+    font-family: 'JetBrains Mono',monospace; line-height: 1.1;
+    color: var(--text-primary);
+}
+.kpi-label {
+    font-size: .68rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .12em; margin-top: .35rem;
+}
 
+/* Signal cards with animated glow border */
 .sig-long {
-    background:linear-gradient(135deg,#041a0e,#071f12);
-    border:2px solid #00ff88; border-radius:12px; padding:1.4rem 1.6rem;
-    box-shadow:0 0 24px rgba(0,255,136,.08);
+    background: linear-gradient(135deg,rgba(16,185,129,0.06),rgba(16,185,129,0.02));
+    border: 1.5px solid rgba(16,185,129,0.40);
+    border-radius: var(--r-lg); padding: 1.4rem 1.6rem;
+    animation: pulseGlow--green 3s ease-in-out infinite;
 }
 .sig-short {
-    background:linear-gradient(135deg,#1a040a,#1f0710);
-    border:2px solid #ff3366; border-radius:12px; padding:1.4rem 1.6rem;
-    box-shadow:0 0 24px rgba(255,51,102,.08);
+    background: linear-gradient(135deg,rgba(239,68,68,0.06),rgba(239,68,68,0.02));
+    border: 1.5px solid rgba(239,68,68,0.40);
+    border-radius: var(--r-lg); padding: 1.4rem 1.6rem;
+    animation: pulseGlow--red 3s ease-in-out infinite;
 }
 .sig-none {
-    background:#0a0a0a; border:1px solid #1a1a1a; border-radius:12px;
-    padding:1.4rem 1.6rem; color:#333; text-align:center;
+    background: var(--bg-surface); border: 1px solid var(--border-default);
+    border-radius: var(--r-lg); padding: 1.4rem 1.6rem;
+    color: var(--text-muted); text-align: center;
 }
-.ctx-box   { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:12px; padding:1.1rem 1.4rem; }
-.gauge-track { background:#111; border-radius:999px; height:6px; overflow:hidden; margin:4px 0 10px; }
-.gauge-fill  { height:100%; border-radius:999px; transition:width .4s; }
+.ctx-box {
+    background: var(--bg-surface); border: 1px solid var(--border-default);
+    border-radius: var(--r-lg); padding: 1.1rem 1.4rem;
+    transition: var(--t-normal);
+}
+.ctx-box:hover { border-color: var(--border-active); }
+.gauge-track {
+    background: var(--bg-elevated); border-radius: var(--r-pill);
+    height: 5px; overflow: hidden; margin: 4px 0 10px;
+}
+.gauge-fill { height: 100%; border-radius: var(--r-pill); transition: width .4s cubic-bezier(.16,1,.3,1); }
 .sec-label {
-    font-family:'JetBrains Mono',monospace; font-size:.62rem; font-weight:700;
-    letter-spacing:.18em; color:#3CC4B7; text-transform:uppercase;
-    margin:1.4rem 0 .6rem; padding-bottom:.4rem; border-bottom:1px solid #141414;
+    font-family: 'JetBrains Mono',monospace; font-size: .62rem; font-weight: 700;
+    letter-spacing: .18em; color: var(--accent-cyan); text-transform: uppercase;
+    margin: 1.4rem 0 .6rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border-subtle);
 }
+/* Legacy live-dot — now using .qm-live-dot */
 .live-dot {
-    display:inline-block; width:7px; height:7px; background:#00ff88;
-    border-radius:50%; margin-right:6px;
-    animation:pulse 1.5s infinite;
-}
-@keyframes pulse {
-    0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(0,255,136,.5); }
-    50%      { opacity:.7; box-shadow:0 0 0 5px rgba(0,255,136,0); }
+    display: inline-block; width: 7px; height: 7px;
+    background: var(--accent-green); border-radius: 50%; margin-right: 6px;
+    animation: pulseDot 1.6s ease-in-out infinite;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -393,34 +425,46 @@ now_ny = datetime.now(PARIS)
 with st.sidebar:
     st.markdown(f"""
     <div style="padding:.4rem 0 .8rem">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase">Live Signal</div>
-        <div style="font-size:1.3rem;font-weight:700;color:#fff;margin:.2rem 0">Hurst_MR</div>
-        <div style="font-size:.75rem;color:#555">{now_ny.strftime('%A %d %b %Y')}</div>
-        <div style="font-size:.85rem;color:#888;font-family:'JetBrains Mono',monospace;margin-top:.2rem">
-            <span class="live-dot"></span>{now_ny.strftime('%H:%M:%S')} Paris
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.58rem;
+                    letter-spacing:.2em;color:var(--accent-cyan);text-transform:uppercase">
+            Live Signal
+        </div>
+        <div style="font-size:1.25rem;font-weight:700;color:var(--text-primary);margin:.2rem 0;
+                    background:var(--grad-primary);-webkit-background-clip:text;
+                    -webkit-text-fill-color:transparent;background-clip:text">
+            Hurst_MR
+        </div>
+        <div style="font-size:.72rem;color:var(--text-muted)">{now_ny.strftime('%A %d %b %Y')}</div>
+        <div style="font-size:.82rem;color:var(--text-secondary);
+                    font-family:'JetBrains Mono',monospace;margin-top:.3rem;
+                    display:flex;align-items:center;gap:4px">
+            <span class="qm-live-dot qm-live-dot--green" style="width:6px;height:6px"></span>
+            {now_ny.strftime('%H:%M:%S')} Paris
         </div>
     </div>
     """, unsafe_allow_html=True)
     st.divider()
     st.markdown(f"""
-    <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;line-height:2;color:#555">
-        <span style="color:#3CC4B7">H seuil</span> &nbsp;&nbsp;&nbsp; {HURST_THRESHOLD}<br>
-        <span style="color:#3CC4B7">Band K</span> &nbsp;&nbsp;&nbsp; ±{BAND_K}σ<br>
-        <span style="color:#3CC4B7">Lookback</span> &nbsp; {LOOKBACK} barres<br>
-        <span style="color:#3CC4B7">SL</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {SL_MULT}×std<br>
-        <span style="color:#3CC4B7">TP</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Fair Value pure<br>
-        <span style="color:#3CC4B7">Skip open</span> {SKIP_OPEN_BARS} barres<br>
-        <span style="color:#3CC4B7">Skip close</span> {SKIP_CLOSE_BARS} barres<br>
-        <span style="color:#ff3366">Max trades</span> {MAX_TRADES_DAY}/jour<br>
-        <span style="color:#ff3366">Daily limit</span> {DAILY_LOSS_LIM:.0f}$
+    <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;line-height:2.1;
+                color:var(--text-muted)">
+        <span style="color:var(--accent-cyan)">H seuil</span>&nbsp;&nbsp;&nbsp;{HURST_THRESHOLD}<br>
+        <span style="color:var(--accent-cyan)">Band K</span>&nbsp;&nbsp;&nbsp;±{BAND_K}σ<br>
+        <span style="color:var(--accent-cyan)">Lookback</span>&nbsp;{LOOKBACK} barres<br>
+        <span style="color:var(--accent-cyan)">SL</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{SL_MULT}×std<br>
+        <span style="color:var(--accent-cyan)">TP</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Fair Value pure<br>
+        <span style="color:var(--accent-cyan)">Skip open</span> {SKIP_OPEN_BARS} barres<br>
+        <span style="color:var(--accent-cyan)">Skip close</span> {SKIP_CLOSE_BARS} barres<br>
+        <span style="color:var(--accent-red)">Max trades</span> {MAX_TRADES_DAY}/jour<br>
+        <span style="color:var(--accent-red)">Daily limit</span> {DAILY_LOSS_LIM:.0f}$
     </div>
     """, unsafe_allow_html=True)
     st.divider()
-    st.markdown(f"""
-    <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#333;line-height:1.8">
-        PF=2.06 · Sharpe=2.82<br>
-        MaxDD=4.3% · WR=29.4%<br>
-        928 trades · 5 ans
+    st.markdown("""
+    <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;
+                color:var(--text-muted);line-height:1.9">
+        <span style="color:var(--accent-green)">PF=2.03</span> · Sharpe=2.50<br>
+        MaxDD=5.5% · WR=29.4%<br>
+        1095 trades · 5 ans WF ✓
     </div>
     """, unsafe_allow_html=True)
 
@@ -433,19 +477,25 @@ sess_col = "#00ff88" if in_session else "#ff3366"
 sess_txt = "SESSION ACTIVE" if in_session else "HORS SESSION"
 st.markdown(f"""
 <div style="display:flex;align-items:center;justify-content:space-between;
-            padding:.6rem 0 1rem;border-bottom:1px solid #111;margin-bottom:1rem">
+            padding:.5rem 0 1rem;border-bottom:1px solid var(--border-subtle);
+            margin-bottom:1rem" class="anim-fade-up">
     <div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:.6rem;
-                    letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase">MNQ · 4PROPTRADER</div>
-        <div style="font-size:1.6rem;font-weight:700;color:#fff;letter-spacing:-.02em">
-            Live Signal <span style="color:#3CC4B7">Hurst_MR</span>
+                    letter-spacing:.2em;color:var(--accent-cyan);text-transform:uppercase">
+            MNQ · 4PROPTRADER · HURST_MR
+        </div>
+        <div style="font-size:1.55rem;font-weight:700;color:var(--text-primary);
+                    letter-spacing:-.02em;margin-top:.15rem">
+            Live Signal
+            <span style="background:var(--grad-primary);-webkit-background-clip:text;
+                         -webkit-text-fill-color:transparent;background-clip:text">Hurst_MR</span>
         </div>
     </div>
-    <div style="text-align:right">
-        <span style="background:rgba(0,0,0,.4);border:1px solid {sess_col};color:{sess_col};
-                     font-family:'JetBrains Mono',monospace;font-size:.65rem;
-                     letter-spacing:.12em;padding:.3rem .8rem;border-radius:6px">
-            {'<span class="live-dot"></span>' if in_session else '⬛ '}{sess_txt}
+    <div style="display:flex;align-items:center;gap:.6rem">
+        <span class="qm-badge {'qm-badge--green' if in_session else 'qm-badge--red'}">
+            <span class="qm-live-dot {'qm-live-dot--green' if in_session else 'qm-live-dot--red'}"
+                  style="width:6px;height:6px;margin:0"></span>
+            &nbsp;{sess_txt}
         </span>
     </div>
 </div>

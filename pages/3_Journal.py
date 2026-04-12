@@ -20,41 +20,36 @@ st.set_page_config(page_title="Journal", page_icon="📒", layout="wide")
 from styles import inject as _inj; _inj()
 
 # ── Theme ─────────────────────────────────────────────────────────────
-TEAL   = "#3CC4B7"
-GREEN  = "#00ff88"
-RED    = "#ff3366"
-YELLOW = "#ffd600"
-CYAN   = "#00e5ff"
+TEAL   = "#06b6d4"
+GREEN  = "#10b981"
+RED    = "#ef4444"
+YELLOW = "#f59e0b"
+CYAN   = "#06b6d4"
 DARK   = dict(
     template="plotly_dark",
-    paper_bgcolor="rgba(6,6,6,0)",
-    plot_bgcolor="rgba(10,10,10,1)",
-    font=dict(color="#888", size=11, family="JetBrains Mono"),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="#0d1117",
+    font=dict(color="#94a3b8", size=11,
+              family="'JetBrains Mono','Space Grotesk',monospace"),
     margin=dict(t=40, b=30, l=50, r=20),
+    hoverlabel=dict(bgcolor="#161f2e", bordercolor="rgba(59,130,246,0.4)",
+                    font=dict(size=12, family="JetBrains Mono", color="#f1f5f9")),
 )
-AXIS = dict(gridcolor="rgba(255,255,255,0.04)", linecolor="#1a1a1a",
-            tickfont=dict(color="#444", size=11), zeroline=False)
+AXIS = dict(gridcolor="rgba(148,163,184,0.05)", linecolor="rgba(148,163,184,0.08)",
+            tickfont=dict(color="#475569", size=10, family="JetBrains Mono"),
+            zeroline=True, zerolinecolor="rgba(148,163,184,0.10)",
+            showgrid=True, ticks="outside", tickcolor="rgba(148,163,184,0.10)", ticklen=4)
 
 st.markdown("""
 <style>
-.block-container{padding-top:1.2rem;max-width:1300px}
-.ph{padding:1rem 0 0.8rem;border-bottom:1px solid #1a1a1a;margin-bottom:1.5rem}
-.ph-tag{font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase}
-.ph-title{font-size:1.8rem;font-weight:700;color:#fff;letter-spacing:-.02em;margin:.2rem 0 0}
-.stat-row{display:flex;gap:0;border:1px solid #1a1a1a;border-radius:10px;overflow:hidden;margin:.5rem 0 1.2rem}
-.stat-cell{flex:1;padding:1rem .8rem;text-align:center;border-right:1px solid #1a1a1a;background:#060606}
-.stat-cell:last-child{border-right:none}
-.stat-num{font-size:1.4rem;font-weight:700;font-family:'JetBrains Mono',monospace}
-.stat-lbl{font-size:.55rem;color:#444;letter-spacing:.14em;text-transform:uppercase;margin-top:.2rem}
-.trade-row{padding:.5rem .8rem;border:1px solid #1a1a1a;border-radius:6px;margin:3px 0;
-           display:flex;gap:1rem;align-items:center;font-family:'JetBrains Mono',monospace;font-size:.78rem}
-.trade-row.win{border-left:3px solid #00ff88}
-.trade-row.loss{border-left:3px solid #ff3366}
+.block-container { padding-top:1.2rem; max-width:1300px; }
+/* Page-specific overrides — base tokens from styles.py inject() */
+.stat-num { font-size:1.4rem; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("""
-<div class="ph">
+<div class="ph anim-fade-up">
   <div class="ph-tag">JOURNAL · HURST_MR · MNQ</div>
   <div class="ph-title">Journal de Trading</div>
 </div>""", unsafe_allow_html=True)
@@ -63,11 +58,12 @@ st.markdown("""
 _IS_CLOUD = not Path(JOURNAL_DB).exists() or os.environ.get("STREAMLIT_SHARING_MODE")
 if _IS_CLOUD:
     st.markdown(f"""
-    <div style="background:rgba(60,196,183,0.07);border:1px solid rgba(60,196,183,0.25);
-         border-radius:8px;padding:.8rem 1.2rem;margin-bottom:1rem;
-         font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#3CC4B7;line-height:1.8">
+    <div style="background:rgba(59,130,246,0.06);border:1px solid var(--border-active);
+         border-radius:var(--r-md);padding:.8rem 1.2rem;margin-bottom:1rem;
+         font-family:'JetBrains Mono',monospace;font-size:.78rem;
+         color:var(--accent-cyan);line-height:1.8">
         📡 <b>Mode Cloud</b> — base de données locale non disponible.<br>
-        <span style="color:#555">Le journal fonctionne en session temporaire.
+        <span style="color:var(--text-muted)">Le journal fonctionne en session temporaire.
         Pour persister tes trades, lance l'app en local ou configure
         <code>JOURNAL_DB</code> dans les secrets Streamlit.</span>
     </div>
