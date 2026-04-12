@@ -2,6 +2,7 @@
 Journal de Trading — Hurst_MR MNQ
 Visualisation complète des trades SQLite + ajout manuel + stats.
 """
+import os
 import sqlite3
 import json
 from datetime import datetime, date
@@ -36,16 +37,7 @@ AXIS = dict(gridcolor="rgba(255,255,255,0.04)", linecolor="#1a1a1a",
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-*,*::before,*::after{box-sizing:border-box}
-[data-testid="stAppViewContainer"]{background:#060606;font-family:'Space Grotesk',sans-serif}
-[data-testid="stSidebar"]{background:#080808;border-right:1px solid #141414}
-[data-testid="stHeader"]{background:transparent}
-[data-testid="stToolbar"]{display:none}
 .block-container{padding-top:1.2rem;max-width:1300px}
-::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-track{background:#0a0a0a}
-::-webkit-scrollbar-thumb{background:#3CC4B7;border-radius:2px}
 .ph{padding:1rem 0 0.8rem;border-bottom:1px solid #1a1a1a;margin-bottom:1.5rem}
 .ph-tag{font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase}
 .ph-title{font-size:1.8rem;font-weight:700;color:#fff;letter-spacing:-.02em;margin:.2rem 0 0}
@@ -58,12 +50,6 @@ st.markdown("""
            display:flex;gap:1rem;align-items:center;font-family:'JetBrains Mono',monospace;font-size:.78rem}
 .trade-row.win{border-left:3px solid #00ff88}
 .trade-row.loss{border-left:3px solid #ff3366}
-[data-testid="stSidebarNavLink"]{display:block;padding:.5rem 1rem;margin:1px 6px;border-radius:6px;
-    font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.06em;
-    color:#444!important;text-decoration:none!important;transition:all .12s;border:1px solid transparent}
-[data-testid="stSidebarNavLink"]:hover{background:#111!important;color:#aaa!important;border-color:#1a1a1a}
-[data-testid="stSidebarNavLink"][aria-current="page"]{background:rgba(60,196,183,.07)!important;
-    color:#3CC4B7!important;border-color:rgba(60,196,183,.18)}
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,6 +58,20 @@ st.markdown("""
   <div class="ph-tag">JOURNAL · HURST_MR · MNQ</div>
   <div class="ph-title">Journal de Trading</div>
 </div>""", unsafe_allow_html=True)
+
+# ── Détection Cloud (pas de fichier local = DB vide éphémère) ─────────
+_IS_CLOUD = not Path(JOURNAL_DB).exists() or os.environ.get("STREAMLIT_SHARING_MODE")
+if _IS_CLOUD:
+    st.markdown(f"""
+    <div style="background:rgba(60,196,183,0.07);border:1px solid rgba(60,196,183,0.25);
+         border-radius:8px;padding:.8rem 1.2rem;margin-bottom:1rem;
+         font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#3CC4B7;line-height:1.8">
+        📡 <b>Mode Cloud</b> — base de données locale non disponible.<br>
+        <span style="color:#555">Le journal fonctionne en session temporaire.
+        Pour persister tes trades, lance l'app en local ou configure
+        <code>JOURNAL_DB</code> dans les secrets Streamlit.</span>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════
 # DB HELPERS

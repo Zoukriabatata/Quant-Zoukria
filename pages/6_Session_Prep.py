@@ -46,31 +46,10 @@ def save_checklist(data):
     try: CHECKLIST_FILE.write_text(json.dumps(data))
     except: pass
 
-# ── CSS ───────────────────────────────────────────────────────────────
+# ── CSS page-specific ─────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-
-*, *::before, *::after { box-sizing: border-box; }
-[data-testid="stAppViewContainer"] { background: #060606; font-family: 'Space Grotesk', sans-serif; }
-[data-testid="stSidebar"]  { background: #080808; border-right: 1px solid #141414; }
-[data-testid="stHeader"]   { background: transparent; }
-[data-testid="stToolbar"]  { display: none; }
-.block-container           { padding-top: 1.2rem; max-width: 1100px; }
-::-webkit-scrollbar       { width: 4px; }
-::-webkit-scrollbar-track { background: #0a0a0a; }
-::-webkit-scrollbar-thumb { background: #3CC4B7; border-radius: 2px; }
-
-[data-testid="stSidebarNavLink"] {
-    display:block; padding:0.6rem 1.2rem; margin:2px 8px; border-radius:6px;
-    font-family:'JetBrains Mono',monospace; font-size:0.75rem; letter-spacing:0.08em;
-    color:#555 !important; text-decoration:none !important;
-    transition:background 0.15s,color 0.15s; border:1px solid transparent;
-}
-[data-testid="stSidebarNavLink"]:hover { background:#111 !important; color:#ccc !important; border-color:#1a1a1a; }
-[data-testid="stSidebarNavLink"][aria-current="page"] {
-    background:rgba(60,196,183,0.08) !important; color:#3CC4B7 !important; border-color:rgba(60,196,183,0.2);
-}
+.block-container { padding-top: 1.2rem; max-width: 1100px; }
 
 .ph { padding: 1rem 0 0.8rem; border-bottom: 1px solid #1a1a1a; margin-bottom: 1.5rem; }
 .ph-tag { font-family:'JetBrains Mono',monospace; font-size:0.6rem; letter-spacing:0.2em; color:#3CC4B7; text-transform:uppercase; }

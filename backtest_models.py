@@ -874,10 +874,6 @@ def run_backtest(day_cache, model_id, params, instr_cfg, prop_cfg,
 
 st.markdown("""
 <style>
-[data-testid="stAppViewContainer"] { background: #060606; }
-[data-testid="stSidebar"] { background: #080808; border-right: 1px solid #141414; }
-[data-testid="stHeader"] { background: transparent; }
-[data-testid="stToolbar"] { display: none; }
 .block-container { padding-top: 1.5rem; max-width: 1400px; }
 .page-tag { font-family: 'JetBrains Mono',monospace; font-size:0.65rem; letter-spacing:0.2em; color:#3CC4B7; text-transform:uppercase; }
 .page-title { font-size:1.8rem; font-weight:700; color:#fff; letter-spacing:-0.02em; margin:0.3rem 0 0; }

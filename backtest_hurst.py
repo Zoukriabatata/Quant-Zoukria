@@ -33,11 +33,6 @@ def _css(raw):
     st.markdown(f"<style>{' '.join(css.split())}</style>", unsafe_allow_html=True)
 
 _css("""
-*,*::before,*::after{box-sizing:border-box}
-[data-testid="stAppViewContainer"]{background:#060606;font-family:'Inter',sans-serif}
-[data-testid="stSidebar"]{background:#080808;border-right:1px solid #141414}
-[data-testid="stHeader"]{background:transparent}
-[data-testid="stToolbar"]{display:none}
 .block-container{padding-top:1.2rem;max-width:1300px}
 .ph{padding:1.2rem 0 .5rem;border-bottom:1px solid #1a1a1a;margin-bottom:1.2rem}
 .ph-tag{font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase}

@@ -37,14 +37,10 @@ st.set_page_config(page_title="Live Signal", page_icon="⚡", layout="wide")
 from styles import inject as _inj; _inj()
 
 from config import (DXFEED_FILE, JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET,
-                   NTFY_TOPIC as _NTFY_TOPIC)
+                   NTFY_TOPIC as _NTFY_TOPIC,
+                   HURST_THRESHOLD, HURST_WIN, LOOKBACK, BAND_K, SL_MULT)
 
 SYMBOL          = "NQ=F"
-HURST_THRESHOLD = 0.52
-HURST_WIN       = 60        # fenêtre rolling returns — identique backtest
-LOOKBACK        = 30
-BAND_K          = 3.25      # config finale validée
-SL_MULT         = 0.75
 TP_OVERSHOOT    = 0.0       # fair value pure
 MAX_TRADES_DAY  = 5         # stop après N signaux — identique backtest
 DAILY_LOSS_LIM  = 600.0     # stop si perte journalière > 600$ — identique backtest
@@ -134,16 +130,7 @@ def journal_delete(trade_id):
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-*, *::before, *::after { box-sizing: border-box; }
-[data-testid="stAppViewContainer"] { background:#060606; font-family:'Space Grotesk',sans-serif; }
-[data-testid="stSidebar"]          { background:#080808; border-right:1px solid #111; }
-[data-testid="stHeader"]           { background:transparent; }
-[data-testid="stToolbar"]          { display:none; }
-.block-container                   { padding-top:1rem; max-width:1500px; }
-::-webkit-scrollbar                { width:4px; }
-::-webkit-scrollbar-track          { background:#0a0a0a; }
-::-webkit-scrollbar-thumb          { background:#3CC4B7; border-radius:2px; }
+.block-container { padding-top:1rem; max-width:1500px; }
 
 .kpi-card {
     background:#0a0a0a; border:1px solid #1a1a1a; border-radius:12px;

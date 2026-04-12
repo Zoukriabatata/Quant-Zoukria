@@ -34,11 +34,6 @@ def _css(raw):
     st.markdown(f"<style>{' '.join(css.split())}</style>", unsafe_allow_html=True)
 
 _css("""
-*,*::before,*::after{box-sizing:border-box}
-[data-testid="stAppViewContainer"]{background:#060606;font-family:'Inter',sans-serif}
-[data-testid="stSidebar"]{background:#080808;border-right:1px solid #141414}
-[data-testid="stHeader"]{background:transparent}
-[data-testid="stToolbar"]{display:none}
 .block-container{padding-top:1.2rem;max-width:1300px}
 .ph{padding:1.2rem 0 .5rem;border-bottom:1px solid #1a1a1a;margin-bottom:1.2rem}
 .ph-tag{font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase}
@@ -1653,9 +1648,29 @@ with t7:
             st.markdown('<div class="section-lbl">Export</div>', unsafe_allow_html=True)
             ec1, ec2 = st.columns(2)
             with ec1:
-                wf_csv = wf_df[disp_cols].to_csv(index=False).encode("utf-8")
+                _ts  = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')
+                _h_s = f"{hurst_threshold}" if not wf_opt else "optimisé"
+                _k_s = f"{band_k}" if not wf_opt else "optimisé"
+                _meta = "\n".join([
+                    f"# RUN,{_ts}",
+                    f"# OPTIMIZE,{'ON' if wf_opt else 'OFF'}",
+                    f"# H,{_h_s}",
+                    f"# K,{_k_s}",
+                    f"# OOS_MOIS,{wf_oos_m}",
+                    f"# IS_MIN_MOIS,{wf_is_min}",
+                    f"# PAS_MOIS,{wf_step}",
+                    f"# FENÊTRES,{len(wf_df)}",
+                    f"# PF_MOY_OOS,{pf_mean:.3f}",
+                    f"# SHARPE_MOY_OOS,{sh_mean:.3f}",
+                    f"# CONSISTANCE,{consistency:.1f}%",
+                ])
+                _fname = (f"wf_H{str(hurst_threshold).replace('.','')}"
+                          f"_K{str(band_k).replace('.','')}"
+                          f"_OOS{wf_oos_m}m"
+                          f"_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv")
+                wf_csv = (_meta + "\n" + wf_df[disp_cols].to_csv(index=False)).encode("utf-8")
                 st.download_button("⬇ Walk-Forward CSV", data=wf_csv,
-                                   file_name=f"wf_results_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+                                   file_name=_fname,
                                    mime="text/csv", use_container_width=True)
             with ec2:
                 if oos_trades:

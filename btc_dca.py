@@ -15,19 +15,11 @@ st.set_page_config(
 )
 from styles import inject as _inj; _inj()
 
-# ── CSS ────────────────────────────────────────────────────────────────────
+# ── CSS page-specific ──────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-
-* { box-sizing: border-box; }
-[data-testid="stAppViewContainer"] { background: #060606; font-family: 'Space Grotesk', sans-serif; }
-[data-testid="stSidebar"]         { background: #0a0a0a; border-right: 1px solid #1a1a1a; }
-[data-testid="stHeader"]          { background: transparent; }
-[data-testid="stToolbar"]         { display: none; }
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: #0a0a0a; }
-::-webkit-scrollbar-thumb { background: #F7931A; border-radius: 2px; }
+/* BTC scrollbar thumb orange */
+::-webkit-scrollbar-thumb { background: #F7931A; }
 
 .page-header {
     padding: 2rem 0 1rem;

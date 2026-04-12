@@ -21,7 +21,7 @@ def save_progress(completed: set):
 
 st.set_page_config(
     page_title="Quant Maths — Étude",
-    page_icon="QM",
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded",   # évite l'animation d'ouverture
 )
@@ -40,52 +40,9 @@ def _inject_css(raw_css: str) -> None:
     css = ' '.join(css.split())                                   # collapse all whitespace
     st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
 
-# Fonts — lien séparé (pas de CSS à parser)
-st.markdown(
-    '<link rel="preconnect" href="https://fonts.googleapis.com">'
-    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">',
-    unsafe_allow_html=True,
-)
-
 _inject_css("""
 <style>
-/* ── Base ─────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
-[data-testid="stAppViewContainer"] {
-    background: #060606;
-    font-family: 'Inter', sans-serif;
-}
-[data-testid="stSidebar"]  { background: #080808; border-right: 1px solid #141414; }
-[data-testid="stHeader"]   { background: transparent; }
-[data-testid="stToolbar"]  { display: none; }
-.block-container           { padding-top: 1.5rem; max-width: 1100px; }
-
-/* ── Transitions — contenu principal ─────────────── */
-[data-testid="stMainBlockContainer"] > div {
-    animation: fadeSlide 0.18s ease both;
-}
-
-/* ── Scrollbar ────────────────────────────────────── */
-::-webkit-scrollbar       { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: #0a0a0a; }
-::-webkit-scrollbar-thumb { background: #3CC4B7; border-radius: 2px; }
-
-/* ── Sidebar nav ──────────────────────────────────── */
-[data-testid="stSidebarNavLink"] {
-    display: block; padding: 0.5rem 1rem; margin: 1px 6px;
-    border-radius: 6px; font-family: 'JetBrains Mono', monospace;
-    font-size: 0.72rem; letter-spacing: 0.06em; color: #444 !important;
-    text-decoration: none !important; transition: all 0.12s;
-    border: 1px solid transparent;
-}
-[data-testid="stSidebarNavLink"]:hover {
-    background: #111 !important; color: #aaa !important; border-color: #1a1a1a;
-}
-[data-testid="stSidebarNavLink"][aria-current="page"] {
-    background: rgba(60,196,183,0.07) !important;
-    color: #3CC4B7 !important; border-color: rgba(60,196,183,0.18);
-}
+.block-container { padding-top: 1.5rem; max-width: 1100px; }
 
 /* ── Sidebar buttons ──────────────────────────────── */
 section[data-testid="stSidebar"] .stButton > button {
@@ -100,7 +57,7 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 
 /* ── Typography ───────────────────────────────────── */
 [data-testid="stMarkdownContainer"] {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 0.95rem; line-height: 1.85; color: #bdbdbd;
 }
 [data-testid="stMarkdownContainer"] p      { margin: 0.55rem 0; color: #c0c0c0; }
@@ -285,7 +242,7 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 [data-testid="stPlotlyChart"]:hover { border-color: #222; }
 
 /* ── Alerts ───────────────────────────────────────── */
-[data-testid="stAlert"] { border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 0.88rem; }
+[data-testid="stAlert"] { border-radius: 8px; font-family: 'Space Grotesk', sans-serif; font-size: 0.88rem; }
 
 /* ── Custom classes ───────────────────────────────── */
 .quiz-card {

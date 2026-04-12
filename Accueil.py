@@ -1,4 +1,6 @@
+import os
 import sqlite3
+from pathlib import Path
 import pandas as pd
 import streamlit as st
 from styles import inject as _inject_styles
@@ -30,40 +32,10 @@ def _load_stats():
 
 s = _load_stats()
 
-# ── CSS ───────────────────────────────────────────────────────────────
+# ── CSS page-specific ─────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-
-*, *::before, *::after { box-sizing: border-box; }
-
-[data-testid="stAppViewContainer"] {
-    background: #060606;
-    font-family: 'Space Grotesk', sans-serif;
-}
-[data-testid="stSidebar"]  { background: #0a0a0a; border-right: 1px solid #1a1a1a; }
-[data-testid="stHeader"]   { background: transparent; }
-[data-testid="stToolbar"]  { display: none; }
-.block-container           { padding-top: 0 !important; max-width: 1100px; }
-
-::-webkit-scrollbar       { width: 4px; }
-::-webkit-scrollbar-track { background: #0a0a0a; }
-::-webkit-scrollbar-thumb { background: #3CC4B7; border-radius: 2px; }
-
-[data-testid="stSidebarNavLink"] {
-    display: block; padding: 0.6rem 1.2rem; margin: 2px 8px;
-    border-radius: 6px; font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem; letter-spacing: 0.08em; color: #555 !important;
-    text-decoration: none !important; transition: background 0.15s, color 0.15s;
-    border: 1px solid transparent;
-}
-[data-testid="stSidebarNavLink"]:hover {
-    background: #111 !important; color: #ccc !important; border-color: #1a1a1a;
-}
-[data-testid="stSidebarNavLink"][aria-current="page"] {
-    background: rgba(60,196,183,0.08) !important;
-    color: #3CC4B7 !important; border-color: rgba(60,196,183,0.2);
-}
+.block-container { padding-top: 0 !important; max-width: 1100px; }
 
 /* ── Hero ── */
 .hero {
@@ -200,7 +172,7 @@ st.markdown("""
 .dd-yellow { color: #ffd600; }
 .dd-red { color: #ff3366; }
 .bar-track-dd { background: #111; border-radius: 999px; height: 5px; overflow: hidden; }
-.bar-fill-green  { height:100%; border-radius:999px; background: linear-gradient(90deg,#ff3366,#ff9100); }
+.bar-fill-dd     { height:100%; border-radius:999px; background: linear-gradient(90deg,#ff3366,#ff9100); }
 
 .footer {
     text-align: center; padding: 2rem; color: #1e1e1e;
@@ -208,6 +180,18 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
+# ── Banner Cloud ─────────────────────────────────────────────────────
+if not Path(JOURNAL_DB).exists():
+    st.markdown("""
+    <div style="background:rgba(60,196,183,0.06);border:1px solid rgba(60,196,183,0.2);
+         border-radius:8px;padding:.6rem 1.1rem;margin-bottom:.5rem;
+         font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#3CC4B7">
+        📡 Mode Cloud — stats challenge en attente de connexion locale
+        &nbsp;<span style="color:#333">|</span>&nbsp;
+        <span style="color:#444">Configurer <code>JOURNAL_DB</code> dans les secrets pour persister les trades</span>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ── Hero ─────────────────────────────────────────────────────────────
 prog_pct = round(s["prog"], 1)
@@ -282,7 +266,7 @@ st.markdown(f"""
         <span class="{dd_col_cls} dd-pct">{s['dd_used']:.0f}$ / {CHALLENGE_DD:.0f}$ &nbsp;·&nbsp; {dd_pct_used:.1f}%</span>
     </div>
     <div class="bar-track-dd">
-        <div class="bar-fill-green" style="width:{dd_pct_used}%"></div>
+        <div class="bar-fill-dd" style="width:{dd_pct_used}%"></div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -330,7 +314,7 @@ st.markdown('<div class="sec-label">Architecture du système</div>', unsafe_allo
 
 st.markdown("""
 <div class="arch">
-    <div class="arch-row"><span class="arch-key">SIGNAL</span><span class="arch-arrow">→</span><span class="arch-val">Hurst R/S rolling &lt; 0.45 + |Z-score| &gt; 3.0σ → Mean Reversion</span></div>
+    <div class="arch-row"><span class="arch-key">SIGNAL</span><span class="arch-arrow">→</span><span class="arch-val">Hurst R/S rolling &lt; 0.52 + |Z-score| &gt; 3.25σ → Mean Reversion</span></div>
     <div class="arch-row"><span class="arch-key">FILTRE</span><span class="arch-arrow">→</span><span class="arch-val">HMM state ≠ 2 (skip sessions trending fort)</span></div>
     <div class="arch-row"><span class="arch-key">TP</span><span class="arch-arrow">→</span><span class="arch-val">60% retour vers la moyenne (fair value)</span></div>
     <div class="arch-row"><span class="arch-key">SL</span><span class="arch-arrow">→</span><span class="arch-val">0.75 × std (min 3 pts, max 20 pts)</span></div>

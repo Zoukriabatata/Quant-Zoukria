@@ -16,30 +16,12 @@ def save_watched(w):
     try:    WATCHED_FILE.write_text(json.dumps(list(w)))
     except: pass
 
-st.set_page_config(page_title="Bibliothèque Quant", page_icon="QM", layout="wide")
+st.set_page_config(page_title="Bibliothèque Quant", page_icon="📚", layout="wide")
 
 from styles import inject as _inject_styles; _inject_styles()
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-[data-testid="stAppViewContainer"] { background: #060606; }
-[data-testid="stSidebar"] { background: #0a0a0a; border-right: 1px solid #1a1a1a; }
-[data-testid="stHeader"] { background: transparent; }
-[data-testid="stToolbar"] { display: none; }
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: #0a0a0a; }
-::-webkit-scrollbar-thumb { background: #3CC4B7; border-radius: 2px; }
-[data-testid="stSidebarNavLink"] {
-    display:block; padding:0.6rem 1.2rem; margin:2px 8px; border-radius:6px;
-    font-family:'JetBrains Mono',monospace; font-size:0.75rem; letter-spacing:0.08em;
-    color:#555 !important; text-decoration:none !important;
-    transition:background 0.15s,color 0.15s; border:1px solid transparent;
-}
-[data-testid="stSidebarNavLink"]:hover { background:#111 !important; color:#ccc !important; border-color:#1a1a1a; }
-[data-testid="stSidebarNavLink"][aria-current="page"] {
-    background:rgba(60,196,183,0.08) !important; color:#3CC4B7 !important; border-color:rgba(60,196,183,0.2);
-}
 .lec-card {
     background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 8px;
     padding: 0.8rem 1rem; margin: 4px 0; display: flex; align-items: center;
