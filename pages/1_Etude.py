@@ -3,6 +3,7 @@ import json
 import streamlit as st
 from pathlib import Path
 from charts import CHARTS, INLINE_CHARTS
+from styles import inject as _inject_styles
 
 PROGRESS_FILE = Path(__file__).parent.parent / ".progress.json"
 
@@ -24,6 +25,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",   # évite l'animation d'ouverture
 )
+_inject_styles()
 
 # ══════════════════════════════════════════════════════════════════════
 # CSS — Design system
@@ -629,14 +631,119 @@ def render_quiz(selected: str):
             st.success(f"Correct — {exp} (robuste > 0.7)") if abs(val-exp)<0.05 else st.error(f"0.9/1.4 = {exp}")
 
     elif "hurst" in selected:
-        val = st.number_input("rho(1) si H=0.2 ? (autocorr lag-1, arrondi 2 decimales)",
-                              min_value=-1.0, max_value=1.0, step=0.01, key="quiz_hurst")
-        if val != 0.0:
-            exp = round(2 ** (2 * 0.2 - 1) - 1, 2)
-            if abs(val - exp) < 0.02:
-                st.success(f"Correct — 2^(2x0.2-1) - 1 = {exp}")
+        import math
+
+        if "quiz_hurst_score" not in st.session_state:
+            st.session_state.quiz_hurst_score = 0
+        if "quiz_hurst_done" not in st.session_state:
+            st.session_state.quiz_hurst_done = set()
+
+        # ── Q1 : rho(1) calcul ───────────────────────────────────────
+        st.markdown("**Q1 — Calcul.** `rho(1)` si H = 0.2 ? *(arrondi 2 décimales)*")
+        v1 = st.number_input("", min_value=-1.0, max_value=1.0, step=0.01,
+                             key="quiz_hurst_q1", label_visibility="collapsed")
+        if v1 != 0.0 and "q1" not in st.session_state.quiz_hurst_done:
+            exp1 = round(2 ** (2 * 0.2 - 1) - 1, 2)
+            if abs(v1 - exp1) < 0.02:
+                st.success(f"✓ Correct — 2^(2×0.2−1) − 1 = **{exp1}** (autocorrélation négative → MR)")
+                st.session_state.quiz_hurst_done.add("q1")
+                st.session_state.quiz_hurst_score += 1
             else:
-                st.error(f"rho(1) = 2^(2H-1) - 1 = 2^(-0.6) - 1 = {exp}")
+                st.error(f"✗ — ρ(1) = 2^(2H−1) − 1 = 2^(−0.6) − 1 = **{exp1}**")
+
+        st.markdown("---")
+
+        # ── Q2 : seuil MR ────────────────────────────────────────────
+        st.markdown("**Q2 — QCM.** Dashboard affiche H = **0.48**. Tu fais quoi ?")
+        q2 = st.radio("", ["LONG si Z < −2.5", "SHORT si Z > +2.5",
+                            "Pas de trade — H ≥ 0.45 → trending",
+                            "J'attends encore 10 barres"],
+                      key="quiz_hurst_q2", index=0, label_visibility="collapsed")
+        if st.button("Vérifier Q2", key="btn_q2"):
+            if q2 == "Pas de trade — H ≥ 0.45 → trending":
+                st.success("✓ Correct — H = 0.48 ≥ 0.45 → session TRENDING → edge MR absent aujourd'hui")
+                if "q2" not in st.session_state.quiz_hurst_done:
+                    st.session_state.quiz_hurst_done.add("q2")
+                    st.session_state.quiz_hurst_score += 1
+            else:
+                st.error("✗ — H ≥ 0.45 signifie session persistante. Le filtre bloque TOUT signal MR.")
+
+        st.markdown("---")
+
+        # ── Q3 : Z-score direction ───────────────────────────────────
+        st.markdown("**Q3 — QCM.** H = 0.38, Z = **−3.2σ**. Direction du trade ?")
+        q3 = st.radio("", ["SHORT — prix trop haut", "LONG — prix trop bas, retour vers μ",
+                            "Pas de trade — Z insuffisant", "SHORT — HMM state = 2"],
+                      key="quiz_hurst_q3", index=0, label_visibility="collapsed")
+        if st.button("Vérifier Q3", key="btn_q3"):
+            if q3 == "LONG — prix trop bas, retour vers μ":
+                st.success("✓ Correct — Z < −2.5 → prix **sous** la moyenne → LONG vers fair value μ")
+                if "q3" not in st.session_state.quiz_hurst_done:
+                    st.session_state.quiz_hurst_done.add("q3")
+                    st.session_state.quiz_hurst_score += 1
+            else:
+                st.error("✗ — Z négatif = prix EN DESSOUS de μ → tu achètes le retour → LONG")
+
+        st.markdown("---")
+
+        # ── Q4 : HMM filtre ──────────────────────────────────────────
+        st.markdown("**Q4 — QCM.** Signal LONG déclenché. HMM state = **2**. Tu fais quoi ?")
+        q4 = st.radio("", ["Tu entres quand même — le signal prime",
+                            "Tu attends la barre suivante",
+                            "Tu SKIP cette barre — state 2 = barre trending fort",
+                            "Tu réduis la taille à 0.5 contrat"],
+                      key="quiz_hurst_q4", index=0, label_visibility="collapsed")
+        if st.button("Vérifier Q4", key="btn_q4"):
+            if q4 == "Tu SKIP cette barre — state 2 = barre trending fort":
+                st.success("✓ Correct — HMM state 2 = momentum fort sur cette barre → skip, attends state 0 ou 1")
+                if "q4" not in st.session_state.quiz_hurst_done:
+                    st.session_state.quiz_hurst_done.add("q4")
+                    st.session_state.quiz_hurst_score += 1
+            else:
+                st.error("✗ — State 2 = filtre actif → SKIP. Le backtest l'a prouvé : entrer en state 2 dégrade le WR.")
+
+        st.markdown("---")
+
+        # ── Q5 : SL calcul ────────────────────────────────────────────
+        st.markdown("**Q5 — Calcul.** σ = 8 pts, SL_MULT = 0.75. SL = ? pts")
+        v5 = st.number_input("", min_value=0.0, max_value=50.0, step=0.5,
+                             key="quiz_hurst_q5", label_visibility="collapsed")
+        if v5 > 0 and "q5" not in st.session_state.quiz_hurst_done:
+            exp5 = 8 * 0.75
+            if abs(v5 - exp5) < 0.5:
+                st.success(f"✓ Correct — 0.75 × 8 = **{exp5} pts** → coût = {exp5*2:.0f}$ / contrat MNQ")
+                st.session_state.quiz_hurst_done.add("q5")
+                st.session_state.quiz_hurst_score += 1
+            else:
+                st.error(f"✗ — SL = SL_MULT × σ = 0.75 × 8 = {exp5} pts")
+
+        st.markdown("---")
+
+        # ── Score ──────────────────────────────────────────────────────
+        score = st.session_state.quiz_hurst_score
+        total = 5
+        col_s1, col_s2 = st.columns([1, 2])
+        with col_s1:
+            s_col = "#00ff88" if score == total else ("#ffd600" if score >= 3 else "#ff3366")
+            st.markdown(f"""
+            <div style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:10px;
+                        padding:1rem;text-align:center;">
+                <div style="font-size:2rem;font-weight:700;font-family:'JetBrains Mono',monospace;
+                            color:{s_col}">{score}/{total}</div>
+                <div style="font-size:0.6rem;color:#444;letter-spacing:0.15em;
+                            text-transform:uppercase;margin-top:4px;">Score</div>
+            </div>""", unsafe_allow_html=True)
+        with col_s2:
+            if score == total:
+                st.success("Parfait. Tu maîtrises ton edge — maintenant exécute-le avec discipline.")
+            elif score >= 3:
+                st.warning("Bon. Relis les questions ratées dans le module Résumé.")
+            else:
+                st.error("Relis le module complet — les réponses sont toutes dans les sections Apprentissage + Modèle.")
+        if st.button("🔄 Réinitialiser le quiz", key="btn_reset_hurst"):
+            st.session_state.quiz_hurst_score = 0
+            st.session_state.quiz_hurst_done  = set()
+            st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
