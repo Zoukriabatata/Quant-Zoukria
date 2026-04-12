@@ -495,6 +495,47 @@ with t1:
                         f'<span style="color:{col}">{icon} {msg}</span></div>',
                         unsafe_allow_html=True)
 
+    # ── Export CSV ────────────────────────────────────────────────────
+    st.markdown('<div class="section-lbl">Export</div>', unsafe_allow_html=True)
+    ex1, ex2, ex3 = st.columns(3)
+
+    with ex1:
+        trades_csv = trades_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇ Trades CSV",
+            data=trades_csv,
+            file_name=f"hurst_mr_trades_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with ex2:
+        monthly_csv = monthly_df.to_csv(index=False).encode("utf-8") if not monthly_df.empty else b""
+        st.download_button(
+            "⬇ Stats Mensuelles CSV",
+            data=monthly_csv,
+            file_name=f"hurst_mr_monthly_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with ex3:
+        # Résumé paramètres + métriques — utile pour comparer des runs
+        summary = {
+            "date": pd.Timestamp.now().isoformat(),
+            "hurst_threshold": hurst_threshold, "hurst_win": hurst_win,
+            "lookback": lookback, "band_k": band_k, "sl_mult": sl_mult,
+            "tp_overshoot": tp_overshoot, "slip_pts": slip_pts,
+            "n_trades": n, "win_rate": round(wr, 4), "profit_factor": round(pf, 4),
+            "sharpe": round(sharpe, 4), "max_dd_pct": round(max_dd_pct, 4),
+            "total_pnl": round(total, 2),
+        }
+        import json as _json
+        st.download_button(
+            "⬇ Paramètres JSON",
+            data=_json.dumps(summary, indent=2).encode("utf-8"),
+            file_name=f"hurst_mr_params_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
 
 # ═══════════════════════════════════════════════════════════════════════
 # TAB 2 — ANALYSE HURST

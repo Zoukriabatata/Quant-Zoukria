@@ -535,23 +535,38 @@ def _discord_read_status():
 
 def _build_discord_payload(sig):
     d        = sig["direction"]
-    emoji    = "🟢" if d == "LONG" else "🔴"
     entry    = sig["price"] / 10
     tp       = sig["tp_price"] / 10
+    fv       = sig.get("fair_value", sig["price"]) / 10
     sl_pts   = sig["sl_pts_mnq"]
     sl_price = entry - sl_pts if d == "LONG" else entry + sl_pts
     z        = sig["z_score"]
     h        = sig["hurst"]
     t        = sig["time"][11:16]
+    pts_tp   = abs(tp - entry)
+    rr       = pts_tp / sl_pts if sl_pts > 0 else 0
+
+    # Couleur Discord : vert pour LONG, rouge pour SHORT
+    color    = 0x00FF88 if d == "LONG" else 0xFF3366
+    arrow    = "↑" if d == "LONG" else "↓"
+
     return {
-        "content": (
-            f"{emoji} **MNQ SIGNAL — {d}**\n"
-            f"⏰ `{t} Paris`\n"
-            f"📍 Entrée : `{entry:.2f}`\n"
-            f"🎯 TP     : `{tp:.2f}`\n"
-            f"🛑 SL     : `{sl_price:.2f}` (-{sl_pts:.2f} pts)\n"
-            f"📊 Z      : `{z:+.2f}σ` · H `{h:.3f}`"
-        )
+        "embeds": [{
+            "title":       f"{'🟢' if d == 'LONG' else '🔴'}  {d} MNQ  {arrow}",
+            "description": f"**Hurst_MR** · Session NY · `{t} Paris`",
+            "color":       color,
+            "fields": [
+                {"name": "📍 Entrée",  "value": f"`{entry:.2f}`",              "inline": True},
+                {"name": "🎯 TP",     "value": f"`{tp:.2f}` (+{pts_tp:.2f} pts)", "inline": True},
+                {"name": "🛑 SL",     "value": f"`{sl_price:.2f}` (−{sl_pts:.2f} pts)", "inline": True},
+                {"name": "📊 Hurst H","value": f"`{h:.3f}`",                   "inline": True},
+                {"name": "📈 Z-score","value": f"`{z:+.2f}σ`",                 "inline": True},
+                {"name": "⚖️ R:R",   "value": f"`{rr:.1f}`",                  "inline": True},
+            ],
+            "footer":    {"text": "Hurst_MR · MNQ · 4PropTrader $50K"},
+            "timestamp": sig["time"].replace(" ", "T") + "Z" if "T" not in sig["time"] else sig["time"] + "Z",
+            "url":       "https://quant-zoukria.streamlit.app/5_Live_Signal",
+        }]
     }
 
 def _send_discord(sig):
@@ -581,19 +596,33 @@ def _send_ntfy(sig):
         z     = sig.get("z_score", 0)
         h     = sig.get("hurst", 0)
         t     = sig.get("time", "")[:16]
+        pts_tp = abs(tp - entry)
+        rr     = pts_tp / sl if sl > 0 else 0
+
+        # Corps du message : compact et lisible sur mobile
         msg   = (
-            f"HURST_MR {d} MNQ\n"
-            f"Prix : {entry:,.2f}\n"
-            f"TP   : {tp:,.2f}\n"
-            f"SL   : {sl:.2f} pts\n"
-            f"Z    : {z:+.2f}s  H={h:.3f}\n"
-            f"Heure: {t}"
+            f"Entrée  : {entry:,.2f}\n"
+            f"TP      : {tp:,.2f}  (+{pts_tp:.2f} pts)\n"
+            f"SL      : {sl:.2f} pts  ·  R:R {rr:.1f}\n"
+            f"H={h:.3f}  ·  Z={z:+.2f}σ  ·  {t[:5]} Paris"
         )
-        urllib.request.urlopen(urllib.request.Request(
+        title_emoji = "📈" if d == "LONG" else "📉"
+        tags        = "chart_with_upwards_trend,white_check_mark" if d == "LONG" \
+                      else "chart_with_downwards_trend,red_circle"
+
+        req = urllib.request.Request(
             f"https://ntfy.sh/{NTFY_TOPIC}",
             data=msg.encode("utf-8"),
-            method="POST"
-        ), timeout=5)
+            method="POST",
+            headers={
+                "X-Title":    f"{title_emoji} SIGNAL {d} MNQ @ {entry:.2f}",
+                "X-Tags":     tags,
+                "X-Priority": "high",
+                "X-Click":    "https://quant-zoukria.streamlit.app/5_Live_Signal",
+                "X-Actions":  "view, Dashboard, https://quant-zoukria.streamlit.app/5_Live_Signal",
+            }
+        )
+        urllib.request.urlopen(req, timeout=5)
     except Exception:
         pass
 

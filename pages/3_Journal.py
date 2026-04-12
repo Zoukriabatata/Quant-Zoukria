@@ -200,8 +200,8 @@ if not no_data:
 # TABS
 # ═══════════════════════════════════════════════════════════════════════
 
-tabs = st.tabs(["📈 Equity & P&L", "📋 Trades", "📊 Stats", "➕ Ajouter"])
-t_equity, t_trades, t_stats, t_add = tabs
+tabs = st.tabs(["📈 Equity & P&L", "📋 Trades", "📊 Stats", "➕ Ajouter", "⬇ Export"])
+t_equity, t_trades, t_stats, t_add, t_export = tabs
 
 # ── TAB 1 : EQUITY & P&L ─────────────────────────────────────────────
 with t_equity:
@@ -475,3 +475,65 @@ with t_add:
                 if ok:
                     st.success(f"Trade enregistré — P&L ${pnl_auto:+.2f}")
                     st.rerun()
+
+# ── TAB 5 : EXPORT ───────────────────────────────────────────────────
+with t_export:
+    if no_data:
+        st.info("Pas encore de données à exporter.")
+    else:
+        st.markdown("**Exporter le journal**")
+
+        ex1, ex2, ex3 = st.columns(3)
+
+        with ex1:
+            csv_all = df.drop(columns=["win"], errors="ignore").to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇ Tous les trades (CSV)",
+                data=csv_all,
+                file_name=f"journal_trades_{pd.Timestamp.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        with ex2:
+            # Stats journalières
+            daily_stats = df.groupby(df["date"].dt.date).agg(
+                n_trades=("pnl", "count"),
+                wins=("win", "sum"),
+                pnl=("pnl", "sum"),
+                avg_h=("hurst", "mean"),
+                avg_z=("z_score", "mean"),
+            ).reset_index()
+            daily_stats["wr"] = daily_stats["wins"] / daily_stats["n_trades"]
+            daily_csv = daily_stats.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇ Stats journalières (CSV)",
+                data=daily_csv,
+                file_name=f"journal_daily_{pd.Timestamp.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        with ex3:
+            import json as _json
+            summary_export = {
+                "export_date": pd.Timestamp.now().isoformat(),
+                "n_trades":    int(n),
+                "win_rate":    round(float(wr), 4),
+                "profit_factor": round(float(pf), 4),
+                "sharpe":      round(float(sharpe), 4),
+                "max_dd_pct":  round(float(max_dd_pct), 4),
+                "total_pnl":   round(float(total), 2),
+                "challenge_dd":     CHALLENGE_DD,
+                "challenge_target": CHALLENGE_TARGET,
+            }
+            st.download_button(
+                "⬇ Résumé JSON",
+                data=_json.dumps(summary_export, indent=2).encode("utf-8"),
+                file_name=f"journal_summary_{pd.Timestamp.now().strftime('%Y%m%d')}.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+
+        st.markdown("---")
+        st.caption(f"Journal : `{JOURNAL_DB}` · {n} trades · dernière mise à jour : {df['date'].max().strftime('%Y-%m-%d') if not no_data else '—'}")
