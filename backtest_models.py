@@ -20,6 +20,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="Multi-Model Backtest", page_icon="🔬", layout="wide")
+from styles import inject as _inj; _inj()
 
 # ── Theme ──────────────────────────────────────────────────────────────────
 DARK = dict(

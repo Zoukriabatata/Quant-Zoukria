@@ -6,12 +6,18 @@ Fallback          : yfinance NQ=F M1 (~15 min delay)
 
 import time
 import warnings
+import threading
+import urllib.request
+import urllib.parse
+import urllib.error
+import json
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
+import sqlite3
 
 warnings.filterwarnings("ignore")
 
@@ -27,19 +33,35 @@ except ImportError:
 # ═══════════════════════════════════════════════════════
 
 st.set_page_config(page_title="Live Signal", page_icon="⚡", layout="wide")
+from styles import inject as _inj; _inj()
 
 SYMBOL          = "NQ=F"
 DXFEED_FILE     = r"C:\tmp\mnq_live.json"   # écrit par dxfeed_bridge.js
-HURST_THRESHOLD = 0.45
+HURST_THRESHOLD = 0.52
+HURST_WIN       = 60        # fenêtre rolling returns — identique backtest
 LOOKBACK        = 30
-BAND_K          = 2.5
-HMM_LOOKBACK    = 60
+BAND_K          = 3.25      # config finale validée
+SL_MULT         = 0.75
+TP_OVERSHOOT    = 0.0       # fair value pure
+MAX_TRADES_DAY  = 5         # stop après N signaux — identique backtest
+DAILY_LOSS_LIM  = 600.0     # stop si perte journalière > 600$ — identique backtest
+SKIP_OPEN_BARS  = 5
+SKIP_CLOSE_BARS = 3         # ignore les 3 dernières barres — identique backtest
+SIGNAL_MAX_AGE_MIN = 120   # signal expiré après 120 min — identique timeout backtest
 
 SESSION_START   = (15, 30)   # 9:30 NY = 15:30 Paris
 SESSION_END     = (22,  0)   # 16:00 NY = 22:00 Paris
-SKIP_OPEN_BARS  = 5
 
-NY = pytz.timezone("Europe/Paris")
+TICK_VALUE      = 2.0       # $/pt MNQ (NQ full = 20.0)
+
+DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1491461457135796349/_yPZm5HR2w_rZT5qd9f97i72rMNeKIl4QS5wS0n1gMukj6x9dSIDPSMuTyMrm5-6BHeT"
+NTFY_TOPIC      = "hurst-mnq-ryad"
+
+JOURNAL_DB      = r"C:\tmp\mnq_journal.db"
+CHALLENGE_DD    = 2500.0   # DD max 4PropTrader
+CHALLENGE_TARGET = 3000.0  # Profit target
+
+PARIS = pytz.timezone("Europe/Paris")
 
 TEAL   = "#3CC4B7"
 GREEN  = "#00ff88"
@@ -56,25 +78,110 @@ DARK   = dict(
 )
 
 # ═══════════════════════════════════════════════════════
+# JOURNAL SQLite
+# ═══════════════════════════════════════════════════════
+
+def _db():
+    con = sqlite3.connect(JOURNAL_DB)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS trades (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            date      TEXT,
+            time_ny   TEXT,
+            direction TEXT,
+            entry     REAL,
+            sl_pts    REAL,
+            tp        REAL,
+            contracts INTEGER,
+            exit_price REAL,
+            pnl       REAL,
+            hurst     REAL,
+            z_score   REAL,
+            notes     TEXT
+        )
+    """)
+    con.commit()
+    return con
+
+def journal_add(date, time_ny, direction, entry, sl_pts, tp,
+                contracts, exit_price, hurst, z_score, notes):
+    pnl = (exit_price - entry) * (1 if direction == "LONG" else -1) * TICK_VALUE * contracts
+    con = _db()
+    con.execute(
+        "INSERT INTO trades (date,time_ny,direction,entry,sl_pts,tp,contracts,"
+        "exit_price,pnl,hurst,z_score,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (date, time_ny, direction, entry, sl_pts, tp,
+         contracts, exit_price, pnl, hurst, z_score, notes)
+    )
+    con.commit(); con.close()
+
+def journal_load():
+    con = _db()
+    df = pd.read_sql("SELECT * FROM trades ORDER BY id DESC", con)
+    con.close()
+    return df
+
+def journal_delete(trade_id):
+    con = _db()
+    con.execute("DELETE FROM trades WHERE id=?", (trade_id,))
+    con.commit(); con.close()
+
+# ═══════════════════════════════════════════════════════
 # CSS
 # ═══════════════════════════════════════════════════════
 
 st.markdown("""
 <style>
-[data-testid="stAppViewContainer"] { background:#060606; }
-[data-testid="stSidebar"]          { background:#080808; border-right:1px solid #141414; }
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+*, *::before, *::after { box-sizing: border-box; }
+[data-testid="stAppViewContainer"] { background:#060606; font-family:'Space Grotesk',sans-serif; }
+[data-testid="stSidebar"]          { background:#080808; border-right:1px solid #111; }
 [data-testid="stHeader"]           { background:transparent; }
-.block-container                   { padding-top:1rem; max-width:1400px; }
+[data-testid="stToolbar"]          { display:none; }
+.block-container                   { padding-top:1rem; max-width:1500px; }
+::-webkit-scrollbar                { width:4px; }
+::-webkit-scrollbar-track          { background:#0a0a0a; }
+::-webkit-scrollbar-thumb          { background:#3CC4B7; border-radius:2px; }
+
 .kpi-card {
-    background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px;
-    padding:1rem 1.2rem; text-align:center;
+    background:#0a0a0a; border:1px solid #1a1a1a; border-radius:12px;
+    padding:1rem 1.2rem; text-align:center; transition:border-color .2s;
 }
-.kpi-value  { font-size:2rem; font-weight:700; font-family:'JetBrains Mono',monospace; }
-.kpi-label  { font-size:0.75rem; color:#555; text-transform:uppercase; letter-spacing:.08em; margin-top:.2rem; }
-.sig-long  { background:#0a2a1a; border:2px solid #00ff88; border-radius:10px; padding:1.2rem 1.5rem; }
-.sig-short { background:#2a0a10; border:2px solid #ff3366; border-radius:10px; padding:1.2rem 1.5rem; }
-.sig-none  { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px; padding:1.2rem 1.5rem; color:#444; text-align:center; }
-.ctx-box   { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px; padding:1rem 1.2rem; }
+.kpi-card:hover { border-color:#2a2a2a; }
+.kpi-value { font-size:1.9rem; font-weight:700; font-family:'JetBrains Mono',monospace; line-height:1.1; }
+.kpi-label { font-size:0.68rem; color:#444; text-transform:uppercase; letter-spacing:.12em; margin-top:.35rem; }
+
+.sig-long {
+    background:linear-gradient(135deg,#041a0e,#071f12);
+    border:2px solid #00ff88; border-radius:12px; padding:1.4rem 1.6rem;
+    box-shadow:0 0 24px rgba(0,255,136,.08);
+}
+.sig-short {
+    background:linear-gradient(135deg,#1a040a,#1f0710);
+    border:2px solid #ff3366; border-radius:12px; padding:1.4rem 1.6rem;
+    box-shadow:0 0 24px rgba(255,51,102,.08);
+}
+.sig-none {
+    background:#0a0a0a; border:1px solid #1a1a1a; border-radius:12px;
+    padding:1.4rem 1.6rem; color:#333; text-align:center;
+}
+.ctx-box   { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:12px; padding:1.1rem 1.4rem; }
+.gauge-track { background:#111; border-radius:999px; height:6px; overflow:hidden; margin:4px 0 10px; }
+.gauge-fill  { height:100%; border-radius:999px; transition:width .4s; }
+.sec-label {
+    font-family:'JetBrains Mono',monospace; font-size:.62rem; font-weight:700;
+    letter-spacing:.18em; color:#3CC4B7; text-transform:uppercase;
+    margin:1.4rem 0 .6rem; padding-bottom:.4rem; border-bottom:1px solid #141414;
+}
+.live-dot {
+    display:inline-block; width:7px; height:7px; background:#00ff88;
+    border-radius:50%; margin-right:6px;
+    animation:pulse 1.5s infinite;
+}
+@keyframes pulse {
+    0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(0,255,136,.5); }
+    50%      { opacity:.7; box-shadow:0 0 0 5px rgba(0,255,136,0); }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -82,139 +189,138 @@ st.markdown("""
 # MATH
 # ═══════════════════════════════════════════════════════
 
-def hurst_exponent(ts):
+def hurst_rs(ts):
+    """R/S vectorisé sur log returns — identique backtest_hurst.py."""
     ts = np.asarray(ts, dtype=float)
-    n = len(ts)
-    if n < 20:
-        return 0.5
-    lags = range(2, min(n // 2, 50))
+    n  = len(ts)
+    if n < 20: return 0.5
+    lags = np.unique(np.round(
+        np.exp(np.linspace(np.log(4), np.log(min(n // 2, 50)), 12))
+    ).astype(int))
+    lags = lags[lags >= 4]
     rs_vals = []
     for lag in lags:
-        chunks = [ts[i:i+lag] for i in range(0, n - lag + 1, lag)]
-        rs_chunk = []
-        for c in chunks:
-            std = c.std()
-            if std > 0:
-                devs = np.cumsum(c - c.mean())
-                rs_chunk.append((devs.max() - devs.min()) / std)
-        if rs_chunk:
-            rs_vals.append(np.mean(rs_chunk))
-    if len(rs_vals) < 3:
-        return 0.5
+        lag = int(lag)
+        n_chunks = n // lag
+        if n_chunks < 2: continue
+        mat  = ts[:n_chunks * lag].reshape(n_chunks, lag)
+        mean = mat.mean(axis=1, keepdims=True)
+        devs = np.cumsum(mat - mean, axis=1)
+        R    = devs.max(axis=1) - devs.min(axis=1)
+        S    = mat.std(axis=1, ddof=0)
+        mask = S > 0
+        if mask.sum() == 0: continue
+        rs_vals.append(float((R[mask] / S[mask]).mean()))
+    if len(rs_vals) < 3: return 0.5
     try:
-        h = np.polyfit(np.log(list(lags)[:len(rs_vals)]), np.log(rs_vals), 1)[0]
-        return float(np.clip(h, 0.0, 1.0))
+        return float(np.clip(
+            np.polyfit(np.log(lags[:len(rs_vals)]), np.log(rs_vals), 1)[0],
+            0.0, 1.0
+        ))
     except Exception:
         return 0.5
 
 
-def hmm_proxy_state(closes, lookback=60):
-    n = len(closes)
-    if n < 3:
-        return 1
-    rets = np.abs(np.diff(np.log(np.maximum(closes, 1e-9))))
-    if len(rets) < 3:
-        return 1
-    recent = rets[-min(len(rets), 200):]
-    p33 = np.nanpercentile(recent, 33)
-    p67 = np.nanpercentile(recent, 67)
-    cur = rets[-1]
-    if cur <= p33:
-        return 0
-    elif cur >= p67:
-        return 2
-    return 1
-
-
 def compute_bands(closes):
-    """Rolling mean + std bands pour chaque barre."""
-    n = len(closes)
-    mids  = np.full(n, np.nan)
-    upper = np.full(n, np.nan)
-    lower = np.full(n, np.nan)
-    for i in range(LOOKBACK, n):
-        w = closes[i - LOOKBACK: i]
-        m, s = w.mean(), w.std()
-        mids[i]  = m
-        upper[i] = m + BAND_K * s
-        lower[i] = m - BAND_K * s
-    return mids, upper, lower
+    """Rolling mean + std bands — vectorisé pandas (identique backtest)."""
+    s     = pd.Series(closes)
+    m     = s.rolling(LOOKBACK).mean().values
+    std   = s.rolling(LOOKBACK).std(ddof=0).values
+    return m, m + BAND_K * std, m - BAND_K * std
 
 
-def find_signals(closes, times_str):
-    """Retourne liste de signaux sur toute la session."""
-    n = len(closes)
+def precompute_hurst_arr(closes):
+    """Précalcule rolling Hurst sur log-returns — identique build_study_cache backtest.
+    Appelé une fois par refresh, pas dans la boucle de signaux.
+    """
+    log_rets = np.diff(np.log(np.maximum(closes, 1e-9)))
+    log_rets = np.concatenate([[0.0], log_rets])   # aligné sur closes
+    n        = len(closes)
+    hurst_arr = np.full(n, np.nan)
+    for i in range(HURST_WIN, n):
+        hurst_arr[i] = hurst_rs(log_rets[i - HURST_WIN: i])
+    h_now = hurst_arr[-1] if not np.isnan(hurst_arr[-1]) else 0.5
+    return hurst_arr, h_now
+
+
+def find_signals(closes, times_str, hurst_arr):
+    """Signaux MR — utilise hurst_arr précalculé (zéro recalcul dans la boucle)."""
+    n    = len(closes)
     sigs = []
-    h = hurst_exponent(closes)
-    if h >= HURST_THRESHOLD:
-        return sigs, h
-
     mids, upper, lower = compute_bands(closes)
 
-    for i in range(LOOKBACK + SKIP_OPEN_BARS, n):
-        hmm = hmm_proxy_state(closes[:i+1], HMM_LOOKBACK)
-        if hmm == 2:
+    stop_bar = max(0, n - SKIP_CLOSE_BARS)
+    for i in range(max(LOOKBACK + SKIP_OPEN_BARS, HURST_WIN), stop_bar):
+        h_bar = hurst_arr[i]
+        if np.isnan(h_bar) or h_bar >= HURST_THRESHOLD:
             continue
-        w   = closes[i - LOOKBACK: i]
-        mid = w.mean()
-        std = w.std()
+        mid = mids[i]
+        if np.isnan(mid):
+            continue
+        std   = (closes[i - LOOKBACK: i]).std()
         if std == 0:
             continue
         price = closes[i]
-        z = (price - mid) / std
+        z     = (price - mid) / std
         if abs(z) < BAND_K:
             continue
         direction = "SHORT" if z > 0 else "LONG"
+        tp_price  = mid + TP_OVERSHOOT * (mid - price)
+        sl_pts    = max(0.25, SL_MULT * std / 10)
         sigs.append({
-            "bar_idx":   i,
-            "time":      times_str[i],
-            "direction": direction,
-            "price":     price,
+            "bar_idx":    i,
+            "time":       times_str[i],
+            "direction":  direction,
+            "price":      price,
             "fair_value": mid,
-            "z_score":   z,
-            "std":       std,
-            "hurst":     h,
-            "hmm_state": hmm,
+            "tp_price":   tp_price,
+            "sl_pts_mnq": sl_pts,
+            "z_score":    z,
+            "std":        std,
+            "hurst":      h_bar,
         })
-    return sigs, h
+        if len(sigs) >= MAX_TRADES_DAY:
+            break
+    return sigs
 
 
 # ═══════════════════════════════════════════════════════
 # DATA
 # ═══════════════════════════════════════════════════════
 
+DXFEED_STALE_SECONDS = 120  # si le fichier n'a pas été mis à jour depuis 2min → stale
+
 def _fetch_dxfeed() -> tuple:
     """Lit C:/tmp/mnq_live.json écrit par dxfeed_bridge.js (Node.js)."""
-    import json, os
+    import json, os, time as _t
     if not os.path.exists(DXFEED_FILE):
         return None, "dxfeed_bridge.js non lancé"
+    # Contrôle fraîcheur — si fichier pas modifié depuis 2min, bridge probablement mort
+    age = _t.time() - os.path.getmtime(DXFEED_FILE)
+    if age > DXFEED_STALE_SECONDS:
+        return None, f"Bridge inactif — données figées depuis {int(age)}s (> {DXFEED_STALE_SECONDS}s)"
     try:
         with open(DXFEED_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+            raw = f.read().strip()
+        if not raw:
+            return None, "dxfeed_bridge.js non lancé (fichier vide)"
+        data = json.loads(raw)
         bars = data.get("bars", [])
-        if len(bars) < 5:
+        if len(bars) < 1:
             return None, "Pas assez de barres dxFeed"
 
         df = pd.DataFrame(bars)
-        df["bar"] = pd.to_datetime(df["time"], utc=True).dt.tz_convert(NY)
+        df["bar"] = pd.to_datetime(df["time"], utc=True).dt.tz_convert(PARIS)
         df["close"] = df["close"].astype(float)
         df["open"]  = df["open"].astype(float)
         df["high"]  = df["high"].astype(float)
         df["low"]   = df["low"].astype(float)
 
-        # Filtre session NY (gère ETH: START > END = passe minuit)
-        t = df["bar"].dt.hour * 60 + df["bar"].dt.minute
-        s = SESSION_START[0]*60 + SESSION_START[1]
-        e = SESSION_END[0]  *60 + SESSION_END[1]
-        if s < e:
-            mask = (t >= s) & (t < e)
-        else:  # passe minuit (ex: 18:00 → 16:00)
-            mask = (t >= s) | (t < e)
-        df = df[mask].copy()
-        if len(df) < 5:
-            return None, "Hors session NY"
+        today_ny = df["bar"].dt.date.max()
+        df = df[df["bar"].dt.date == today_ny].copy()
+        if len(df) < 1:
+            return None, "Pas assez de barres aujourd'hui"
 
-        # NQ dxFeed = valeur NQ (×1) → MNQ = /10, cohérent avec yfinance
         df["time_str"] = [str(x)[:16] for x in df["bar"]]
         df.reset_index(drop=True, inplace=True)
         return df, None
@@ -222,84 +328,134 @@ def _fetch_dxfeed() -> tuple:
         return None, f"dxFeed lecture: {e}"
 
 
-@st.cache_data(ttl=55, show_spinner=False)
-def fetch_session_data():
-    # 1. Essaie dxFeed temps réel (bridge Node.js)
-    df, err = _fetch_dxfeed()
-    if df is not None:
-        return df, None, "dxFeed 4PropTrader ⚡"
-
-    # 2. Fallback yfinance (15 min delay)
+def _fetch_yfinance_history() -> pd.DataFrame | None:
+    """Récupère les barres M1 yfinance du jour (historique session).
+    Résultat mis en cache dans session_state pour ne pas rappeler yfinance toutes les 2s.
+    """
+    import time as _time
+    cache = st.session_state.get("_yf_hist_cache", None)
+    now_ts = _time.time()
+    # Rafraîchit le cache yfinance toutes les 5 minutes max
+    if cache is not None and now_ts - cache["ts"] < 300:
+        return cache["df"]
     try:
-        df = yf.download(SYMBOL, period="1d", interval="1m",
-                         progress=False, auto_adjust=True)
-        if df is None or len(df) < 5:
-            return None, "Pas de données yfinance", "yfinance"
+        raw = yf.download(SYMBOL, period="2d", interval="1m",
+                          progress=False, auto_adjust=True)
+        if raw is None or len(raw) < 5:
+            return None
+        raw.index = pd.to_datetime(raw.index)
+        if raw.index.tz is None:
+            raw.index = raw.index.tz_localize("UTC")
+        raw.index = raw.index.tz_convert(PARIS)
+        t = raw.index.hour * 60 + raw.index.minute
+        raw = raw[(t >= SESSION_START[0]*60 + SESSION_START[1]) &
+                  (t <  SESSION_END[0]  *60 + SESSION_END[1])].copy()
+        if isinstance(raw.columns, pd.MultiIndex):
+            raw.columns = raw.columns.get_level_values(0)
+        raw["close"] = raw["Close"].astype(float)
+        raw["open"]  = raw["Open"].astype(float)
+        raw["high"]  = raw["High"].astype(float)
+        raw["low"]   = raw["Low"].astype(float)
+        raw["bar"]   = raw.index
+        raw["time_str"] = [str(x)[:16] for x in raw.index]
+        df_out = raw[["bar", "open", "high", "low", "close", "time_str"]].copy()
+        st.session_state["_yf_hist_cache"] = {"df": df_out, "ts": now_ts}
+        return df_out
+    except Exception:
+        return None
 
-        df.index = pd.to_datetime(df.index)
-        if df.index.tz is None:
-            df.index = df.index.tz_localize("UTC")
-        df.index = df.index.tz_convert(NY)
 
-        t = df.index.hour * 60 + df.index.minute
-        df = df[(t >= SESSION_START[0]*60 + SESSION_START[1]) &
-                (t <  SESSION_END[0]  *60 + SESSION_END[1])].copy()
+def fetch_session_data():
+    # 1. dxFeed temps réel (bridge Node.js)
+    df_dx, dxfeed_err = _fetch_dxfeed()
 
-        if len(df) < 5:
-            return None, "Session non démarrée ou fermée", "yfinance"
+    if df_dx is not None:
+        # Complète avec historique yfinance uniquement si pas encore assez de barres
+        # pour calculer Hurst — ne fausse aucun calcul (barres réelles passées, même échelle NQ)
+        if len(df_dx) < HURST_WIN + LOOKBACK:
+            df_hist = _fetch_yfinance_history()
+            if df_hist is not None and len(df_hist) > 0:
+                first_dx_time = df_dx["bar"].iloc[0]
+                df_hist = df_hist[df_hist["bar"] < first_dx_time].copy()
+                if len(df_hist) > 0:
+                    df_merged = pd.concat([df_hist, df_dx], ignore_index=True)
+                    df_merged = df_merged.sort_values("bar").reset_index(drop=True)
+                    n_hist = len(df_hist)
+                    return df_merged, None, f"dxFeed ⚡ + {n_hist} barres hist."
+        return df_dx, None, "dxFeed 4PropTrader ⚡"
 
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        df["close"] = df["Close"].astype(float)
-        df["open"]  = df["Open"].astype(float)
-        df["high"]  = df["High"].astype(float)
-        df["low"]   = df["Low"].astype(float)
-        df["time_str"] = [str(x)[:16] for x in df.index]
-        return df, None, "yfinance NQ=F ~15 min delay ⚠️"
-    except Exception as e:
-        return None, str(e), "yfinance"
+    # 2. Bridge non lancé — pas de fallback silencieux, on affiche l'erreur clairement
+    _dxfeed_fail_reason = dxfeed_err or "raison inconnue"
+    return None, f"Bridge dxFeed inactif : {_dxfeed_fail_reason}", "dxFeed ✗"
 
 
 # ═══════════════════════════════════════════════════════
 # PAGE
 # ═══════════════════════════════════════════════════════
 
-now_ny = datetime.now(NY)
+now_ny = datetime.now(PARIS)
 
 # ── Sidebar ──────────────────────────────────────────
 with st.sidebar:
-    st.markdown(f"### ⚡ Live Signal")
-    st.markdown(f"**{now_ny.strftime('%A %d %b %Y')}**")
-    st.markdown(f"Heure NY : **{now_ny.strftime('%H:%M:%S')}**")
+    st.markdown(f"""
+    <div style="padding:.4rem 0 .8rem">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase">Live Signal</div>
+        <div style="font-size:1.3rem;font-weight:700;color:#fff;margin:.2rem 0">Hurst_MR</div>
+        <div style="font-size:.75rem;color:#555">{now_ny.strftime('%A %d %b %Y')}</div>
+        <div style="font-size:.85rem;color:#888;font-family:'JetBrains Mono',monospace;margin-top:.2rem">
+            <span class="live-dot"></span>{now_ny.strftime('%H:%M:%S')} Paris
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     st.divider()
-
-    auto_refresh = st.checkbox("Auto-refresh (60s)", value=True)
-    refresh_sec  = st.select_slider("Intervalle", [30, 60, 120, 300], value=60)
-
+    st.markdown(f"""
+    <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;line-height:2;color:#555">
+        <span style="color:#3CC4B7">H seuil</span> &nbsp;&nbsp;&nbsp; {HURST_THRESHOLD}<br>
+        <span style="color:#3CC4B7">Band K</span> &nbsp;&nbsp;&nbsp; ±{BAND_K}σ<br>
+        <span style="color:#3CC4B7">Lookback</span> &nbsp; {LOOKBACK} barres<br>
+        <span style="color:#3CC4B7">SL</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {SL_MULT}×std<br>
+        <span style="color:#3CC4B7">TP</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Fair Value pure<br>
+        <span style="color:#3CC4B7">Skip open</span> {SKIP_OPEN_BARS} barres<br>
+        <span style="color:#3CC4B7">Skip close</span> {SKIP_CLOSE_BARS} barres<br>
+        <span style="color:#ff3366">Max trades</span> {MAX_TRADES_DAY}/jour<br>
+        <span style="color:#ff3366">Daily limit</span> {DAILY_LOSS_LIM:.0f}$
+    </div>
+    """, unsafe_allow_html=True)
     st.divider()
-    st.markdown("**Paramètres Hurst_MR**")
-    st.markdown(f"- H < `{HURST_THRESHOLD}` → session MR")
-    st.markdown(f"- Lookback : `{LOOKBACK}` barres")
-    st.markdown(f"- Bande : `±{BAND_K}σ`")
-    st.markdown(f"- HMM state ≠ 2 (pas trending)")
-    st.divider()
-    st.caption("Source : Lec 25 (fBm) + Lec 51 (HMM)")
-    st.caption("Données : yfinance NQ=F M1 ~15 min delay")
+    st.markdown(f"""
+    <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#333;line-height:1.8">
+        PF=2.06 · Sharpe=2.82<br>
+        MaxDD=4.3% · WR=29.4%<br>
+        928 trades · 5 ans
+    </div>
+    """, unsafe_allow_html=True)
 
 # ── Header ───────────────────────────────────────────
-col_title, col_refresh = st.columns([4, 1])
-with col_title:
-    in_session = (
-        (now_ny.hour * 60 + now_ny.minute) >= SESSION_START[0]*60 + SESSION_START[1] and
-        (now_ny.hour * 60 + now_ny.minute) <  SESSION_END[0]  *60 + SESSION_END[1]
-    )
-    status_icon = "🟢" if in_session else "🔴"
-    status_txt  = "Session active" if in_session else "Hors session NY (9:30-16:00)"
-    st.markdown(f"## ⚡ Live Signal — Hurst_MR &nbsp; {status_icon} {status_txt}")
-with col_refresh:
-    st.markdown("<br>", unsafe_allow_html=True)
-    manual_refresh = st.button("🔄 Refresh")
+in_session = (
+    (now_ny.hour * 60 + now_ny.minute) >= SESSION_START[0]*60 + SESSION_START[1] and
+    (now_ny.hour * 60 + now_ny.minute) <  SESSION_END[0]  *60 + SESSION_END[1]
+)
+sess_col = "#00ff88" if in_session else "#ff3366"
+sess_txt = "SESSION ACTIVE" if in_session else "HORS SESSION"
+st.markdown(f"""
+<div style="display:flex;align-items:center;justify-content:space-between;
+            padding:.6rem 0 1rem;border-bottom:1px solid #111;margin-bottom:1rem">
+    <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.6rem;
+                    letter-spacing:.2em;color:#3CC4B7;text-transform:uppercase">MNQ · 4PROPTRADER</div>
+        <div style="font-size:1.6rem;font-weight:700;color:#fff;letter-spacing:-.02em">
+            Live Signal <span style="color:#3CC4B7">Hurst_MR</span>
+        </div>
+    </div>
+    <div style="text-align:right">
+        <span style="background:rgba(0,0,0,.4);border:1px solid {sess_col};color:{sess_col};
+                     font-family:'JetBrains Mono',monospace;font-size:.65rem;
+                     letter-spacing:.12em;padding:.3rem .8rem;border-radius:6px">
+            {'<span class="live-dot"></span>' if in_session else '⬛ '}{sess_txt}
+        </span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Fetch data ────────────────────────────────────────
 with st.spinner("Chargement données..."):
@@ -311,25 +467,136 @@ st.markdown(f'<div style="font-size:.75rem;color:{src_color};margin-bottom:.5rem
             unsafe_allow_html=True)
 
 if err or df is None:
-    st.warning(f"⚠️ {err or 'Données indisponibles'}")
+    st.error(f"🔴 {err or 'Bridge dxFeed inactif'}")
+    st.info("▶ Lance le bridge : `cd QUANT MATHS` → `node dxfeed_bridge.js` → attends '✓ Ticks reçus'")
     if not in_session:
-        st.info("Session NY fermée. Les données seront disponibles dès 9:30 NY.")
-    if "dxFeed" not in data_source:
-        st.info("💡 Pour données temps réel : lance `node dxfeed_bridge.js` dans un terminal séparé.")
-    if auto_refresh:
-        time.sleep(refresh_sec)
-        st.rerun()
+        st.info("Session NY fermée (9:30-16:00 NY = 15:30-22:00 Paris).")
+    time.sleep(2)
+    st.rerun()
     st.stop()
 
 closes    = df["close"].values.flatten()
+opens_arr = df["open"].values.flatten()
+highs_arr = df["high"].values.flatten()
+lows_arr  = df["low"].values.flatten()
 times_str = df["time_str"].tolist()
-signals, h_val = find_signals(closes, times_str)
+# Volume (dxFeed ou yfinance)
+if "volume" in df.columns:
+    volumes = df["volume"].values.astype(float)
+elif "Volume" in df.columns:
+    volumes = df["Volume"].values.astype(float)
+else:
+    volumes = np.zeros(len(closes))
+hurst_arr, h_val = precompute_hurst_arr(closes)   # O(n) — précalculé une fois
+signals          = find_signals(closes, times_str, hurst_arr)
 mids, upper_band, lower_band = compute_bands(closes)
-hmm_now   = hmm_proxy_state(closes, HMM_LOOKBACK)
 price_now = float(closes[-1])
 bars_count = len(closes)
 
+# ── Limites journalières — lues depuis journal ────────
+_today_str   = now_ny.strftime("%Y-%m-%d")
+_j_today     = journal_load()
+_j_today     = _j_today[_j_today["date"] == _today_str] if not _j_today.empty else _j_today
+_trades_today = len(_j_today)
+_pnl_today    = float(_j_today["pnl"].sum()) if not _j_today.empty else 0.0
+_daily_blocked = (_trades_today >= MAX_TRADES_DAY) or (_pnl_today <= -DAILY_LOSS_LIM)
+
 last_signal = signals[-1] if signals else None
+
+# ── Âge du dernier signal ─────────────────────────────
+_sig_age_min  = 0.0
+_sig_expired  = False
+if last_signal:
+    try:
+        _sig_dt      = PARIS.localize(datetime.strptime(last_signal["time"][:16], "%Y-%m-%d %H:%M"))
+        _sig_age_min = (now_ny - _sig_dt).total_seconds() / 60
+        _sig_expired = _sig_age_min > SIGNAL_MAX_AGE_MIN
+    except Exception:
+        pass
+
+# ── Alerte Discord — envoi en thread pour ne pas bloquer ───
+DISCORD_STATUS_FILE = r"C:\tmp\discord_status.json"
+
+def _discord_write_status(ok: bool, err: str = ""):
+    try:
+        with open(DISCORD_STATUS_FILE, "w") as f:
+            json.dump({"ok": ok, "err": err}, f)
+    except Exception:
+        pass
+
+def _discord_read_status():
+    try:
+        with open(DISCORD_STATUS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {"ok": None, "err": ""}
+
+def _build_discord_payload(sig):
+    d        = sig["direction"]
+    emoji    = "🟢" if d == "LONG" else "🔴"
+    entry    = sig["price"] / 10
+    tp       = sig["tp_price"] / 10
+    sl_pts   = sig["sl_pts_mnq"]
+    sl_price = entry - sl_pts if d == "LONG" else entry + sl_pts
+    z        = sig["z_score"]
+    h        = sig["hurst"]
+    t        = sig["time"][11:16]
+    return {
+        "content": (
+            f"{emoji} **MNQ SIGNAL — {d}**\n"
+            f"⏰ `{t} Paris`\n"
+            f"📍 Entrée : `{entry:.2f}`\n"
+            f"🎯 TP     : `{tp:.2f}`\n"
+            f"🛑 SL     : `{sl_price:.2f}` (-{sl_pts:.2f} pts)\n"
+            f"📊 Z      : `{z:+.2f}σ` · H `{h:.3f}`"
+        )
+    }
+
+def _send_discord(sig):
+    try:
+        data = json.dumps(_build_discord_payload(sig)).encode("utf-8")
+        req  = urllib.request.Request(
+            DISCORD_WEBHOOK, data=data,
+            headers={"Content-Type": "application/json",
+                     "User-Agent": "QuantMaster/1.0"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=5)
+        _discord_write_status(True)
+    except Exception as e:
+        _discord_write_status(False, str(e)[:80])
+
+def _send_discord_async(sig):
+    threading.Thread(target=_send_discord, args=(sig,), daemon=True).start()
+
+# ── Alerte ntfy ─────────────────────────────────────────────────────────────
+def _send_ntfy(sig):
+    try:
+        d     = sig["direction"]
+        entry = sig["price"] / 10
+        tp    = sig.get("tp_price", sig["price"]) / 10
+        sl    = sig.get("sl_pts_mnq", 0)
+        z     = sig.get("z_score", 0)
+        h     = sig.get("hurst", 0)
+        t     = sig.get("time", "")[:16]
+        msg   = (
+            f"HURST_MR {d} MNQ\n"
+            f"Prix : {entry:,.2f}\n"
+            f"TP   : {tp:,.2f}\n"
+            f"SL   : {sl:.2f} pts\n"
+            f"Z    : {z:+.2f}s  H={h:.3f}\n"
+            f"Heure: {t}"
+        )
+        urllib.request.urlopen(urllib.request.Request(
+            f"https://ntfy.sh/{NTFY_TOPIC}",
+            data=msg.encode("utf-8"),
+            method="POST"
+        ), timeout=5)
+    except Exception:
+        pass
+
+def _send_ntfy_async(sig):
+    threading.Thread(target=_send_ntfy, args=(sig,), daemon=True).start()
 
 # ── Alerte sonore — ne sonne qu'une fois par signal ───
 def _play_signal_sound(direction: str):
@@ -363,16 +630,47 @@ def _play_signal_sound(direction: str):
 if "last_announced_sig" not in st.session_state:
     st.session_state.last_announced_sig = None
 
-if last_signal:
+if last_signal and not _daily_blocked:
     sig_id = f"{last_signal['time']}_{last_signal['direction']}"
     if sig_id != st.session_state.last_announced_sig:
         st.session_state.last_announced_sig = sig_id
         _play_signal_sound(last_signal["direction"])
+        _send_discord_async(last_signal)
+        _send_ntfy_async(last_signal)
+
+# ── Z-score actuel ────────────────────────────────────
+if len(closes) >= LOOKBACK:
+    w_now   = closes[-LOOKBACK:]
+    z_now   = (closes[-1] - w_now.mean()) / (w_now.std() if w_now.std() > 0 else 1)
+else:
+    z_now = 0.0
+
+z_pct    = min(100, abs(z_now) / BAND_K * 100)
+z_col    = (RED if z_now > BAND_K else GREEN if z_now < -BAND_K else TEAL)
+z_dir_lbl = "SHORT ZONE" if z_now > BAND_K else ("LONG ZONE" if z_now < -BAND_K else f"{abs(z_now):.2f}σ / {BAND_K}σ")
+
+# ── Banner daily limit ───────────────────────────────
+if _daily_blocked:
+    if _pnl_today <= -DAILY_LOSS_LIM:
+        st.markdown(f"""
+        <div style="background:#1a0407;border:2px solid #ff3366;border-radius:10px;
+                    padding:.8rem 1.2rem;margin-bottom:.8rem;
+                    font-family:'JetBrains Mono',monospace;font-size:.85rem;color:#ff3366">
+            🛑 <b>DAILY LIMIT ATTEINTE</b> — P&L jour : {_pnl_today:+.0f}$ / -{DAILY_LOSS_LIM:.0f}$<br>
+            <span style="color:#555;font-size:.75rem">Stop trading pour aujourd'hui. Aucun nouveau signal ne sera activé.</span>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div style="background:#0d1a04;border:2px solid #ffd600;border-radius:10px;
+                    padding:.8rem 1.2rem;margin-bottom:.8rem;
+                    font-family:'JetBrains Mono',monospace;font-size:.85rem;color:#ffd600">
+            ⚠️ <b>MAX TRADES ATTEINT</b> — {_trades_today}/{MAX_TRADES_DAY} trades aujourd'hui<br>
+            <span style="color:#555;font-size:.75rem">Limite journalière atteinte. Session terminée.</span>
+        </div>""", unsafe_allow_html=True)
 
 # ── KPI Cards ─────────────────────────────────────────
 c1, c2, c3, c4, c5 = st.columns(5)
 
-# Hurst
 h_color = GREEN if h_val < HURST_THRESHOLD else RED
 h_label = "MR ✓" if h_val < HURST_THRESHOLD else "Trending ✗"
 with c1:
@@ -380,308 +678,716 @@ with c1:
     <div class="kpi-card">
         <div class="kpi-value" style="color:{h_color}">{h_val:.3f}</div>
         <div class="kpi-label">Hurst H — {h_label}</div>
+        <div class="gauge-track">
+            <div class="gauge-fill" style="width:{max(0,100-int(h_val*100))}%;
+                 background:{'#00ff88' if h_val < HURST_THRESHOLD else '#ff3366'}"></div>
+        </div>
     </div>""", unsafe_allow_html=True)
 
-# HMM
-hmm_labels = {0: ("CALM", GREEN), 1: ("NORMAL", TEAL), 2: ("TREND", RED)}
-hmm_txt, hmm_col = hmm_labels.get(hmm_now, ("?", "#888"))
 with c2:
     st.markdown(f"""
     <div class="kpi-card">
-        <div class="kpi-value" style="color:{hmm_col}">{hmm_txt}</div>
-        <div class="kpi-label">HMM State (barre)</div>
+        <div class="kpi-value" style="color:{z_col}">{z_now:+.2f}σ</div>
+        <div class="kpi-label">Z-score — {z_dir_lbl}</div>
+        <div class="gauge-track">
+            <div class="gauge-fill" style="width:{z_pct:.0f}%;background:{z_col}"></div>
+        </div>
     </div>""", unsafe_allow_html=True)
 
-# Prix
+mnq_price = price_now / 10
 with c3:
-    mnq_price = price_now / 10
     st.markdown(f"""
     <div class="kpi-card">
-        <div class="kpi-value" style="color:{YELLOW}">{price_now:,.0f}</div>
-        <div class="kpi-label">NQ=F &nbsp;·&nbsp; MNQ ≈ {mnq_price:,.0f}</div>
+        <div class="kpi-value" style="color:{YELLOW}">{mnq_price:,.1f}</div>
+        <div class="kpi-label">MNQ · NQ {price_now:,.0f}</div>
     </div>""", unsafe_allow_html=True)
 
-# Signaux du jour
-n_sigs = len(signals)
-sig_col = GREEN if n_sigs > 0 else "#555"
+n_sigs  = len(signals)   # détections algo — pour le chart uniquement
+n_taken = _trades_today  # trades réellement pris — pour le compteur KPI
+sig_col = RED if _daily_blocked else (GREEN if n_taken > 0 else "#333")
+sig_lbl = "🛑 STOP" if _daily_blocked else f"{n_taken}/{MAX_TRADES_DAY} trades pris"
 with c4:
     st.markdown(f"""
     <div class="kpi-card">
-        <div class="kpi-value" style="color:{sig_col}">{n_sigs}</div>
-        <div class="kpi-label">Signaux aujourd'hui</div>
+        <div class="kpi-value" style="color:{sig_col}">{n_taken}/{MAX_TRADES_DAY}</div>
+        <div class="kpi-label">{sig_lbl}</div>
     </div>""", unsafe_allow_html=True)
 
-# Barres chargées
+bars_rdy = bars_count >= HURST_WIN + LOOKBACK
+bars_col = GREEN if bars_rdy else YELLOW
 with c5:
     st.markdown(f"""
     <div class="kpi-card">
-        <div class="kpi-value" style="color:#888">{bars_count}</div>
-        <div class="kpi-label">Barres M1 session</div>
+        <div class="kpi-value" style="color:{bars_col}">{bars_count}</div>
+        <div class="kpi-label">Barres M1 {'✓' if bars_rdy else f'— min {HURST_WIN+LOOKBACK}'}</div>
     </div>""", unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("<div style='margin-top:.6rem'></div>", unsafe_allow_html=True)
 
-# ── Chart principal ───────────────────────────────────
-x_idx = list(range(len(closes)))
+# ── Niveaux Band K + Fair Value ───────────────────────
+fv_now    = float(mids[-1])       / 10 if len(mids) and not np.isnan(mids[-1])       else None
+upper_now = float(upper_band[-1]) / 10 if len(upper_band) and not np.isnan(upper_band[-1]) else None
+lower_now = float(lower_band[-1]) / 10 if len(lower_band) and not np.isnan(lower_band[-1]) else None
 
-fig = go.Figure()
-
-# Fond zones signal
-for sig in signals:
-    color = "rgba(0,255,136,0.06)" if sig["direction"] == "LONG" else "rgba(255,51,102,0.06)"
-    fig.add_vrect(x0=sig["bar_idx"]-0.5, x1=sig["bar_idx"]+5,
-                  fillcolor=color, layer="below", line_width=0)
-
-# Bandes MR
-fig.add_trace(go.Scatter(
-    x=x_idx, y=upper_band,
-    name=f"+{BAND_K}σ", line=dict(color="rgba(255,51,102,0.4)", dash="dot", width=1),
-    showlegend=True,
-))
-fig.add_trace(go.Scatter(
-    x=x_idx, y=lower_band,
-    name=f"−{BAND_K}σ", line=dict(color="rgba(0,255,136,0.4)", dash="dot", width=1),
-    fill="tonexty", fillcolor="rgba(60,196,183,0.04)",
-))
-
-# Mean rolling
-fig.add_trace(go.Scatter(
-    x=x_idx, y=mids,
-    name="Fair Value", line=dict(color=TEAL, width=1.5, dash="dash"),
-))
-
-# Prix (line)
-fig.add_trace(go.Scatter(
-    x=x_idx, y=closes,
-    name="NQ=F M1", line=dict(color=YELLOW, width=1.8),
-))
-
-# Signal markers
-long_x  = [s["bar_idx"] for s in signals if s["direction"] == "LONG"]
-long_y  = [s["price"]   for s in signals if s["direction"] == "LONG"]
-short_x = [s["bar_idx"] for s in signals if s["direction"] == "SHORT"]
-short_y = [s["price"]   for s in signals if s["direction"] == "SHORT"]
-
-if long_x:
-    fig.add_trace(go.Scatter(
-        x=long_x, y=[y * 0.9995 for y in long_y],
-        mode="markers+text",
-        marker=dict(symbol="triangle-up", size=14, color=GREEN,
-                    line=dict(color="white", width=1)),
-        text=["LONG"] * len(long_x),
-        textposition="bottom center",
-        textfont=dict(color=GREEN, size=9),
-        name="LONG",
-    ))
-if short_x:
-    fig.add_trace(go.Scatter(
-        x=short_x, y=[y * 1.0005 for y in short_y],
-        mode="markers+text",
-        marker=dict(symbol="triangle-down", size=14, color=RED,
-                    line=dict(color="white", width=1)),
-        text=["SHORT"] * len(short_x),
-        textposition="top center",
-        textfont=dict(color=RED, size=9),
-        name="SHORT",
-    ))
-
-# Prix actuel annotation
-fig.add_annotation(
-    x=len(closes)-1, y=price_now,
-    text=f" ◄ {price_now:,.0f}",
-    showarrow=False,
-    font=dict(color=YELLOW, size=11),
-    xanchor="left",
-)
-
-# Tick labels (toutes les 30 barres)
-tick_step = max(1, bars_count // 12)
-tick_vals = x_idx[::tick_step]
-tick_text = [times_str[i][11:16] for i in tick_vals]
-
-fig.update_layout(
-    **DARK,
-    title=dict(text=f"NQ=F M1 — Session du {now_ny.strftime('%d %b %Y')}  |  H={h_val:.3f}",
-               font=dict(color="#aaa", size=13)),
-    height=420,
-    showlegend=True,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(size=10)),
-    xaxis=dict(tickvals=tick_vals, ticktext=tick_text, gridcolor="#111"),
-    yaxis=dict(gridcolor="#111", tickformat=",.0f"),
-    hovermode="x unified",
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# ── Signal actuel + Contexte ──────────────────────────
-col_sig, col_ctx = st.columns([1, 1], gap="medium")
-
-with col_sig:
-    st.markdown("#### 🎯 Dernier signal")
-    if last_signal:
-        d   = last_signal["direction"]
-        col = GREEN if d == "LONG" else RED
-        cls = "sig-long" if d == "LONG" else "sig-short"
-        icon = "▲" if d == "LONG" else "▼"
-        tp   = last_signal["fair_value"]
-        sl_dist = last_signal["std"] * 1.25
-        st.markdown(f"""
-        <div class="{cls}">
-            <div style="font-size:1.6rem;font-weight:700;color:{col};font-family:monospace">
-                {icon} {d}
-            </div>
-            <div style="margin-top:.6rem;line-height:1.9;font-family:monospace;font-size:.85rem">
-                Heure&nbsp;&nbsp;&nbsp;&nbsp; : <b>{last_signal["time"][11:16]} NY</b><br>
-                Prix entrée : <b>{last_signal["price"]:,.2f}</b> NQ (MNQ ≈ {last_signal["price"]/10:,.1f})<br>
-                Fair value&nbsp; : <b style="color:{TEAL}">{tp:,.2f}</b> &nbsp;← cible TP<br>
-                Z-score&nbsp;&nbsp;&nbsp; : <b>{last_signal["z_score"]:+.2f}σ</b><br>
-                SL guide&nbsp;&nbsp; : ±<b>{sl_dist:.0f} pts NQ</b> ({sl_dist/10:.1f} pts MNQ)<br>
-                HMM state&nbsp; : {last_signal["hmm_state"]} (0=calm 1=normal)
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        regime_txt = "Session MR — en attente de signal" if h_val < HURST_THRESHOLD else "Session trending — pas de trade"
-        st.markdown(f"""
-        <div class="sig-none">
-            <div style="font-size:1rem">Aucun signal actif</div>
-            <div style="font-size:.8rem;margin-top:.4rem">{regime_txt}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-with col_ctx:
-    st.markdown("#### 📊 Contexte session")
-
-    # Hurst gauge textuel
-    h_pct = min(100, int(h_val * 100))
-    h_bar_green = int((1 - min(h_val, 1)) * 20)
-    h_bar_str = "█" * h_bar_green + "░" * (20 - h_bar_green)
-    h_desc = "Anti-persistante (MR ✓)" if h_val < HURST_THRESHOLD else "Persistante / Random Walk (trend)"
-
-    # Z actuel
-    if len(closes) >= LOOKBACK:
-        w = closes[-LOOKBACK:]
-        z_now = (closes[-1] - w.mean()) / (w.std() if w.std() > 0 else 1)
-    else:
-        z_now = 0.0
-
-    z_col = (RED if z_now > BAND_K else GREEN if z_now < -BAND_K else TEAL)
-
-    regime_color = GREEN if h_val < HURST_THRESHOLD else RED
-
+bk1, bk2, bk3 = st.columns(3)
+with bk1:
+    val = f"{upper_now:,.2f}" if upper_now else "—"
+    dist = f"  +{upper_now - mnq_price:+.1f} pts" if upper_now else ""
     st.markdown(f"""
-    <div class="ctx-box">
-    <div style="font-family:monospace;font-size:.85rem;line-height:2.1">
-        <span style="color:#555">Hurst H&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
-        <b style="color:{regime_color}">{h_val:.3f}</b> — {h_desc}<br>
-        <span style="color:#555">Seuil MR&nbsp;&nbsp;&nbsp;&nbsp;</span> H &lt; {HURST_THRESHOLD}<br>
-        <span style="color:#555">HMM state&nbsp;&nbsp;&nbsp;</span>
-        <b style="color:{hmm_col}">{hmm_now}</b> — {hmm_txt}<br>
-        <span style="color:#555">Z-score actuel</span>
-        <b style="color:{z_col}">{z_now:+.2f}σ</b>
-        {"&nbsp; ← SIGNAL ZONE" if abs(z_now) >= BAND_K else ""}<br>
-        <span style="color:#555">Barres chargées</span> {bars_count} M1<br>
-        <span style="color:#555">Màj données&nbsp;&nbsp;</span>
-        {now_ny.strftime('%H:%M:%S')} NY<br>
-    </div>
-    </div>
-    """, unsafe_allow_html=True)
+    <div class="kpi-card" style="border-left:2px solid {RED}">
+        <div class="kpi-value" style="color:{RED};font-size:1.1rem">{val}</div>
+        <div class="kpi-label">Band K+ ({BAND_K}σ){dist}</div>
+    </div>""", unsafe_allow_html=True)
+with bk2:
+    val = f"{fv_now:,.2f}" if fv_now else "—"
+    dist = f"  {mnq_price - fv_now:+.1f} pts" if fv_now else ""
+    st.markdown(f"""
+    <div class="kpi-card" style="border-left:2px solid {TEAL}">
+        <div class="kpi-value" style="color:{TEAL};font-size:1.1rem">{val}</div>
+        <div class="kpi-label">Fair Value (mean 30){dist}</div>
+    </div>""", unsafe_allow_html=True)
+with bk3:
+    val = f"{lower_now:,.2f}" if lower_now else "—"
+    dist = f"  {lower_now - mnq_price:+.1f} pts" if lower_now else ""
+    st.markdown(f"""
+    <div class="kpi-card" style="border-left:2px solid {GREEN}">
+        <div class="kpi-value" style="color:{GREEN};font-size:1.1rem">{val}</div>
+        <div class="kpi-label">Band K− ({BAND_K}σ){dist}</div>
+    </div>""", unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("<div style='margin-top:.4rem'></div>", unsafe_allow_html=True)
 
-# ── Historique signaux ────────────────────────────────
-st.markdown("#### 📋 Historique signaux — session du jour")
-if signals:
-    rows = []
-    for s in signals:
-        d = s["direction"]
-        rows.append({
-            "Heure":       s["time"][11:16] + " NY",
-            "Direction":   s["direction"],
-            "Prix NQ":     f"{s['price']:,.2f}",
-            "Prix MNQ":    f"{s['price']/10:,.1f}",
-            "Fair Value":  f"{s['fair_value']:,.2f}",
-            "Z-score":     f"{s['z_score']:+.2f}σ",
-            "Hurst H":     f"{s['hurst']:.3f}",
-            "HMM":         str(s["hmm_state"]),
-        })
-    hist_df = pd.DataFrame(rows)
+# ═══════════════════════════════════════════════════════
+# MAIN LAYOUT : Chart (65%) | Panel (35%)
+# ═══════════════════════════════════════════════════════
+col_chart, col_panel = st.columns([0.63, 0.37], gap="small")
+_chart_error = None  # capturé si le rendu plante — signal/Discord déjà partis avant
 
-    def color_dir(val):
-        if val == "LONG":
-            return "color: #00ff88; font-weight:bold"
-        elif val == "SHORT":
-            return "color: #ff3366; font-weight:bold"
-        return ""
+try:
+    # Z-score rolling (une valeur par barre)
+    z_rolling = np.full(len(closes), np.nan)
+    for i in range(LOOKBACK, len(closes)):
+        w = closes[i - LOOKBACK: i]
+        s = w.std()
+        if s > 0:
+            z_rolling[i] = (closes[i] - w.mean()) / s
 
-    st.dataframe(
-        hist_df.style.applymap(color_dir, subset=["Direction"]),
-        use_container_width=True,
-        hide_index=True,
+    # ── Fenêtre d'affichage : 60 dernières barres seulement ─
+    DISPLAY_BARS = 60
+    d_start   = max(0, len(closes) - DISPLAY_BARS)
+    d_closes  = closes[d_start:]
+    d_opens   = opens_arr[d_start:]
+    d_highs   = highs_arr[d_start:]
+    d_lows    = lows_arr[d_start:]
+    d_times   = times_str[d_start:]
+    d_mids    = mids[d_start:]
+    d_upper   = upper_band[d_start:]
+    d_lower   = lower_band[d_start:]
+    d_vols    = volumes[d_start:]
+    d_z       = z_rolling[d_start:]
+
+    x_idx     = list(range(len(d_closes)))
+    tick_step = max(1, len(d_closes) // 8)
+    tick_vals = x_idx[::tick_step]
+    tick_text = [d_times[i][11:16] for i in tick_vals]
+
+    # Couleurs volume (vert si hausse, rouge si baisse) — sur fenêtre display
+    vol_colors = [
+        "#00cc6a" if d_closes[i] >= d_opens[i] else "#cc2244"
+        for i in range(len(d_closes))
+    ]
+
+    # ── Subplot 3 lignes : Candlestick / Volume / Z-score ──
+    fig = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.60, 0.18, 0.22],
+        vertical_spacing=0.02,
+        subplot_titles=["", "", ""],
     )
-else:
-    regime = "session MR active (H < 0.45), aucun signal encore" if h_val < HURST_THRESHOLD else "session trending (H ≥ 0.45) — pas de signal MR aujourd'hui"
-    st.info(f"Aucun signal — {regime}")
 
-# ── Hurst intraday (mini-chart) ───────────────────────
-st.markdown("#### 📈 Évolution Hurst intraday")
-hurst_vals = []
-step = max(1, LOOKBACK)
-for i in range(LOOKBACK, len(closes), step):
-    hurst_vals.append((i, hurst_exponent(closes[:i+1])))
+    # ─── ROW 1 : Candlestick + bandes ─────────────────────
 
-if len(hurst_vals) > 2:
-    hx = [v[0] for v in hurst_vals]
-    hy = [v[1] for v in hurst_vals]
-    hx_labels = [times_str[i][11:16] for i in hx if i < len(times_str)]
+    # Fond zones signal (offset bar_idx par d_start)
+    for sig in signals:
+        di = sig["bar_idx"] - d_start
+        if di < 0: continue
+        clr = "rgba(0,255,136,0.05)" if sig["direction"] == "LONG" else "rgba(255,51,102,0.05)"
+        fig.add_vrect(x0=di-0.5, x1=min(di+6, len(d_closes)-1),
+                      fillcolor=clr, layer="below", line_width=0, row=1, col=1)
 
-    fig_h = go.Figure()
-    fig_h.add_hline(y=HURST_THRESHOLD, line=dict(color=RED, dash="dash", width=1.5),
-                    annotation_text=f"Seuil MR {HURST_THRESHOLD}", annotation_position="right")
-    fig_h.add_hline(y=0.5, line=dict(color="#333", dash="dot", width=1))
+    # Bande +Kσ
+    fig.add_trace(go.Scatter(
+        x=x_idx, y=d_upper, name=f"+{BAND_K}σ",
+        line=dict(color="rgba(255,51,102,0.45)", dash="dot", width=1),
+        showlegend=True,
+        hovertemplate=f"+{BAND_K}σ: %{{y:,.0f}}<extra></extra>",
+    ), row=1, col=1)
 
-    colors_h = [GREEN if v < HURST_THRESHOLD else ORANGE for v in hy]
-    fig_h.add_trace(go.Scatter(
-        x=hx[:len(hx_labels)], y=hy,
-        mode="lines+markers",
-        line=dict(color=TEAL, width=2),
-        marker=dict(color=colors_h, size=6, line=dict(color="white", width=0.5)),
-        name="Hurst H",
-        hovertemplate="Heure: %{text}<br>H: %{y:.3f}<extra></extra>",
-        text=hx_labels,
-    ))
-    fig_h.add_trace(go.Scatter(
-        x=[hx[-1]], y=[hy[-1]],
-        mode="markers+text",
-        marker=dict(size=10, color=GREEN if hy[-1] < HURST_THRESHOLD else RED),
-        text=[f"H={hy[-1]:.3f}"],
-        textposition="top right",
-        textfont=dict(size=11),
+    # Bande -Kσ + fill
+    fig.add_trace(go.Scatter(
+        x=x_idx, y=d_lower, name=f"−{BAND_K}σ",
+        line=dict(color="rgba(0,255,136,0.45)", dash="dot", width=1),
+        fill="tonexty", fillcolor="rgba(60,196,183,0.03)",
+        showlegend=True,
+        hovertemplate=f"−{BAND_K}σ: %{{y:,.0f}}<extra></extra>",
+    ), row=1, col=1)
+
+    # Fair Value
+    fig.add_trace(go.Scatter(
+        x=x_idx, y=d_mids, name="Fair Value",
+        line=dict(color=TEAL, width=1.5, dash="dash"),
+        hovertemplate="FV: %{y:,.0f}<extra></extra>",
+    ), row=1, col=1)
+
+    # Candlestick
+    fig.add_trace(go.Candlestick(
+        x=x_idx,
+        open=d_opens, high=d_highs, low=d_lows, close=d_closes,
+        name="MNQ M1",
+        increasing=dict(line=dict(color="#00cc6a", width=1), fillcolor="#00cc6a"),
+        decreasing=dict(line=dict(color="#cc2244", width=1), fillcolor="#cc2244"),
+    ), row=1, col=1)
+
+    # Signal markers (offset)
+    for sig in signals:
+        di = sig["bar_idx"] - d_start
+        if di < 0: continue
+        d   = sig["direction"]
+        col = GREEN if d == "LONG" else RED
+        sym = "triangle-up" if d == "LONG" else "triangle-down"
+        ypos = sig["price"] * (0.9993 if d == "LONG" else 1.0007)
+        fig.add_trace(go.Scatter(
+            x=[di], y=[ypos],
+            mode="markers+text",
+            marker=dict(symbol=sym, size=16, color=col, line=dict(color="white", width=1)),
+            text=[d], textposition="bottom center" if d == "LONG" else "top center",
+            textfont=dict(color=col, size=9, family="JetBrains Mono"),
+            showlegend=False, name=d,
+        ), row=1, col=1)
+
+    # TP / SL lignes horizontales (row 1 uniquement)
+    n_disp = len(d_closes)
+    if last_signal:
+        tp_nq = last_signal["tp_price"]
+        sl_nq = last_signal["price"] - last_signal["sl_pts_mnq"] * 10 * (
+            1 if last_signal["direction"] == "LONG" else -1)
+        for y_val, clr, lbl in [
+            (tp_nq, TEAL, f"TP {tp_nq/10:.2f}"),
+            (sl_nq, RED,  f"SL {sl_nq/10:.2f}"),
+        ]:
+            fig.add_shape(type="line", x0=0, x1=n_disp-1, y0=y_val, y1=y_val,
+                          line=dict(color=clr, dash="dash", width=1), row=1, col=1)
+            fig.add_annotation(x=n_disp-1, y=y_val, text=f" {lbl}",
+                               showarrow=False, font=dict(color=clr, size=9, family="JetBrains Mono"),
+                               xanchor="left", row=1, col=1)
+
+    # Prix actuel
+    fig.add_annotation(
+        x=n_disp-1, y=price_now,
+        text=f" ◄ {mnq_price:.1f}",
+        showarrow=False, font=dict(color=YELLOW, size=11, family="JetBrains Mono"),
+        xanchor="left", row=1, col=1,
+    )
+
+    # ─── ROW 2 : Volume ───────────────────────────────────
+    fig.add_trace(go.Bar(
+        x=x_idx, y=d_vols,
+        marker_color=vol_colors,
+        marker_line_width=0,
+        name="Volume",
         showlegend=False,
-    ))
-    fig_h.update_layout(
+        hovertemplate="Vol: %{y}<extra></extra>",
+    ), row=2, col=1)
+
+    # ─── ROW 3 : Z-score rolling ──────────────────────────
+    # Zone signal colorée
+    fig.add_hrect(y0=BAND_K, y1=BAND_K*1.5, fillcolor="rgba(255,51,102,0.06)",
+                  line_width=0, row=3, col=1)
+    fig.add_hrect(y0=-BAND_K*1.5, y1=-BAND_K, fillcolor="rgba(0,255,136,0.06)",
+                  line_width=0, row=3, col=1)
+
+    # Seuils ±Kσ
+    fig.add_hline(y=BAND_K,  line=dict(color="rgba(255,51,102,0.6)", dash="dot", width=1),
+                  annotation_text=f"+{BAND_K}σ",
+                  annotation_font=dict(color=RED, size=9), row=3, col=1)
+    fig.add_hline(y=-BAND_K, line=dict(color="rgba(0,255,136,0.6)", dash="dot", width=1),
+                  annotation_text=f"−{BAND_K}σ",
+                  annotation_font=dict(color=GREEN, size=9), row=3, col=1)
+    fig.add_hline(y=0, line=dict(color="#1a1a1a", width=1), row=3, col=1)
+
+    # Z-score line colorée selon zone
+    z_clr_line = RED if z_now > BAND_K else (GREEN if z_now < -BAND_K else TEAL)
+    fig.add_trace(go.Scatter(
+        x=x_idx, y=d_z,
+        name="Z-score",
+        line=dict(color=z_clr_line, width=1.5),
+        fill="tozeroy", fillcolor=f"rgba({','.join(str(int(z_clr_line.lstrip('#')[i:i+2],16)) for i in (0,2,4))},0.08)",
+        hovertemplate="Z: %{y:.2f}σ<extra></extra>",
+        showlegend=True,
+    ), row=3, col=1)
+
+    # ─── Layout global ────────────────────────────────────
+    fig.update_layout(
         **DARK,
-        height=220,
-        title=dict(text="Hurst H — mis à jour chaque 30 barres", font=dict(size=12, color="#888")),
-        yaxis=dict(range=[0, 1], gridcolor="#111",
-                   title="H", tickvals=[0, 0.25, 0.45, 0.5, 0.75, 1.0]),
-        xaxis=dict(tickvals=hx[:len(hx_labels)], ticktext=hx_labels, gridcolor="#111"),
-        showlegend=False,
+        title=dict(
+            text=f"MNQ M1 · {now_ny.strftime('%d %b %Y')} · H={h_val:.3f} · Z={z_now:+.2f}σ",
+            font=dict(color="#555", size=11, family="JetBrains Mono"),
+        ),
+        height=620,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                    font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+        hovermode="x unified",
+        xaxis=dict(showticklabels=False, gridcolor="#0f0f0f", rangeslider=dict(visible=False)),
+        xaxis2=dict(showticklabels=False, gridcolor="#0f0f0f"),
+        xaxis3=dict(tickvals=tick_vals, ticktext=tick_text, gridcolor="#0f0f0f"),
+        yaxis=dict(gridcolor="#0f0f0f", tickformat=",.0f", side="right"),
+        yaxis2=dict(gridcolor="#0f0f0f", side="right", showticklabels=False, title="Vol"),
+        yaxis3=dict(gridcolor="#0f0f0f", side="right", zeroline=False,
+                    range=[-BAND_K*1.6, BAND_K*1.6]),
     )
-    st.plotly_chart(fig_h, use_container_width=True)
+    with col_chart:
+        st.plotly_chart(fig, use_container_width=True)
+except Exception as _e:
+    with col_chart:
+        st.error(f"⚠️ Chart error: {_e}")
+
+# ── Panel droit : Signal + Status ─────────────────────
+try:
+    with col_panel:
+        # Signal card
+        st.markdown('<div class="sec-label">Signal actif</div>', unsafe_allow_html=True)
+        if last_signal:
+            d         = last_signal["direction"]
+            col       = GREEN if d == "LONG" else RED
+            cls       = "sig-long" if d == "LONG" else "sig-short"
+            icon      = "▲" if d == "LONG" else "▼"
+            tp_mnq     = last_signal["tp_price"] / 10
+            sl_mnq     = last_signal["sl_pts_mnq"]
+            entry_mnq  = last_signal["price"] / 10
+            fv_mnq     = last_signal["fair_value"] / 10
+            sl_price   = entry_mnq - sl_mnq if d == "LONG" else entry_mnq + sl_mnq
+            rr         = abs(tp_mnq - entry_mnq) / sl_mnq if sl_mnq > 0 else 0
+            # statut Discord (lu depuis fichier — persiste entre reruns)
+            ds = _discord_read_status()
+            if ds["ok"] is True:
+                disc_lbl = '<span style="color:#3CC4B7">Discord ✓</span>'
+            elif ds["ok"] is False:
+                disc_lbl = f'<span style="color:#ff3366">Discord ✗ {ds["err"]}</span>'
+            else:
+                disc_lbl = '<span style="color:#333">Discord —</span>'
+            st.markdown(f"""
+            <div class="{cls}">
+                <div style="font-size:1.8rem;font-weight:700;color:{col};
+                            font-family:'JetBrains Mono',monospace">{icon} {d}</div>
+                <div style="font-size:.6rem;color:{col};font-family:'JetBrains Mono',monospace;
+                            letter-spacing:.15em;margin:-.1rem 0 .4rem">
+                    {last_signal["time"][11:16]} · Z={last_signal["z_score"]:+.2f}σ
+                    {"&nbsp;&nbsp;<span style='color:#ff9100;background:rgba(255,145,0,0.12);padding:1px 6px;border-radius:4px;font-size:.58rem'>⏱ EXPIRÉ " + f"{int(_sig_age_min)}min" + "</span>" if _sig_expired else ""}
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;
+                            font-family:'JetBrains Mono',monospace">
+                    <div style="background:rgba(0,0,0,.3);border-radius:7px;padding:.5rem .7rem">
+                        <div style="font-size:.55rem;color:#444;margin-bottom:.15rem">ENTRÉE</div>
+                        <div style="color:#fff;font-weight:700;font-size:.85rem">{entry_mnq:.2f}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,.3);border-radius:7px;padding:.5rem .7rem">
+                        <div style="font-size:.55rem;color:#444;margin-bottom:.15rem">TP</div>
+                        <div style="color:{TEAL};font-weight:700;font-size:.85rem">{tp_mnq:.2f}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,.3);border-radius:7px;padding:.5rem .7rem">
+                        <div style="font-size:.55rem;color:{RED};margin-bottom:.15rem">SL PRIX</div>
+                        <div style="color:{RED};font-weight:700;font-size:.85rem">{sl_price:.2f}</div>
+                        <div style="font-size:.6rem;color:#444;margin-top:.1rem">-{sl_mnq:.2f} pts</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,.3);border-radius:7px;padding:.5rem .7rem">
+                        <div style="font-size:.55rem;color:#444;margin-bottom:.15rem">R:R · FV</div>
+                        <div style="font-size:.85rem;font-weight:700;color:#fff">{rr:.1f}R</div>
+                        <div style="font-size:.6rem;color:{TEAL};margin-top:.1rem">FV {fv_mnq:.2f}</div>
+                    </div>
+                </div>
+                <div style="margin-top:.6rem;font-family:'JetBrains Mono',monospace;
+                            font-size:.65rem;color:#333;display:flex;justify-content:space-between">
+                    <span>H={last_signal["hurst"]:.3f} · {HURST_WIN} bars</span>
+                    <span style="font-size:.6rem">{disc_lbl}</span>
+                </div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            regime_txt = "Attente signal MR" if h_val < HURST_THRESHOLD else "Trending — no trade"
+            regime_sub = f"H={h_val:.3f} < {HURST_THRESHOLD} ✓" if h_val < HURST_THRESHOLD else f"H={h_val:.3f} ≥ {HURST_THRESHOLD}"
+            st.markdown(f"""
+            <div class="sig-none">
+                <div style="font-size:2rem;margin-bottom:.3rem">◎</div>
+                <div style="font-size:.9rem;color:#333;font-weight:600">{regime_txt}</div>
+                <div style="font-size:.7rem;color:#222;margin-top:.3rem;
+                            font-family:'JetBrains Mono',monospace">{regime_sub}</div>
+            </div>""", unsafe_allow_html=True)
+
+        # Bouton test Discord
+        if st.button("🔔 Test Discord", use_container_width=True):
+            test_sig = last_signal if last_signal else {
+                "direction": "LONG", "price": 250000, "tp_price": 251000,
+                "sl_pts_mnq": 1.5, "z_score": -3.1, "hurst": 0.41,
+                "time": "2026-01-01 00:00:00",
+            }
+            try:
+                data = json.dumps(_build_discord_payload(test_sig)).encode("utf-8")
+                req  = urllib.request.Request(
+                    DISCORD_WEBHOOK, data=data,
+                    headers={"Content-Type": "application/json",
+                             "User-Agent": "QuantMaster/1.0"},
+                    method="POST",
+                )
+                urllib.request.urlopen(req, timeout=5)
+                _discord_write_status(True)
+                st.success("Discord ✓ — message envoyé")
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="ignore")
+                _discord_write_status(False, f"{e.code} {body[:120]}")
+                st.error(f"Discord ✗ HTTP {e.code} — {body[:300]}")
+            except Exception as e:
+                _discord_write_status(False, str(e)[:80])
+                st.error(f"Discord ✗ — {e}")
+
+        # Status box
+        st.markdown('<div class="sec-label">Régime marché</div>', unsafe_allow_html=True)
+        regime_color = GREEN if h_val < HURST_THRESHOLD else RED
+        h_pct_gauge  = min(100, int(h_val * 200))
+        z_abs_pct    = min(100, int(abs(z_now) / BAND_K * 100))
+        z_signal_lbl = "SIGNAL ZONE" if abs(z_now) >= BAND_K else f"seuil ±{BAND_K}σ"
+        st.markdown(f"""
+        <div class="ctx-box">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:#333;
+                        text-transform:uppercase;letter-spacing:.1em;margin-bottom:.3rem">Hurst H</div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+                <span style="font-size:1rem;font-weight:700;color:{regime_color};
+                             font-family:'JetBrains Mono',monospace">{h_val:.3f}</span>
+                <span style="font-size:.65rem;color:{regime_color}">{'MR ✓' if h_val < HURST_THRESHOLD else 'Trend ✗'}</span>
+            </div>
+            <div class="gauge-track">
+                <div class="gauge-fill" style="width:{h_pct_gauge}%;background:linear-gradient(90deg,#00ff88,#ffd600,#ff3366)"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:.55rem;color:#1e1e1e;
+                        font-family:'JetBrains Mono',monospace;margin-bottom:.8rem">
+                <span>0</span><span>{HURST_THRESHOLD}</span><span>0.5</span><span>1.0</span>
+            </div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:#333;
+                        text-transform:uppercase;letter-spacing:.1em;margin-bottom:.3rem">Z-score</div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+                <span style="font-size:1rem;font-weight:700;color:{z_col};
+                             font-family:'JetBrains Mono',monospace">{z_now:+.2f}σ</span>
+                <span style="font-size:.65rem;color:{z_col}">{z_signal_lbl}</span>
+            </div>
+            <div class="gauge-track">
+                <div class="gauge-fill" style="width:{z_abs_pct}%;background:{z_col}"></div>
+            </div>
+            <div style="margin-top:.8rem;padding-top:.7rem;border-top:1px solid #0f0f0f;
+                        font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#2a2a2a;line-height:1.9">
+                <span style="color:#444">Source</span> {data_source[:28]}<br>
+                <span style="color:#444">Barres</span> {bars_count} M1 {'✓' if bars_count >= HURST_WIN+LOOKBACK else f'— min {HURST_WIN+LOOKBACK}'}<br>
+                <span style="color:#444">Màj &nbsp;&nbsp;</span>{now_ny.strftime('%H:%M:%S')} Paris
+            </div>
+        </div>""", unsafe_allow_html=True)
+except Exception as _e:
+    with col_panel:
+        st.error(f"⚠️ Panel error: {_e}")
+
+# ── Chart ACF — Signature MR ───────────────────────────
+# ═══════════════════════════════════════════════════════
+# TABS : Journal | Analyse | Signaux
+# ═══════════════════════════════════════════════════════
+tab_journal, tab_analyse, tab_signaux = st.tabs(["  📋  Journal  ", "  📈  Analyse  ", "  🔔  Signaux  "])
+
+# ─────────────────────────────────────────────────────
+# TAB JOURNAL
+# ─────────────────────────────────────────────────────
+with tab_journal:
+    j_df = journal_load()
+    total_pnl  = j_df["pnl"].sum() if not j_df.empty else 0.0
+    dd_used    = abs(j_df[j_df["pnl"] < 0]["pnl"].sum()) if not j_df.empty else 0.0
+    dd_rem     = CHALLENGE_DD - dd_used
+    prog_pct   = min(100, total_pnl / CHALLENGE_TARGET * 100) if CHALLENGE_TARGET > 0 else 0
+    n_trades   = len(j_df)
+    n_wins     = int((j_df["pnl"] > 0).sum()) if not j_df.empty else 0
+    wr         = n_wins / n_trades * 100 if n_trades > 0 else 0
+
+    # Challenge KPIs
+    ca, cb, cc, cd = st.columns(4)
+    pnl_col = GREEN if total_pnl >= 0 else RED
+    dd_col  = GREEN if dd_used < CHALLENGE_DD*0.5 else (YELLOW if dd_used < CHALLENGE_DD*0.8 else RED)
+    prg_col = GREEN if prog_pct >= 100 else TEAL
+    with ca:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-value" style="color:{pnl_col}">{total_pnl:+.0f}$</div>
+            <div class="kpi-label">P&L Challenge</div></div>""", unsafe_allow_html=True)
+    with cb:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-value" style="color:{dd_col}">{dd_rem:.0f}$</div>
+            <div class="kpi-label">DD Restant / {CHALLENGE_DD:.0f}$</div></div>""", unsafe_allow_html=True)
+    with cc:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-value" style="color:{TEAL}">{wr:.0f}%</div>
+            <div class="kpi-label">Win Rate ({n_wins}/{n_trades})</div></div>""", unsafe_allow_html=True)
+    with cd:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-value" style="color:{prg_col}">{prog_pct:.0f}%</div>
+            <div class="kpi-label">Vers {CHALLENGE_TARGET:.0f}$</div></div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-top:.6rem'></div>", unsafe_allow_html=True)
+
+    # Formulaire
+    with st.expander("➕ Logger un trade", expanded=bool(last_signal)):
+        pre_dir   = last_signal["direction"] if last_signal else "LONG"
+        pre_entry = round(last_signal["price"] / 10, 2) if last_signal else 0.0
+        pre_sl    = round(last_signal["sl_pts_mnq"], 2) if last_signal else 0.0
+        pre_tp    = round(last_signal["tp_price"] / 10, 2) if last_signal else 0.0
+        pre_h     = round(last_signal["hurst"], 3) if last_signal else 0.0
+        pre_z     = round(last_signal["z_score"], 2) if last_signal else 0.0
+        fa, fb = st.columns(2)
+        with fa:
+            j_dir  = st.selectbox("Direction", ["LONG", "SHORT"], index=0 if pre_dir == "LONG" else 1)
+            j_entry = st.number_input("Entrée MNQ", value=pre_entry, step=0.25, format="%.2f")
+            j_sl    = st.number_input("SL (pts)", value=pre_sl, step=0.25, format="%.2f")
+            j_tp    = st.number_input("TP MNQ", value=pre_tp, step=0.25, format="%.2f")
+        with fb:
+            j_exit      = st.number_input("Sortie réelle MNQ", value=pre_entry, step=0.25, format="%.2f")
+            j_contracts = st.number_input("Contrats", value=1, min_value=1, max_value=50)
+            j_notes     = st.text_area("Notes", placeholder="ex: slippage, ATAS confirmait...")
+        pnl_preview = (j_exit - j_entry) * (1 if j_dir == "LONG" else -1) * TICK_VALUE * j_contracts
+        pc = GREEN if pnl_preview >= 0 else RED
+        st.markdown(f"**P&L estimé : <span style='color:{pc}'>{pnl_preview:+.2f}$</span>**",
+                    unsafe_allow_html=True)
+        if st.button("💾 Enregistrer", type="primary"):
+            journal_add(datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M"),
+                        j_dir, j_entry, j_sl, j_tp, j_contracts, j_exit, pre_h, pre_z, j_notes)
+            st.success("Trade enregistré ✓")
+            st.rerun()
+
+    # Tableau
+    if not j_df.empty:
+        st.markdown('<div class="sec-label" style="margin-top:.5rem">Historique</div>', unsafe_allow_html=True)
+        to_delete = []
+        for _, row in j_df.iterrows():
+            pnl_col_r = GREEN if row["pnl"] > 0 else (RED if row["pnl"] < 0 else "#888")
+            dir_col   = GREEN if row["direction"] == "LONG" else RED
+            cols = st.columns([0.05, 0.12, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.1, 0.25])
+            if cols[0].checkbox("", key=f"del_{row['id']}"):
+                to_delete.append(row["id"])
+            cols[1].markdown(f"<span style='font-size:.75rem;color:#555'>{row['date']} {row['time_ny']}</span>", unsafe_allow_html=True)
+            cols[2].markdown(f"<span style='color:{dir_col};font-weight:700;font-size:.8rem'>{row['direction']}</span>", unsafe_allow_html=True)
+            cols[3].markdown(f"<span style='font-size:.8rem'>{row['entry']:.2f}</span>", unsafe_allow_html=True)
+            cols[4].markdown(f"<span style='font-size:.8rem;color:{TEAL}'>{row['tp']:.2f}</span>", unsafe_allow_html=True)
+            cols[5].markdown(f"<span style='font-size:.8rem;color:{RED}'>{row['sl_pts']:.2f}pts</span>", unsafe_allow_html=True)
+            cols[6].markdown(f"<span style='font-size:.8rem'>{row['exit_price']:.2f}</span>", unsafe_allow_html=True)
+            cols[7].markdown(f"<span style='font-size:.8rem;color:#888'>{int(row['contracts'])}x</span>", unsafe_allow_html=True)
+            cols[8].markdown(f"<span style='font-weight:700;color:{pnl_col_r};font-size:.85rem'>{row['pnl']:+.0f}$</span>", unsafe_allow_html=True)
+            cols[9].markdown(f"<span style='font-size:.7rem;color:#444'>{str(row['notes'])[:30]}</span>", unsafe_allow_html=True)
+        if to_delete:
+            if st.button(f"🗑 Supprimer {len(to_delete)} trade(s) sélectionné(s)", type="primary"):
+                for tid in to_delete:
+                    journal_delete(tid)
+                st.rerun()
+
+# ─────────────────────────────────────────────────────
+# TAB ANALYSE
+# ─────────────────────────────────────────────────────
+with tab_analyse:
+    col_h, col_acf = st.columns(2, gap="medium")
+
+    # Hurst intraday
+    with col_h:
+        st.markdown('<div class="sec-label">Hurst intraday</div>', unsafe_allow_html=True)
+        # Réutilise hurst_arr précalculé — zéro recalcul
+        step = max(1, LOOKBACK)
+        hurst_vals = [
+            (i, hurst_arr[i])
+            for i in range(HURST_WIN, len(closes), step)
+            if not np.isnan(hurst_arr[i])
+        ]
+        if len(hurst_vals) > 2:
+            hx = [v[0] for v in hurst_vals]
+            hy = [v[1] for v in hurst_vals]
+            hx_labels = [times_str[i][11:16] for i in hx if i < len(times_str)]
+            fig_h = go.Figure()
+            fig_h.add_hrect(y0=0, y1=HURST_THRESHOLD,
+                            fillcolor="rgba(0,255,136,0.04)", line_width=0)
+            fig_h.add_hline(y=HURST_THRESHOLD,
+                            line=dict(color=RED, dash="dash", width=1.5),
+                            annotation_text=f"Seuil {HURST_THRESHOLD}",
+                            annotation_font=dict(color=RED, size=9))
+            fig_h.add_hline(y=0.5, line=dict(color="#222", dash="dot", width=1))
+            colors_h = [GREEN if v < HURST_THRESHOLD else ORANGE for v in hy]
+            fig_h.add_trace(go.Scatter(
+                x=hx[:len(hx_labels)], y=hy, mode="lines+markers",
+                line=dict(color=TEAL, width=2),
+                marker=dict(color=colors_h, size=6, line=dict(color="white", width=0.5)),
+                fill="tozeroy", fillcolor="rgba(60,196,183,0.04)",
+                hovertemplate="%{text}: H=%{y:.3f}<extra></extra>",
+                text=hx_labels, showlegend=False,
+            ))
+            if hx:
+                last_h_col = GREEN if hy[-1] < HURST_THRESHOLD else RED
+                fig_h.add_trace(go.Scatter(
+                    x=[hx[-1]], y=[hy[-1]], mode="markers+text",
+                    marker=dict(size=10, color=last_h_col),
+                    text=[f"H={hy[-1]:.3f}"], textposition="top right",
+                    textfont=dict(size=10, color=last_h_col), showlegend=False,
+                ))
+            fig_h.update_layout(
+                **DARK, height=280,
+                title=dict(text=f"H rolling {HURST_WIN} returns · toutes les {step} barres",
+                           font=dict(size=11, color="#555", family="JetBrains Mono")),
+                yaxis=dict(range=[0, 1], gridcolor="#0f0f0f",
+                           tickvals=[0, 0.25, HURST_THRESHOLD, 0.5, 0.75, 1.0]),
+                xaxis=dict(tickvals=hx[:len(hx_labels)], ticktext=hx_labels, gridcolor="#0f0f0f"),
+                showlegend=False,
+            )
+            st.plotly_chart(fig_h, use_container_width=True)
+        else:
+            st.caption(f"Hurst disponible après {HURST_WIN} barres.")
+
+    # ACF
+    with col_acf:
+        st.markdown('<div class="sec-label">Autocorrélation — Signature MR</div>', unsafe_allow_html=True)
+        log_rets_acf = np.diff(np.log(np.maximum(closes, 1e-9)))
+        if len(log_rets_acf) >= 30:
+            n_lags   = min(30, len(log_rets_acf) - 1)
+            acf_vals = []
+            x_mean = log_rets_acf - log_rets_acf.mean()
+            c0 = np.dot(x_mean, x_mean)
+            for lag in range(1, n_lags + 1):
+                c_lag = np.dot(x_mean[:-lag], x_mean[lag:])
+                acf_vals.append(c_lag / c0 if c0 > 0 else 0)
+            lags      = list(range(1, n_lags + 1))
+            sig_bound = 1.96 / np.sqrt(len(log_rets_acf))
+            acf_colors = [
+                GREEN if v < -sig_bound else (RED if v > sig_bound else "#333")
+                for v in acf_vals
+            ]
+            fig_acf = go.Figure()
+            fig_acf.add_hrect(y0=-sig_bound, y1=sig_bound,
+                              fillcolor="rgba(255,255,255,0.02)", line_width=0)
+            fig_acf.add_hline(y=sig_bound,  line=dict(color="#333", dash="dot", width=1),
+                              annotation_text="95% conf.", annotation_font=dict(color="#333", size=9))
+            fig_acf.add_hline(y=-sig_bound, line=dict(color="#333", dash="dot", width=1))
+            fig_acf.add_hline(y=0, line=dict(color="#1a1a1a", width=1))
+            fig_acf.add_trace(go.Bar(
+                x=lags, y=acf_vals,
+                marker_color=acf_colors,
+                marker_line_width=0,
+                name="ACF",
+                hovertemplate="Lag %{x}: ACF=%{y:.3f}<extra></extra>",
+            ))
+            lag1_col = GREEN if acf_vals[0] < 0 else RED
+            lag1_txt = "MR ✓" if acf_vals[0] < 0 else "Trend"
+            fig_acf.add_annotation(
+                x=1, y=acf_vals[0],
+                text=f" Lag1={acf_vals[0]:.3f} ({lag1_txt})",
+                showarrow=False, font=dict(color=lag1_col, size=10, family="JetBrains Mono"),
+                xanchor="left",
+            )
+            fig_acf.update_layout(
+                **DARK,
+                height=280,
+                title=dict(
+                    text="ACF log returns · Lag1 < 0 = anti-persistance = MR confirmé",
+                    font=dict(color="#555", size=11, family="JetBrains Mono"),
+                ),
+                xaxis=dict(title="Lag (barres M1)", gridcolor="#0f0f0f", dtick=5),
+                yaxis=dict(gridcolor="#0f0f0f", zeroline=False, side="right"),
+                showlegend=False,
+                bargap=0.2,
+            )
+            st.plotly_chart(fig_acf, use_container_width=True)
+        else:
+            st.caption("ACF disponible après 30 barres.")
+
+# ─────────────────────────────────────────────────────
+# TAB SIGNAUX
+# ─────────────────────────────────────────────────────
+with tab_signaux:
+    st.markdown('<div class="sec-label">Signaux session du jour</div>', unsafe_allow_html=True)
+    if signals:
+        rows = []
+        for s in signals:
+            rows.append({
+                "Heure":      s["time"][11:16] + " Paris",
+                "Direction":  s["direction"],
+                "Entrée MNQ": f"{s['price']/10:,.2f}",
+                "Fair Value": f"{s['fair_value']/10:,.2f}",
+                "TP MNQ":     f"{s['tp_price']/10:,.2f}",
+                "SL pts":     f"{s['sl_pts_mnq']:.2f}",
+                "Z-score":    f"{s['z_score']:+.2f}σ",
+                "Hurst H":    f"{s['hurst']:.3f}",
+            })
+        sig_df = pd.DataFrame(rows)
+        def _color_dir(val):
+            return f"color:{GREEN};font-weight:bold" if val == "LONG" else f"color:{RED};font-weight:bold"
+        st.dataframe(
+            sig_df.style.applymap(_color_dir, subset=["Direction"]),
+            use_container_width=True, hide_index=True,
+        )
+        # Résumé signal actif
+        if last_signal:
+            d         = last_signal["direction"]
+            col       = GREEN if d == "LONG" else RED
+            cls       = "sig-long" if d == "LONG" else "sig-short"
+            icon      = "▲" if d == "LONG" else "▼"
+            tp_mnq    = last_signal["tp_price"] / 10
+            sl_mnq    = last_signal["sl_pts_mnq"]
+            entry_mnq = last_signal["price"] / 10
+            rr        = abs(tp_mnq - entry_mnq) / sl_mnq if sl_mnq > 0 else 0
+            st.markdown('<div class="sec-label" style="margin-top:1rem">Dernier signal actif</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="{cls}" style="max-width:480px">
+                <div style="font-size:1.6rem;font-weight:700;color:{col};
+                            font-family:'JetBrains Mono',monospace">{icon} {d}</div>
+                <div style="font-size:.6rem;color:{col};font-family:'JetBrains Mono',monospace;
+                            letter-spacing:.15em;margin:-.1rem 0 .7rem">
+                    {last_signal["time"][11:16]} · Z={last_signal["z_score"]:+.2f}σ · H={last_signal["hurst"]:.3f}
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+                            font-family:'JetBrains Mono',monospace">
+                    <div style="background:rgba(0,0,0,.3);border-radius:7px;padding:.5rem .7rem">
+                        <div style="font-size:.52rem;color:#444;margin-bottom:.15rem">ENTRÉE</div>
+                        <div style="color:#fff;font-weight:700;font-size:.85rem">{entry_mnq:,.2f}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,.3);border-radius:7px;padding:.5rem .7rem">
+                        <div style="font-size:.52rem;color:#444;margin-bottom:.15rem">FV</div>
+                        <div style="color:{TEAL};font-weight:700;font-size:.85rem">{last_signal["fair_value"]/10:,.2f}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,.3);border-radius:7px;padding:.5rem .7rem">
+                        <div style="font-size:.52rem;color:#444;margin-bottom:.15rem">TP MNQ</div>
+                        <div style="color:{TEAL};font-weight:700;font-size:.85rem">{tp_mnq:,.2f}</div>
+                    </div>
+                    <div style="background:rgba(0,0,0,.3);border-radius:7px;padding:.5rem .7rem">
+                        <div style="font-size:.52rem;color:#444;margin-bottom:.15rem">SL · R:R</div>
+                        <div style="font-size:.85rem"><span style="color:{RED};font-weight:700">{sl_mnq:.1f}pts</span> <span style="color:#fff">{rr:.1f}R</span></div>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        regime = "Session MR active — attente Z ≥ ±3σ" if h_val < HURST_THRESHOLD else f"Régime trending (H ≥ {HURST_THRESHOLD}) — pas de signal MR"
+        st.markdown(f"""
+        <div class="sig-none" style="max-width:480px">
+            <div style="font-size:2rem;margin-bottom:.3rem">◎</div>
+            <div style="font-size:.9rem;color:#333;font-weight:600">Aucun signal aujourd'hui</div>
+            <div style="font-size:.7rem;color:#222;margin-top:.3rem;
+                        font-family:'JetBrains Mono',monospace">{regime}</div>
+        </div>""", unsafe_allow_html=True)
 
 # ── Footer ────────────────────────────────────────────
 st.divider()
-st.caption(
-    f"⚡ Live Signal — Hurst_MR (Lec 25 + Lec 51) · "
-    f"NQ=F yfinance ~15 min delay · "
-    f"Màj : {now_ny.strftime('%H:%M:%S')} NY · "
-    f"Auto-refresh : {'✓ ' + str(refresh_sec) + 's' if auto_refresh else '✗'}"
-)
+st.markdown(f"""
+<div style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:.6rem;
+            color:#1a1a1a;letter-spacing:.1em;margin-top:1rem">
+    HURST_MR · K={BAND_K}σ · H&lt;{HURST_THRESHOLD} · LB={LOOKBACK} ·
+    MàJ {now_ny.strftime('%H:%M:%S')} ·
+    <span class="live-dot" style="width:5px;height:5px"></span>LIVE 2s
+</div>
+""", unsafe_allow_html=True)
 
-# ── Auto-refresh ──────────────────────────────────────
-if auto_refresh or manual_refresh:
-    if not manual_refresh:
-        time.sleep(refresh_sec)
-    st.rerun()
+# ── Live 2s ───────────────────────────────────────────
+time.sleep(2)
+st.rerun()

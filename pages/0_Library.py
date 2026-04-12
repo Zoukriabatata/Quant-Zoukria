@@ -2,9 +2,23 @@
 Bibliothèque — Quant Guild Library (Roman Paolucci)
 Catalogue de tous les cours avec catégories, liens YouTube et GitHub.
 """
+import json
+from pathlib import Path
 import streamlit as st
 
+WATCHED_FILE = Path(__file__).parent.parent / ".watched.json"
+
+def load_watched():
+    try:    return set(json.loads(WATCHED_FILE.read_text()))
+    except: return set()
+
+def save_watched(w):
+    try:    WATCHED_FILE.write_text(json.dumps(list(w)))
+    except: pass
+
 st.set_page_config(page_title="Bibliothèque Quant", page_icon="QM", layout="wide")
+
+from styles import inject as _inject_styles; _inject_styles()
 
 st.markdown("""
 <style>
@@ -56,6 +70,16 @@ st.markdown("""
     margin: 1.5rem 0 0.5rem; padding: 0.3rem 0;
     border-bottom: 1px solid #1a1a1a;
 }
+.pill-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 0.8rem 0 1rem; }
+.pill {
+    padding: 0.25rem 0.85rem; border-radius: 999px; font-size: 0.65rem;
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.1em;
+    font-weight: 600; border: 1px solid #222; background: #0d0d0d;
+    color: #555; cursor: pointer; transition: all 0.15s;
+}
+.pill.active { border-color: #3CC4B7; color: #3CC4B7; background: rgba(60,196,183,0.08); }
+.lec-card.watched { border-left: 3px solid #7b61ff; }
+.watch-badge { font-size: 0.62rem; color: #7b61ff; margin-left: 6px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -198,36 +222,72 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Filters ─────────────────────────────────────────────────────────
-col_f1, col_f2, col_f3 = st.columns([2, 2, 1])
-with col_f1:
-    search = st.text_input("Rechercher", placeholder="kalman, kelly, GARCH...", label_visibility="collapsed")
-with col_f2:
-    tag_filter = st.selectbox(
-        "Catégorie",
-        options=["Tout", "TRADING", "RISK", "STATS", "ML/IA", "VOL", "OPTIONS", "MINDSET"],
-        label_visibility="collapsed",
-    )
-with col_f3:
-    only_studied = st.toggle("Déjà étudié", value=False)
+# ── State ────────────────────────────────────────────────────────────
+watched = load_watched()
+if "tag_filter" not in st.session_state: st.session_state.tag_filter = "Tout"
+if "only_watched" not in st.session_state: st.session_state.only_watched = False
+if "only_etude" not in st.session_state: st.session_state.only_etude = False
 
+# ── Search ───────────────────────────────────────────────────────────
+search = st.text_input("", placeholder="🔍  Rechercher — kalman, kelly, GARCH, hurst...",
+                       label_visibility="collapsed")
+
+# ── Tag pills ────────────────────────────────────────────────────────
 tag_map = {"TRADING": "trade", "RISK": "risk", "STATS": "stats",
            "ML/IA": "ml", "VOL": "vol", "OPTIONS": "opt", "MINDSET": "mind"}
 
+pill_labels = ["Tout", "TRADING", "STATS", "ML/IA", "RISK", "VOL", "OPTIONS", "MINDSET"]
+pill_cols = st.columns(len(pill_labels) + 2)
+for i, label in enumerate(pill_labels):
+    with pill_cols[i]:
+        active = st.session_state.tag_filter == label
+        style = ("background:#3CC4B7;color:#000;border-color:#3CC4B7;" if active
+                 else "background:#0d0d0d;color:#555;border:1px solid #1a1a1a;")
+        if st.button(label, key=f"pill_{label}",
+                     help=None,
+                     use_container_width=True):
+            st.session_state.tag_filter = label
+            st.rerun()
+with pill_cols[len(pill_labels)]:
+    if st.button("✓ Étude" if not st.session_state.only_etude else "✓ Étude ✗",
+                 key="pill_etude", use_container_width=True):
+        st.session_state.only_etude = not st.session_state.only_etude
+        st.rerun()
+with pill_cols[len(pill_labels)+1]:
+    if st.button("👁 Vu" if not st.session_state.only_watched else "👁 Vu ✗",
+                 key="pill_watched", use_container_width=True):
+        st.session_state.only_watched = not st.session_state.only_watched
+        st.rerun()
+
+tag_filter    = st.session_state.tag_filter
+only_studied  = st.session_state.only_etude
+only_watched  = st.session_state.only_watched
+
 # ── Stats bar ───────────────────────────────────────────────────────
-n_studied = sum(1 for lec in LECTURES if lec[5])
-n_total   = len(LECTURES)
+n_studied  = sum(1 for lec in LECTURES if lec[5])
+n_watched  = len(watched)
+n_total    = len(LECTURES)
 
 st.markdown(f"""
-<div style="display:flex; gap:1rem; margin:0.5rem 0 1.5rem; align-items:center;">
-    <div style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#888;">
-        <span style="color:#3CC4B7; font-weight:700;">{n_studied}</span> / {n_total} cours couverts dans l'étude
+<div style="display:flex; flex-direction:column; gap:6px; margin:0.5rem 0 1.2rem;
+            background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px; padding:1rem 1.2rem;">
+    <div style="display:flex; justify-content:space-between;
+                font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:#444;">
+        <span>✓ Étude — <b style="color:#3CC4B7">{n_studied}</b> / {n_total}</span>
+        <span>👁 Vu — <b style="color:#7b61ff">{n_watched}</b> / {n_total}</span>
+        <span>{n_total} lectures totales</span>
     </div>
-    <div style="flex:1; background:#1a1a1a; border-radius:4px; height:4px; overflow:hidden;">
-        <div style="width:{n_studied/n_total*100:.0f}%; background:#3CC4B7; height:100%; border-radius:4px;"></div>
+    <div style="display:flex; gap:6px; align-items:center;">
+        <div style="flex:1; background:#111; border-radius:4px; height:5px; overflow:hidden; position:relative;">
+            <div style="width:{n_studied/n_total*100:.0f}%; background:#3CC4B7; height:100%; border-radius:4px;"></div>
+        </div>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:#3CC4B7; min-width:30px;">{n_studied/n_total*100:.0f}%</span>
     </div>
-    <div style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#444;">
-        {n_studied/n_total*100:.0f}%
+    <div style="display:flex; gap:6px; align-items:center;">
+        <div style="flex:1; background:#111; border-radius:4px; height:5px; overflow:hidden;">
+            <div style="width:{n_watched/n_total*100:.0f}%; background:#7b61ff; height:100%; border-radius:4px;"></div>
+        </div>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:#7b61ff; min-width:30px;">{n_watched/n_total*100:.0f}%</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -235,16 +295,13 @@ st.markdown(f"""
 # ── Filter logic ────────────────────────────────────────────────────
 def matches(lec):
     num, title, yt, gh, tags, module = lec
-    if only_studied and not module:
-        return False
+    if only_studied and not module: return False
+    if only_watched and num not in watched: return False
     if tag_filter != "Tout":
-        wanted = tag_map[tag_filter]
-        if wanted not in tags:
-            return False
+        if tag_map.get(tag_filter, "") not in tags: return False
     if search:
         q = search.lower()
-        if q not in title.lower() and q not in str(num):
-            return False
+        if q not in title.lower() and q not in str(num): return False
     return True
 
 filtered = [lec for lec in LECTURES if matches(lec)]
@@ -252,72 +309,74 @@ filtered = [lec for lec in LECTURES if matches(lec)]
 # ── Render ──────────────────────────────────────────────────────────
 def lec_html(lec):
     num, title, yt, gh, tags, module = lec
-    is_studied = module is not None
+    is_studied  = module is not None
+    is_watched  = num in watched
 
-    # Number
-    num_html = f'<div class="lec-num">#{num}</div>'
-
-    # Title
-    title_cls = "lec-title studied" if is_studied else "lec-title"
+    num_html   = f'<div class="lec-num">#{num}</div>'
+    title_cls  = "lec-title studied" if is_studied else "lec-title"
     title_html = f'<div class="{title_cls}">{title}'
-    if is_studied:
-        title_html += ' <span style="color:#3CC4B7; font-size:0.7rem;">✓ Étude</span>'
+    if is_studied:  title_html += ' <span style="color:#3CC4B7;font-size:0.68rem;">✓</span>'
+    if is_watched:  title_html += ' <span class="watch-badge">👁</span>'
     title_html += '</div>'
 
-    # Tags
-    tag_html = '<div style="display:flex; gap:4px;">'
+    tag_html = '<div style="display:flex;gap:4px;flex-wrap:wrap;">'
     for t in tags:
         label, cls = TAG_META[t]
         tag_html += f'<span class="lec-tag {cls}">{label}</span>'
     tag_html += '</div>'
 
-    # Links
-    links_html = '<div style="display:flex; gap:8px; flex-shrink:0;">'
+    links_html = '<div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">'
     if yt:
-        links_html += (
-            f'<a href="https://youtu.be/{yt}" target="_blank" '
-            f'style="font-family:JetBrains Mono,monospace; font-size:0.65rem; '
-            f'background:#ff0000; color:#fff; padding:3px 8px; border-radius:4px; '
-            f'text-decoration:none;">▶ YT</a>'
-        )
-    # GitHub link only for 2025 lectures (gh != None)
+        links_html += (f'<a href="https://youtu.be/{yt}" target="_blank" '
+                       f'style="font-family:JetBrains Mono,monospace;font-size:0.62rem;'
+                       f'background:#c00;color:#fff;padding:2px 7px;border-radius:4px;'
+                       f'text-decoration:none;">▶ YT</a>')
     if gh:
         year_base = GH_BASE if num <= 77 else GH_BASE_26
         gh_url = f"{year_base}/{gh}"
-        links_html += (
-            f'<a href="{gh_url}" target="_blank" '
-            f'style="font-family:JetBrains Mono,monospace; font-size:0.65rem; '
-            f'background:#1a1a1a; color:#888; padding:3px 8px; border-radius:4px; '
-            f'text-decoration:none; border:1px solid #333;">GH</a>'
-        )
+        links_html += (f'<a href="{gh_url}" target="_blank" '
+                       f'style="font-family:JetBrains Mono,monospace;font-size:0.62rem;'
+                       f'background:#1a1a1a;color:#666;padding:2px 7px;border-radius:4px;'
+                       f'text-decoration:none;border:1px solid #2a2a2a;">GH</a>')
     links_html += '</div>'
 
-    card_cls = "lec-card studied" if is_studied else "lec-card"
-    return (
-        f'<div class="{card_cls}">'
-        f'{num_html}{title_html}{tag_html}{links_html}'
-        f'</div>'
-    )
+    card_cls = "lec-card"
+    if is_studied: card_cls += " studied"
+    if is_watched: card_cls += " watched"
+    return (f'<div class="{card_cls}">{num_html}{title_html}{tag_html}{links_html}</div>')
 
 if not filtered:
-    st.markdown(
-        '<div style="color:#444; font-family:JetBrains Mono,monospace; '
-        'font-size:0.8rem; padding:2rem; text-align:center;">Aucun cours trouvé.</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div style="color:#444;font-family:JetBrains Mono,monospace;'
+                'font-size:0.8rem;padding:2rem;text-align:center;">Aucun cours trouvé.</div>',
+                unsafe_allow_html=True)
 else:
     html_out = "".join(lec_html(lec) for lec in filtered)
     st.markdown(html_out, unsafe_allow_html=True)
 
-# ── Legend ──────────────────────────────────────────────────────────
+# ── Marquer comme vu ─────────────────────────────────────────────────
 st.markdown("---")
+st.markdown("**Marquer une lecture comme vue :**")
+col_w1, col_w2, col_w3 = st.columns([2, 1, 1])
+with col_w1:
+    lec_nums = [lec[0] for lec in LECTURES]
+    mark_num = st.selectbox("Lecture #", options=lec_nums,
+                            format_func=lambda n: f"#{n} — {next(l[1] for l in LECTURES if l[0]==n)}",
+                            label_visibility="collapsed")
+with col_w2:
+    if st.button("👁 Marquer vue", use_container_width=True):
+        watched.add(mark_num); save_watched(watched); st.rerun()
+with col_w3:
+    if st.button("✗ Retirer", use_container_width=True):
+        watched.discard(mark_num); save_watched(watched); st.rerun()
+
 st.markdown("""
-<div style="font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:#444;
-            display:flex; gap:1.5rem; flex-wrap:wrap;">
-    <span><span style="color:#3CC4B7;">✓ Étude</span> = module dans la page Étude</span>
-    <span><span style="color:#ff0000;">▶ YT</span> = lien YouTube confirmé</span>
-    <span><span style="color:#888;">GH</span> = code source GitHub</span>
+<div style="font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:#333;
+            display:flex;gap:1.5rem;flex-wrap:wrap;margin-top:0.5rem;">
+    <span><span style="color:#3CC4B7;">✓</span> = dans la page Étude</span>
+    <span><span style="color:#7b61ff;">👁</span> = marqué comme vu</span>
+    <span><span style="color:#c00;">▶ YT</span> = lien YouTube</span>
+    <span><span style="color:#555;">GH</span> = code GitHub</span>
     <span><a href="https://github.com/romanmichaelpaolucci/Quant-Guild-Library" target="_blank"
-             style="color:#3CC4B7; text-decoration:none;">→ Dépôt complet</a></span>
+             style="color:#3CC4B7;text-decoration:none;">→ Dépôt complet</a></span>
 </div>
 """, unsafe_allow_html=True)

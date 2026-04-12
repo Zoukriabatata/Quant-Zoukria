@@ -10,7 +10,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="Étude Hurst_MR", page_icon="📐", layout="wide")
+st.set_page_config(page_title="Backtest Hurst_MR", page_icon="📊", layout="wide")
 from styles import inject as _inj; _inj()
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -67,14 +67,18 @@ with st.sidebar:
     csv_path = st.text_input("CSV MNQ M1", value=CSV_DEFAULT)
     st.markdown("---")
     st.header("Hurst_MR")
-    hurst_threshold = st.slider("Seuil Hurst H <", 0.35, 0.60, 0.50, 0.01,
+    hurst_threshold = st.slider("Seuil Hurst H <", 0.35, 0.60, 0.52, 0.01,
         help="H < seuil → session anti-persistante → MR valide")
+    hurst_win = st.select_slider("Hurst window (returns)", [20, 30, 40, 50, 60, 80, 100], value=60,
+        help="Fenêtre rolling R/S — paramètre le plus sensible du signal")
     lookback = st.select_slider("Lookback (barres)", [15, 20, 30, 45, 60, 90, 120], value=30)
-    band_k   = st.slider("Bande k (σ)", 1.5, 4.0, 2.0, 0.25)
+    band_k   = st.slider("Bande k (σ)", 1.5, 4.0, 3.25, 0.25)
     st.markdown("---")
     st.header("Exécution")
     sl_mult      = st.slider("SL = k × σ", 0.5, 3.0, 0.75, 0.25)
-    tp_overshoot = st.slider("TP overshoot (σ au-delà FV)", 0.0, 2.0, 0.5, 0.25,
+    use_atr_sl   = st.toggle("SL adaptatif ATR(14)", value=False,
+        help="ON : SL = sl_mult × max(std, ATR) — évite les whipsaws en période volatile")
+    tp_overshoot = st.slider("TP overshoot (σ au-delà FV)", 0.0, 2.0, 0.0, 0.25,
         help="0 = fair value pure · 0.5 = FV + 0.5σ de l'autre côté · 1.5 = overshoot agressif")
     slip_pts  = st.number_input("Slippage (pts)", 0.0, 5.0, 0.5, 0.25)
     max_td    = st.number_input("Max trades/jour", 1, 10, 5, 1)
@@ -88,8 +92,10 @@ with st.sidebar:
     eh, em = st.columns(2)
     with eh: e_h = st.number_input("Fin h", 12, 21, 16)
     with em: e_m = st.number_input("Fin m", 0, 59, 0)
-    skip_o = st.number_input("Skip open (barres)", 0, 30, 5)
-    skip_c = st.number_input("Skip close (barres)", 0, 30, 3)
+    skip_o      = st.number_input("Skip open (barres)", 0, 30, 5)
+    skip_c      = st.number_input("Skip close (barres)", 0, 30, 3)
+    timeout_ui  = st.select_slider("Timeout trade (barres M1)", [15, 30, 60, 120, 240], value=120,
+        help="Liquidation mark-to-market si ni TP ni SL touché · 120 = config validée")
     st.markdown("---")
     st.header("Challenge")
     capital_ui       = st.number_input("Capital ($)", 25_000, 200_000, 50_000, 5_000)
@@ -208,9 +214,19 @@ def build_study_cache(csv_path, sh, sm, eh, em, hwin=60):
         hurst_arr = np.full(n, np.nan)
         for _i in range(hwin, n):
             hurst_arr[_i] = hurst_rs(rets[_i - hwin: _i])  # returns, pas prix
+        # ATR(14) vectorisé
+        tr = np.maximum(
+            highs[1:] - lows[1:],
+            np.maximum(np.abs(highs[1:] - closes[:-1]),
+                       np.abs(lows[1:]  - closes[:-1]))
+        )
+        tr = np.concatenate([[highs[0] - lows[0]], tr])
+        atr_arr = np.full(n, np.nan)
+        for _i in range(14, n):
+            atr_arr[_i] = tr[_i - 13: _i + 1].mean()
         days[str(day)] = dict(
             bars=bars, closes=closes, highs=highs, lows=lows,
-            rets=rets, hurst=h_full, hurst_arr=hurst_arr,
+            rets=rets, hurst=h_full, hurst_arr=hurst_arr, atr_arr=atr_arr,
         )
     return days, None
 
@@ -220,9 +236,9 @@ def build_study_cache(csv_path, sh, sm, eh, em, hwin=60):
 # ═══════════════════════════════════════════════════════════════════════
 
 def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
-                       max_td, skip_o, skip_c,
+                       max_td, skip_o, skip_c, timeout_bars=120,
                        capital=50_000, max_dd=2_000, daily_lim=1_000,
-                       profit_target=3_000, risk_pct=0.10):
+                       profit_target=3_000, risk_pct=0.10, atr_sl=False):
     trades = []
     monthly = []
     running = capital; peak = capital
@@ -250,6 +266,7 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
         cached    = day_cache[day_key]
         closes    = cached["closes"]
         hurst_arr = cached["hurst_arr"]   # rolling H sans look-ahead
+        atr_arr   = cached.get("atr_arr")
         bars      = cached["bars"]
         n         = len(closes)
 
@@ -269,7 +286,11 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
             if abs(z) < bk: continue
 
             direction = "short" if z > 0 else "long"
-            sl_pts = max(3.0, sl_m * std)
+            if atr_sl and atr_arr is not None and i < len(atr_arr) and not np.isnan(atr_arr[i]):
+                vol_base = max(std, atr_arr[i])   # ATR protège contre les whipsaws intraday
+            else:
+                vol_base = std
+            sl_pts = max(3.0, sl_m * vol_base)
             sl_pts = min(sl_pts, 20.0)
             # TP = fair value + overshoot de l'autre côté
             # Long (price < mid) : TP au-dessus de mid
@@ -291,7 +312,7 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
 
             # Simulate trade
             result_pts = 0.0; exit_bar = i; hit = False
-            for j in range(i+1, min(n, i+120)):
+            for j in range(i+1, min(n, i+timeout_bars)):
                 c = closes[j]
                 if direction == "long":
                     if c <= price - sl_pts: result_pts = -sl_pts - slip; exit_bar = j; hit = True; break
@@ -301,7 +322,7 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
                     if c <= tp_price:       result_pts = (price - tp_price) - slip; exit_bar = j; hit = True; break
             if not hit:
                 # Timeout : mark-to-market au close de la barre de sortie
-                exit_bar = min(n - 1, i + 120)
+                exit_bar = min(n - 1, i + timeout_bars)
                 c_exit = closes[exit_bar]
                 if direction == "long":
                     result_pts = (c_exit - price) - slip
@@ -342,7 +363,7 @@ if not os.path.exists(csv_path):
     st.error(f"CSV introuvable : `{csv_path}`"); st.stop()
 
 with st.spinner("Chargement et calcul Hurst par session…"):
-    day_cache, err = build_study_cache(csv_path, s_h, s_m, e_h, e_m, hwin=60)
+    day_cache, err = build_study_cache(csv_path, s_h, s_m, e_h, e_m, hwin=hurst_win)
 
 if err: st.error(err); st.stop()
 if not day_cache: st.error("Aucune session valide."); st.stop()
@@ -351,8 +372,10 @@ with st.spinner("Backtest en cours…"):
     trades_df, monthly_df = run_hurst_backtest(
         day_cache, hurst_threshold, lookback, band_k,
         sl_mult, tp_overshoot, slip_pts, max_td, skip_o, skip_c,
+        timeout_bars=timeout_ui,
         capital=capital_ui, max_dd=max_dd_ui, daily_lim=daily_lim_ui,
         profit_target=profit_target_ui, risk_pct=mc_risk/100,
+        atr_sl=use_atr_sl,
     )
 
 if len(trades_df) < 10:
@@ -367,7 +390,7 @@ pf    = pos / max(neg, 0.01)
 total = trades_df["pnl"].sum()
 eq    = np.concatenate([[capital_ui], np.cumsum(trades_df["pnl"].values) + capital_ui])
 peak  = np.maximum.accumulate(eq)
-dd_   = (peak - eq) / capital_ui * 100
+dd_   = (peak - eq) / np.maximum(peak, capital_ui) * 100
 max_dd_pct = float(dd_.max())
 _daily = trades_df.groupby("date")["pnl"].sum()
 sharpe = float(_daily.mean() / _daily.std() * np.sqrt(252)) if _daily.std() > 0 else 0
@@ -969,7 +992,20 @@ with t5:
 with t6:
     st.markdown('<div class="section-lbl">Grid Search — H × Band K × SL mult × TP overshoot</div>',
                 unsafe_allow_html=True)
-    st.caption("Score = PF + Sharpe/3 − DD/10  |  cible : PF ≥ 1.4, DD < 5%")
+
+    # ── Critères de classement ────────────────────────────────────────
+    dd_bust = max_dd_ui / capital_ui * 100   # % DD = bust (ex: 2500/50000 = 5%)
+    dd_green = dd_bust * 0.60                # zone verte : < 60% du DD max
+
+    st.markdown(f"""<div class="info-box" style="font-size:.75rem;line-height:1.8">
+    <b style="color:{TEAL}">Critères de ranking 4PropTrader</b><br>
+    📊 <b>Trades</b> : 480–720 / 5 ans (8–12/mois) &nbsp;|&nbsp;
+    💰 <b>P&L</b> : ✅≥$60k · 🌟≥$100k · 🏆≥$150k &nbsp;|&nbsp;
+    📈 <b>PF</b> : ≥1.9 &nbsp;|&nbsp;
+    🎯 <b>Sharpe</b> : ≥1.9 &nbsp;|&nbsp;
+    🎲 <b>WR</b> : ≥30% &nbsp;|&nbsp;
+    🛡 <b>DD max</b> : 🟢&lt;{dd_green:.1f}% · 🟡{dd_green:.1f}–{dd_bust:.1f}% · 🔴≥{dd_bust:.1f}%
+    </div>""", unsafe_allow_html=True)
 
     cg1, cg2, cg3, cg4 = st.columns(4)
     with cg1:
@@ -989,13 +1025,84 @@ with t6:
             [0.0, 0.25, 0.5, 0.75, 1.0, 1.5],
             default=[0.0, 0.25, 0.5, 0.75, 1.0])
 
+    gs_opts1, gs_opts2 = st.columns(2)
+    with gs_opts1:
+        use_train_test = st.toggle("Train/Test split (70/30)", value=True,
+            help="ON = grid sur 70% des données, validation sur 30% → évite l'overfit · OFF = full dataset")
+    with gs_opts2:
+        gs_atr_sl = st.toggle("SL adaptatif ATR(14)", value=use_atr_sl,
+            help="ON = SL = sl_mult × max(std, ATR) · OFF = SL = sl_mult × std")
+
+    atr_state  = "🟢 ON" if gs_atr_sl  else "🔴 OFF"
+    tt_state   = "🟢 ON" if use_train_test else "🔴 OFF"
     total_combos_g = len(ht_range) * len(bk_range) * len(sl_range) * len(tp_os_range)
-    st.caption(f"→ **{total_combos_g} combinaisons** à tester")
+    st.caption(f"→ **{total_combos_g} combinaisons** · Train/Test {tt_state} · ATR SL {atr_state}")
+
+    # Préparation train/test
+    _all_keys     = sorted(day_cache.keys())
+    _split        = int(len(_all_keys) * 0.70)
+    _train_cache  = {k: day_cache[k] for k in _all_keys[:_split]}
+    _test_cache   = {k: day_cache[k] for k in _all_keys[_split:]}
+    _search_cache = _train_cache if use_train_test else day_cache
+
+    def score_config(pf, wr, sharpe, dd, trades, pnl):
+        """Score composite basé sur les critères 4PropTrader de l'utilisateur."""
+        # ── Contraintes éliminatoires ──
+        if trades < 480 or trades > 720: return 0.0
+        if dd >= dd_bust:                return 0.0
+        if pf < 1.5:                     return 0.0
+
+        # ── Score P&L (35%) ──
+        if   pnl >= 150_000: s_pnl = 1.00
+        elif pnl >= 100_000: s_pnl = 0.85
+        elif pnl >=  70_000: s_pnl = 0.70
+        elif pnl >=  60_000: s_pnl = 0.55
+        elif pnl >=  40_000: s_pnl = 0.30
+        else:                s_pnl = 0.10
+
+        # ── Score Trades (20%) — sweet spot 480-720 ──
+        s_trades = 1.0 if 480 <= trades <= 720 else 0.0  # déjà filtré ci-dessus
+
+        # ── Score PF (20%) ──
+        if   pf >= 2.5: s_pf = 1.00
+        elif pf >= 1.9: s_pf = 0.80
+        elif pf >= 1.5: s_pf = 0.50
+        else:           s_pf = 0.20
+
+        # ── Score Sharpe (15%) ──
+        if   sharpe >= 2.5: s_sh = 1.00
+        elif sharpe >= 1.9: s_sh = 0.80
+        elif sharpe >= 1.5: s_sh = 0.50
+        else:               s_sh = 0.20
+
+        # ── Score DD (10%) ──
+        if   dd < dd_green: s_dd = 1.00   # zone verte
+        elif dd < dd_bust:  s_dd = 0.50   # marginal
+        else:               s_dd = 0.00   # bust (déjà éliminé)
+
+        # ── Bonus WR ≥ 30% ──
+        bonus_wr = 0.05 if wr >= 0.30 else 0.0
+
+        return (0.35*s_pnl + 0.20*s_trades + 0.20*s_pf +
+                0.15*s_sh  + 0.10*s_dd + bonus_wr)
+
+    def rank_config(pf, wr, sharpe, dd, trades, pnl):
+        """Tier de classement visuel."""
+        if trades < 480 or trades > 720 or dd >= dd_bust or pf < 1.5:
+            return "🔴 Éliminé"
+        if pnl >= 100_000 and dd < dd_green and pf >= 1.9 and sharpe >= 1.9 and wr >= 0.30:
+            return "🟢 Excellent"
+        if pnl >= 60_000 and dd < dd_bust and pf >= 1.9:
+            return "🟡 Acceptable"
+        return "🟠 Marginal"
 
     if st.button("🔍 Lancer Grid Search", type="secondary"):
         if total_combos_g == 0:
             st.warning("Sélectionne au moins une valeur par paramètre.")
         else:
+            if use_train_test:
+                st.caption(f"Train : {len(_train_cache)} jours ({int(len(_train_cache)/len(_all_keys)*100)}%) · Test : {len(_test_cache)} jours ({int(len(_test_cache)/len(_all_keys)*100)}%)")
+
             grid_results = []
             prog = st.progress(0)
             idx_g = 0
@@ -1003,52 +1110,153 @@ with t6:
                 for bk_g in bk_range:
                     for sl_g in sl_range:
                         for tp_g in tp_os_range:
+                            # ── Backtest sur train (ou full) ──
                             t_df, _ = run_hurst_backtest(
-                                day_cache, ht_g, lookback, bk_g,
+                                _search_cache, ht_g, lookback, bk_g,
                                 sl_g, tp_g, slip_pts, max_td, skip_o, skip_c,
-                                risk_pct=mc_risk/100,
+                                capital=capital_ui, max_dd=max_dd_ui,
+                                daily_lim=daily_lim_ui, profit_target=profit_target_ui,
+                                risk_pct=mc_risk/100, atr_sl=gs_atr_sl,
                             )
                             idx_g += 1
                             prog.progress(idx_g / total_combos_g)
                             if len(t_df) < 10: continue
-                            pos_g = t_df[t_df["pnl"]>0]["pnl"].sum()
-                            neg_g = abs(t_df[t_df["pnl"]<0]["pnl"].sum())
-                            pf_g  = pos_g / max(neg_g, 0.01)
-                            wr_g  = float(t_df["win"].mean())
-                            _d_g  = t_df.groupby("date")["pnl"].sum()
-                            sh_g  = float(_d_g.mean()/_d_g.std()*np.sqrt(252)) if _d_g.std()>0 else 0
-                            eq_g  = np.concatenate([[capital_ui], np.cumsum(t_df["pnl"].values)+capital_ui])
-                            pk_g  = np.maximum.accumulate(eq_g)
-                            dd_g  = float(((pk_g-eq_g)/capital_ui*100).max())
-                            score = pf_g + sh_g/3 - dd_g/10
-                            grid_results.append(dict(
-                                H=ht_g, K=bk_g, SL=sl_g, TP_os=tp_g,
+                            pos_g  = t_df[t_df["pnl"]>0]["pnl"].sum()
+                            neg_g  = abs(t_df[t_df["pnl"]<0]["pnl"].sum())
+                            pf_g   = pos_g / max(neg_g, 0.01)
+                            wr_g   = float(t_df["win"].mean())
+                            pnl_g  = t_df["pnl"].sum()
+                            n_g    = len(t_df)
+                            _d_g   = t_df.groupby("date")["pnl"].sum()
+                            sh_g   = float(_d_g.mean()/_d_g.std()*np.sqrt(252)) if _d_g.std()>0 else 0
+                            eq_g   = np.concatenate([[capital_ui], np.cumsum(t_df["pnl"].values)+capital_ui])
+                            pk_g   = np.maximum.accumulate(eq_g)
+                            dd_g   = float(((pk_g-eq_g)/np.maximum(pk_g, capital_ui)*100).max())
+
+                            # ── Validation sur test (si train/test activé) ──
+                            pf_test = wr_test = sh_test = dd_test = pnl_test = None
+                            if use_train_test:
+                                v_df, _ = run_hurst_backtest(
+                                    _test_cache, ht_g, lookback, bk_g,
+                                    sl_g, tp_g, slip_pts, max_td, skip_o, skip_c,
+                                    capital=capital_ui, max_dd=max_dd_ui,
+                                    daily_lim=daily_lim_ui, profit_target=profit_target_ui,
+                                    risk_pct=mc_risk/100, atr_sl=gs_atr_sl,
+                                )
+                                if len(v_df) >= 5:
+                                    pos_v = v_df[v_df["pnl"]>0]["pnl"].sum()
+                                    neg_v = abs(v_df[v_df["pnl"]<0]["pnl"].sum())
+                                    pf_test  = pos_v / max(neg_v, 0.01)
+                                    wr_test  = float(v_df["win"].mean())
+                                    pnl_test = v_df["pnl"].sum()
+                                    eq_v = np.concatenate([[capital_ui], np.cumsum(v_df["pnl"].values)+capital_ui])
+                                    pk_v = np.maximum.accumulate(eq_v)
+                                    dd_test = float(((pk_v-eq_v)/np.maximum(pk_v, capital_ui)*100).max())
+                                    _d_v = v_df.groupby("date")["pnl"].sum()
+                                    sh_test = float(_d_v.mean()/_d_v.std()*np.sqrt(252)) if _d_v.std()>0 else 0
+                            sc_g   = score_config(pf_g, wr_g, sh_g, dd_g, n_g, pnl_g)
+                            rk_g   = rank_config(pf_g, wr_g, sh_g, dd_g, n_g, pnl_g)
+                            row = dict(
+                                Rank=rk_g, H=ht_g, K=bk_g, SL=sl_g, TP_os=tp_g,
                                 PF=pf_g, WR=wr_g, Sharpe=sh_g, MaxDD=dd_g,
-                                Trades=len(t_df), Score=score,
-                                PnL=t_df["pnl"].sum(),
-                            ))
+                                Trades=n_g, PnL=pnl_g, Score=sc_g,
+                            )
+                            if use_train_test and pf_test is not None:
+                                row.update(dict(
+                                    PF_test=pf_test, WR_test=wr_test,
+                                    DD_test=dd_test, PnL_test=pnl_test,
+                                    Sharpe_test=sh_test,
+                                ))
+                            grid_results.append(row)
 
             if grid_results:
                 gr_df = pd.DataFrame(grid_results).sort_values("Score", ascending=False)
-                viable = gr_df[(gr_df["PF"] >= 1.2) & (gr_df["MaxDD"] < 6.0)]
-                show_df = viable if len(viable) >= 5 else gr_df
 
-                st.markdown(f"**Top 10** — {len(viable)} configs viables (PF≥1.2, DD<6%) sur {len(gr_df)} testées")
-                st.dataframe(
-                    show_df.head(10).style
-                        .format({"PF":"{:.2f}","WR":"{:.1%}","Sharpe":"{:.2f}",
-                                 "MaxDD":"{:.1f}","Score":"{:.3f}","PnL":"${:,.0f}"})
-                        .background_gradient(subset=["Score"], cmap="RdYlGn"),
-                    use_container_width=True, hide_index=True,
-                )
+                # Comptage par tier
+                n_exc  = (gr_df["Rank"] == "🟢 Excellent").sum()
+                n_acc  = (gr_df["Rank"] == "🟡 Acceptable").sum()
+                n_mar  = (gr_df["Rank"] == "🟠 Marginal").sum()
+                n_eli  = (gr_df["Rank"] == "🔴 Éliminé").sum()
 
-                hm1, hm2 = st.columns(2)
+                def kgs(v, l, c):
+                    return f'<div class="stat-cell"><div class="stat-num" style="color:{c}">{v}</div><div class="stat-lbl">{l}</div></div>'
+                st.markdown(f"""<div class="stat-row">
+                    {kgs(n_exc,  "🟢 Excellent", GREEN)}
+                    {kgs(n_acc,  "🟡 Acceptable", YELLOW)}
+                    {kgs(n_mar,  "🟠 Marginal", ORANGE)}
+                    {kgs(n_eli,  "🔴 Éliminé", RED)}
+                    {kgs(len(gr_df), "Total testés", CYAN)}
+                </div>""", unsafe_allow_html=True)
 
-                # Heatmap 1 — Score moyen : Band K × TP overshoot
-                with hm1:
-                    st.markdown('<div class="section-lbl">Score moyen — Band K × TP overshoot</div>',
+                # Top 15 — toutes configs sauf éliminées
+                show_df = gr_df[gr_df["Rank"] != "🔴 Éliminé"].head(15)
+                if len(show_df) == 0:
+                    show_df = gr_df.head(15)
+                    st.warning("Aucune config viable — affichage du top 15 global.")
+                else:
+                    st.markdown(f'<div class="section-lbl">Top 15 — configs viables (trades 480–720 · DD < {dd_bust:.1f}% · PF ≥ 1.5)</div>',
                                 unsafe_allow_html=True)
-                    st.caption("Moyenné sur H et SL — signal quality vs exit extension")
+
+                def color_rank(val):
+                    if "Excellent"  in str(val): return f"color: {GREEN}"
+                    if "Acceptable" in str(val): return f"color: {YELLOW}"
+                    if "Marginal"   in str(val): return f"color: {ORANGE}"
+                    return f"color: {RED}"
+
+                def color_dd(val):
+                    try:
+                        v = float(val)
+                        if v < dd_green: return f"color: {GREEN}"
+                        if v < dd_bust:  return f"color: {YELLOW}"
+                        return f"color: {RED}"
+                    except: return ""
+
+                def color_pnl(val):
+                    try:
+                        v = float(str(val).replace("$","").replace(",","").replace("+",""))
+                        if v >= 100_000: return f"color: {GREEN}"
+                        if v >=  60_000: return f"color: {YELLOW}"
+                        return f"color: {RED}"
+                    except: return ""
+
+                fmt = {"PF":"{:.2f}","WR":"{:.1%}","Sharpe":"{:.2f}",
+                       "MaxDD":"{:.1f}%","Score":"{:.3f}","PnL":"${:+,.0f}"}
+                dd_cols = ["MaxDD"]
+                if use_train_test and "PF_test" in show_df.columns:
+                    fmt.update({"PF_test":"{:.2f}","WR_test":"{:.1%}",
+                                "DD_test":"{:.1f}%","PnL_test":"${:+,.0f}","Sharpe_test":"{:.2f}"})
+                    dd_cols.append("DD_test")
+                    st.caption("Colonnes _test = résultats sur les 30% out-of-sample — si PF_test ≈ PF → robuste")
+
+                styled = (show_df.style
+                    .format(fmt)
+                    .applymap(color_rank, subset=["Rank"])
+                    .applymap(color_dd,   subset=dd_cols)
+                    .applymap(color_pnl,  subset=["PnL"])
+                    .background_gradient(subset=["Score"], cmap="RdYlGn")
+                )
+                st.dataframe(styled, use_container_width=True, hide_index=True)
+
+                # ── Meilleure config ──────────────────────────────────
+                best = gr_df[gr_df["Score"] > 0].iloc[0] if (gr_df["Score"] > 0).any() else None
+                if best is not None:
+                    tier_color = GREEN if "Excellent" in best["Rank"] else YELLOW
+                    st.markdown(f"""<div class="info-box" style="border-color:{tier_color}44">
+                    <span style="color:{tier_color};font-size:1rem;font-weight:700">{best["Rank"]} — Config optimale</span><br>
+                    H={best["H"]} · K={best["K"]} · SL={best["SL"]} · TP_os={best["TP_os"]}<br>
+                    PF <b style="color:{tier_color}">{best["PF"]:.2f}</b> &nbsp;|&nbsp;
+                    WR <b>{best["WR"]*100:.1f}%</b> &nbsp;|&nbsp;
+                    Sharpe <b>{best["Sharpe"]:.2f}</b> &nbsp;|&nbsp;
+                    DD <b>{best["MaxDD"]:.1f}%</b> &nbsp;|&nbsp;
+                    Trades <b>{int(best["Trades"])}</b> &nbsp;|&nbsp;
+                    P&L <b style="color:{GREEN}">${best["PnL"]:+,.0f}</b>
+                    </div>""", unsafe_allow_html=True)
+
+                # ── Heatmaps ──────────────────────────────────────────
+                hm1, hm2 = st.columns(2)
+                with hm1:
+                    st.markdown('<div class="section-lbl">Score — Band K × TP overshoot</div>',
+                                unsafe_allow_html=True)
                     piv1 = gr_df.pivot_table(index="K", columns="TP_os", values="Score", aggfunc="mean")
                     if not piv1.empty:
                         fig_hm1 = go.Figure(go.Heatmap(
@@ -1056,56 +1264,55 @@ with t6:
                             x=[str(c) for c in piv1.columns],
                             y=[str(i) for i in piv1.index],
                             colorscale=[[0,"#ff3366"],[0.5,"#ffd600"],[1,"#00ff88"]],
-                            text=[[f"{v:.2f}" for v in row] for row in piv1.values],
-                            texttemplate="%{text}", textfont=dict(size=11),
+                            text=[[f"{v:.3f}" for v in row] for row in piv1.values],
+                            texttemplate="%{text}", textfont=dict(size=10),
                             colorbar=dict(title="Score"),
                         ))
                         fig_hm1.update_layout(**DARK, height=300,
-                            title="Score — K × TP overshoot",
+                            title="Score moyen — K × TP overshoot",
                             xaxis_title="TP overshoot (σ)", yaxis_title="Band K")
                         st.plotly_chart(fig_hm1, use_container_width=True)
 
-                # Heatmap 2 — Max DD moyen : SL mult × Band K
                 with hm2:
-                    st.markdown('<div class="section-lbl">Max DD moyen — SL mult × Band K</div>',
+                    st.markdown('<div class="section-lbl">P&L moyen — Band K × TP overshoot</div>',
                                 unsafe_allow_html=True)
-                    st.caption("Moyenné sur H et TP — comment réduire le drawdown")
-                    piv2 = gr_df.pivot_table(index="SL", columns="K", values="MaxDD", aggfunc="mean")
+                    piv2 = gr_df.pivot_table(index="K", columns="TP_os", values="PnL", aggfunc="mean")
                     if not piv2.empty:
                         fig_hm2 = go.Figure(go.Heatmap(
                             z=piv2.values,
                             x=[str(c) for c in piv2.columns],
                             y=[str(i) for i in piv2.index],
-                            colorscale=[[0,"#00ff88"],[0.5,"#ffd600"],[1,"#ff3366"]],
-                            text=[[f"{v:.1f}%" for v in row] for row in piv2.values],
-                            texttemplate="%{text}", textfont=dict(size=11),
-                            colorbar=dict(title="Max DD %"),
+                            colorscale=[[0,"#ff3366"],[0.5,"#ffd600"],[1,"#00ff88"]],
+                            text=[[f"${v:,.0f}" for v in row] for row in piv2.values],
+                            texttemplate="%{text}", textfont=dict(size=9),
+                            colorbar=dict(title="P&L $"),
                         ))
-                        fig_hm2.add_hline(y=None)  # cosmetic spacer
+                        fig_hm2.add_hline(y=None)
                         fig_hm2.update_layout(**DARK, height=300,
-                            title="Max DD % — SL × K",
-                            xaxis_title="Band K", yaxis_title="SL mult")
+                            title="P&L moyen — K × TP overshoot",
+                            xaxis_title="TP overshoot (σ)", yaxis_title="Band K")
                         st.plotly_chart(fig_hm2, use_container_width=True)
 
-                # Heatmap 3 — PF moyen : H × K
-                st.markdown('<div class="section-lbl">PF moyen — Hurst threshold × Band K</div>',
+                st.markdown('<div class="section-lbl">DD moyen — SL mult × Band K</div>',
                             unsafe_allow_html=True)
-                st.caption("Moyenné sur SL et TP — impact du filtre régime")
-                piv3 = gr_df.pivot_table(index="H", columns="K", values="PF", aggfunc="mean")
+                piv3 = gr_df.pivot_table(index="SL", columns="K", values="MaxDD", aggfunc="mean")
                 if not piv3.empty:
                     fig_hm3 = go.Figure(go.Heatmap(
                         z=piv3.values,
                         x=[str(c) for c in piv3.columns],
                         y=[str(i) for i in piv3.index],
-                        colorscale=[[0,"#ff3366"],[0.5,"#ffd600"],[1,"#00ff88"]],
-                        text=[[f"{v:.2f}" for v in row] for row in piv3.values],
+                        colorscale=[[0,"#00ff88"],[0.5,"#ffd600"],[1,"#ff3366"]],
+                        text=[[f"{v:.1f}%" for v in row] for row in piv3.values],
                         texttemplate="%{text}", textfont=dict(size=11),
-                        zmin=0.8, zmax=2.0, colorbar=dict(title="PF"),
+                        colorbar=dict(title="Max DD %"),
+                        zmin=0, zmax=dd_bust*1.5,
                     ))
-                    fig_hm3.update_layout(**DARK, height=260,
-                        title="PF — Hurst threshold × Band K",
-                        xaxis_title="Band K", yaxis_title="Hurst threshold")
+                    fig_hm3.add_hline(y=None)
+                    fig_hm3.update_layout(**DARK, height=280,
+                        title=f"DD moyen — zone verte < {dd_green:.1f}% | danger > {dd_bust:.1f}%",
+                        xaxis_title="Band K", yaxis_title="SL mult")
                     st.plotly_chart(fig_hm3, use_container_width=True)
+
             else:
                 st.warning("Aucune combinaison viable — élargis les plages.")
     else:

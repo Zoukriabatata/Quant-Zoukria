@@ -6,23 +6,174 @@
 
 const WebSocket = require("ws");
 const fs        = require("fs");
+const https     = require("https");
+const path      = require("path");
 
-// Toujours URL propre — les credentials passent par AUTH, pas dans l'URL
+// Charge .env manuellement (pas besoin de dotenv)
+function loadEnv() {
+    const envPath = path.join(__dirname, ".env");
+    if (!fs.existsSync(envPath)) { console.log("  .env introuvable à:", envPath); return; }
+    fs.readFileSync(envPath, "utf8").split(/\r?\n/).forEach(line => {
+        const [k, ...v] = line.split("=");
+        if (k && v.length) process.env[k.trim()] = v.join("=").trim();
+    });
+}
+loadEnv();
+
 const HOST = "wss://get-prod-dxlink-rt.dxfeed.com/realtime";
 
-// Lit le token JWT via PowerShell (bypass lock Windows sur dxapi.log.0)
+// ── Utilitaires HTTP ──────────────────────────────────────────────────────────
+function generateUUID() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+
+function httpsRequest(method, url, body, extraHeaders = {}) {
+    return new Promise((resolve, reject) => {
+        const u = new URL(url);
+        const bodyBuf = body ? Buffer.from(body, "utf8") : null;
+        const opts = {
+            hostname: u.hostname,
+            path: u.pathname + u.search,
+            method,
+            rejectUnauthorized: false,
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "*/*",
+                ...(bodyBuf ? { "Content-Length": bodyBuf.length } : {}),
+                ...extraHeaders,
+            },
+        };
+        const req = https.request(opts, res => {
+            const setCookie = res.headers["set-cookie"] || [];
+            if ([301, 302, 303].includes(res.statusCode) && res.headers.location) {
+                const next = res.headers.location.startsWith("http")
+                    ? res.headers.location
+                    : new URL(res.headers.location, url).href;
+                res.resume();
+                return resolve(httpsRequest("GET", next, null, extraHeaders)
+                    .then(r => ({ ...r, cookies: [...setCookie, ...(r.cookies || [])] })));
+            }
+            let data = "";
+            res.on("data", c => data += c);
+            res.on("end", () => resolve({ status: res.statusCode, body: data.trim(), cookies: setCookie }));
+        }).on("error", reject);
+        if (bodyBuf) req.write(bodyBuf);
+        req.end();
+    });
+}
+
+// ── 1. Token via Volumetric Trading API (4PropTrader — MÉTHODE PRINCIPALE) ───
+// Comment obtenir le VOLUMETRIC_JTOKEN :
+//   → Ouvre https://4proptrader.com/iframes/volumetric-app/301700
+//   → Copie le paramètre jtoken= depuis l'URL de la page qui s'ouvre
+//   → Colle dans .env : VOLUMETRIC_JTOKEN=eyJhbGci...
+//   Le jtoken est valide 24h. À renouveler chaque jour de trading.
+async function getTokenFromVolumetric() {
+    const jtoken  = process.env.VOLUMETRIC_JTOKEN   || "";
+    const popupId = process.env.VOLUMETRIC_POPUP_ID || "";
+    if (!jtoken) return null;
+
+    // Vérifie expiration du jtoken
+    try {
+        const payload = JSON.parse(Buffer.from(jtoken.split(".")[1], "base64").toString());
+        if (payload.exp && Date.now() / 1000 > payload.exp) {
+            console.log("  ⚠️  VOLUMETRIC_JTOKEN expiré — ouvre 4PropTrader pour en obtenir un nouveau");
+            return null;
+        }
+    } catch {}
+
+    try {
+        // Étape 1 : GET la page webapp avec jtoken → établit la session (cookie)
+        const pageUrl = popupId
+            ? `https://webapp.volumetricatrading.com/?popupId=${popupId}&theme=2&jtoken=${jtoken}`
+            : `https://webapp.volumetricatrading.com/?jtoken=${jtoken}&theme=2`;
+        const pageResp = await httpsRequest("GET", pageUrl, null, {
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "fr-FR,fr;q=0.9",
+        });
+        const cookies = (pageResp.cookies || []).map(c => c.split(";")[0]).join("; ");
+
+        // Étape 2 : POST /api/connections/dxfeed/Auth avec le cookie de session
+        const body = `connectionId=${generateUUID()}`;
+        const authResp = await httpsRequest("POST",
+            "https://webapp.volumetricatrading.com/api/connections/dxfeed/Auth",
+            body,
+            {
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Origin": "https://webapp.volumetricatrading.com",
+                "Referer": pageUrl,
+                "X-Requested-With": "XMLHttpRequest",
+                ...(cookies ? { "Cookie": cookies } : {}),
+            }
+        );
+
+        if (authResp.status === 200) {
+            const data = JSON.parse(authResp.body);
+            if (data.success && data.data && data.data.dataToken) {
+                console.log("  Token via Volumetric API ✓ (fourproptrader-nonpro)");
+                return data.data.dataToken;
+            }
+            console.log("  Volumetric API réponse inattendue:", authResp.body.slice(0, 120));
+        } else {
+            console.log("  Volumetric API HTTP", authResp.status);
+        }
+    } catch (e) {
+        console.log("  Volumetric API erreur:", e.message);
+    }
+    return null;
+}
+
+// ── 2. Lit token depuis logs ATAS (fallback si ATAS connecté au compte réel) ──
 function getTokenFromAtasLog() {
     const { execSync } = require("child_process");
     const ps1 = __dirname + "\\get_dxfeed_token.ps1";
     try {
         const token = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${ps1}"`, { encoding: "utf8" }).trim();
-        if (token) { console.log("  Token lu depuis dxapi.log.0"); return token; }
+        if (!token) return null;
+        try {
+            const decoded = Buffer.from(token.split(".")[0], "base64").toString("utf8");
+            if (decoded.includes("atas-demo")) {
+                console.log("  ⚠️  Token ATAS = compte DEMO → invalide. Ajoute VOLUMETRIC_JTOKEN dans .env");
+                return null;
+            }
+        } catch {}
+        console.log("  Token depuis ATAS log (compte live)");
+        return token;
     } catch (e) { console.log("  PowerShell erreur:", e.message.slice(0, 80)); }
     return null;
 }
 
-const TOKEN = process.env.DXFEED_TOKEN || getTokenFromAtasLog();
-console.log("  Token:", TOKEN ? TOKEN.slice(0, 30) + "..." : "INTROUVABLE");
+// ── Obtient un token valide — priorité : Volumetric > ATAS ───────────────────
+async function getToken() {
+    const volToken = await getTokenFromVolumetric();
+    if (volToken) return volToken;
+    const atasToken = getTokenFromAtasLog();
+    if (atasToken) return atasToken;
+    return null;
+}
+
+// Lance la connexion une fois le token obtenu
+getToken().then(token => {
+    if (!token) {
+        console.error("❌ Token introuvable.");
+        console.error("   → Ajoute dans .env : VOLUMETRIC_JTOKEN=<jtoken depuis 4PropTrader>");
+        console.error("   → Ouvre : https://4proptrader.com/iframes/volumetric-app/301700");
+        console.error("   → Copie le paramètre jtoken= de l'URL de la page webapp");
+        process.exit(1);
+    }
+    console.log("  Token:", token.slice(0, 30) + "...");
+    startBridge(token);
+}).catch(err => {
+    console.error("❌ Erreur init:", err.message);
+    process.exit(1);
+});
+
+// Tout le reste de la logique est dans startBridge(TOKEN)
+function startBridge(initialToken) {
+let TOKEN = initialToken;
 // Test plusieurs symboles jusqu'à recevoir des ticks
 const SYMBOLS_TO_TEST = ["/MNQM26:XCME", "/MNQM6:XCME", "/MNQM6", "#MNQM6", "MNQM6"];
 let symbolIdx = 0;
@@ -52,12 +203,14 @@ function writeFile(closedBar) {
         low: currentBar.low,  close: currentBar.close,
         volume: currentBar.volume, live: true,
     } : null;
-    fs.writeFileSync(OUTPUT_FILE, JSON.stringify({
-        updated: new Date().toISOString(),
-        last_bar: closedBar || liveBar,
-        live_bar: liveBar,
-        bars: barBuffer.slice(-120),
-    }, null, 2));
+    try {
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify({
+            updated: new Date().toISOString(),
+            last_bar: closedBar || liveBar,
+            live_bar: liveBar,
+            bars: barBuffer.slice(-120),
+        }));
+    } catch(e) { /* fichier momentanément verrouillé, on ignore */ }
 }
 
 function onTick(price, ts) {
@@ -207,6 +360,32 @@ function onMessage(raw) {
 
         case "ERROR":
             console.error("\n❌ Erreur DxLink:", msg.error, msg.message || "");
+            if (msg.error === "UNAUTHORIZED") {
+                console.log("  → Token rejeté. Tentative de renouvellement...");
+                clearInterval(keepaliveTimer);
+                clearTimeout(tickTimeout);
+                ws.terminate();
+                getTokenFromAPI().then(freshToken => {
+                    if (freshToken) {
+                        console.log("  → Nouveau token REST ✓");
+                        TOKEN = freshToken;
+                    } else {
+                        // REST API indispo → fallback logs ATAS
+                        const atasToken = getTokenFromAtasLog();
+                        if (atasToken && atasToken !== TOKEN) {
+                            console.log("  → Nouveau token ATAS ✓");
+                            TOKEN = atasToken;
+                        } else {
+                            console.log("  → Aucun nouveau token — ouvre ATAS pour renouveler");
+                        }
+                    }
+                    reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 10000);
+                }).catch(() => {
+                    const atasToken = getTokenFromAtasLog();
+                    if (atasToken && atasToken !== TOKEN) { TOKEN = atasToken; }
+                    reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 10000);
+                });
+            }
             break;
     }
 }
@@ -231,8 +410,23 @@ function connect() {
         connected = false;
         clearInterval(keepaliveTimer);
         channelOpened = false;
-        console.log(`\n  Déconnecté (${code}). Reconnexion dans 5s...`);
-        reconnectTimer = setTimeout(connect, 5000);
+        if (reconnectTimer) return; // déjà planifié par ERROR handler
+        console.log(`\n  Déconnecté (${code}). Renouvellement token + reconnexion dans 5s...`);
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            getTokenFromAPI().then(freshToken => {
+                if (freshToken) { TOKEN = freshToken; console.log("  → Token REST renouvelé ✓"); }
+                else {
+                    const atasToken = getTokenFromAtasLog();
+                    if (atasToken && atasToken !== TOKEN) { TOKEN = atasToken; console.log("  → Token ATAS renouvelé ✓"); }
+                }
+                connect();
+            }).catch(() => {
+                const atasToken = getTokenFromAtasLog();
+                if (atasToken && atasToken !== TOKEN) { TOKEN = atasToken; }
+                connect();
+            });
+        }, 5000);
     });
 
     ws.on("error", (err) => {
@@ -241,3 +435,4 @@ function connect() {
 }
 
 connect();
+} // fin startBridge
