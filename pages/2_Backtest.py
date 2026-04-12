@@ -407,9 +407,9 @@ _bar_h_vals = np.concatenate([
 mr_bars_pct = float((_bar_h_vals < hurst_threshold).mean() * 100) if len(_bar_h_vals) > 0 else 0.0
 
 # ─── TABS ────────────────────────────────────────────────────────────
-t1,t2,t3,t4,t5,t6 = st.tabs([
+t1,t2,t3,t4,t5,t6,t7 = st.tabs([
     "📊 Résultats","🔬 Analyse Hurst","⏱ Signal & Timing",
-    "🎲 Monte Carlo","🧪 Preuve d'Edge","🔧 Grid Search"
+    "🎲 Monte Carlo","🧪 Preuve d'Edge","🔧 Grid Search","🔄 Walk-Forward"
 ])
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1357,3 +1357,309 @@ with t6:
                 st.warning("Aucune combinaison viable — élargis les plages.")
     else:
         st.info("Configure les 4 dimensions et clique **🔍 Lancer Grid Search**.")
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 7 — WALK-FORWARD
+# ═══════════════════════════════════════════════════════════════════════
+with t7:
+    st.markdown("""
+    > **Walk-Forward** : on optimise les paramètres sur une fenêtre **In-Sample (IS)**,
+    > puis on teste sur la fenêtre suivante **Out-of-Sample (OOS)** — jamais vue pendant l'optimisation.
+    > Si la stratégie est robuste, les métriques OOS restent cohérentes sur toutes les fenêtres.
+    """)
+
+    wf_c1, wf_c2, wf_c3, wf_c4 = st.columns(4)
+    with wf_c1:
+        wf_oos_m  = st.select_slider("Fenêtre OOS (mois)", [1, 2, 3, 6], value=3,
+                                      help="Taille de chaque période de test OOS")
+    with wf_c2:
+        wf_is_min = st.select_slider("IS minimum (mois)", [3, 6, 9, 12], value=6,
+                                      help="Taille minimale du premier IS avant le 1er OOS")
+    with wf_c3:
+        wf_step   = st.select_slider("Pas (mois)", [1, 2, 3, 6], value=3,
+                                      help="De combien on avance IS+OOS à chaque fenêtre")
+    with wf_c4:
+        wf_opt    = st.toggle("Optimiser H + K sur IS", value=True,
+                               help="ON : mini grid search sur IS pour trouver les meilleurs H threshold et K\n"
+                                    "OFF : utilise les paramètres de la sidebar pour tous les OOS")
+
+    wf_run = st.button("▶  Lancer Walk-Forward", type="primary", use_container_width=True,
+                        key="wf_run_btn")
+
+    if not wf_run and "wf_result" not in st.session_state:
+        st.info("Configure les fenêtres ci-dessus et clique **▶ Lancer Walk-Forward**.")
+    else:
+        if wf_run:
+            # ── 1. Construire la liste de mois disponibles ──────────────
+            all_days   = sorted(day_cache.keys())   # "YYYY-MM-DD"
+            all_months = sorted({d[:7] for d in all_days})  # "YYYY-MM"
+            total_months = len(all_months)
+
+            # Vérification
+            needed = wf_is_min + wf_oos_m
+            if total_months < needed:
+                st.error(f"Pas assez de données : {total_months} mois disponibles, "
+                         f"{needed} requis (IS_min={wf_is_min} + OOS={wf_oos_m}).")
+                st.stop()
+
+            # ── 2. Génération des fenêtres (IS croissant — anchored WF) ─
+            windows = []
+            oos_start_idx = wf_is_min   # premier OOS commence après IS_min mois
+            while oos_start_idx + wf_oos_m <= total_months:
+                is_months  = all_months[:oos_start_idx]
+                oos_months = all_months[oos_start_idx: oos_start_idx + wf_oos_m]
+                windows.append((is_months, oos_months))
+                oos_start_idx += wf_step
+
+            if not windows:
+                st.error("Aucune fenêtre valide — ajuste IS_min ou le pas.")
+                st.stop()
+
+            # ── 3. Grid d'optimisation (si activé) ──────────────────────
+            OPT_HT = [0.44, 0.46, 0.48, 0.50, 0.52, 0.54]
+            OPT_K  = [2.75, 3.00, 3.25, 3.50]
+
+            def _run_raw(cache_subset, ht, bk):
+                """Backtest sans logique challenge — retourne trades_df pur."""
+                t_df, _ = run_hurst_backtest(
+                    cache_subset, ht, lookback, bk,
+                    sl_mult, tp_overshoot, slip_pts, max_td,
+                    skip_o, skip_c, timeout_bars=timeout_ui,
+                    capital=capital_ui, max_dd=999_999,
+                    daily_lim=daily_lim_ui,
+                    profit_target=999_999,
+                    atr_sl=use_atr_sl,
+                )
+                return t_df
+
+            def _metrics(t_df):
+                if t_df.empty or len(t_df) < 5:
+                    return dict(n=0, wr=0., pf=0., sharpe=0., max_dd=0., pnl=0.)
+                wr_  = t_df["win"].mean()
+                pos_ = t_df[t_df["pnl"] > 0]["pnl"].sum()
+                neg_ = abs(t_df[t_df["pnl"] < 0]["pnl"].sum())
+                pf_  = pos_ / max(neg_, 0.01)
+                eq_  = np.concatenate([[0], np.cumsum(t_df["pnl"].values)])
+                pk_  = np.maximum.accumulate(eq_)
+                dd_  = (pk_ - eq_) / np.maximum(pk_, capital_ui) * 100
+                dly  = t_df.groupby("date")["pnl"].sum()
+                sh_  = float(dly.mean() / dly.std() * np.sqrt(252)) if dly.std() > 0 else 0.
+                return dict(n=len(t_df), wr=wr_, pf=pf_, sharpe=sh_,
+                            max_dd=float(dd_.max()), pnl=float(t_df["pnl"].sum()))
+
+            # ── 4. Boucle WF ─────────────────────────────────────────────
+            wf_rows   = []   # stats par fenêtre
+            oos_trades = []  # tous les trades OOS concaténés
+
+            prog_bar = st.progress(0., "Walk-Forward en cours…")
+            for idx, (is_mths, oos_mths) in enumerate(windows):
+                prog_bar.progress((idx + 1) / len(windows),
+                                  f"Fenêtre {idx+1}/{len(windows)}  "
+                                  f"OOS={oos_mths[0]}→{oos_mths[-1]}")
+
+                is_set  = {d for d in all_days if d[:7] in is_mths}
+                oos_set = {d for d in all_days if d[:7] in oos_mths}
+                is_cache  = {k: v for k, v in day_cache.items() if k in is_set}
+                oos_cache = {k: v for k, v in day_cache.items() if k in oos_set}
+
+                if not is_cache or not oos_cache:
+                    continue
+
+                # Optimisation IS
+                if wf_opt:
+                    best_sh, best_ht_, best_k_ = -999, hurst_threshold, band_k
+                    for ht_ in OPT_HT:
+                        for k_ in OPT_K:
+                            t_ = _run_raw(is_cache, ht_, k_)
+                            m_ = _metrics(t_)
+                            if m_["n"] >= 20 and m_["sharpe"] > best_sh:
+                                best_sh, best_ht_, best_k_ = m_["sharpe"], ht_, k_
+                    used_ht, used_k = best_ht_, best_k_
+                    is_m = _metrics(_run_raw(is_cache, used_ht, used_k))
+                else:
+                    used_ht, used_k = hurst_threshold, band_k
+                    is_m = _metrics(_run_raw(is_cache, used_ht, used_k))
+
+                # Test OOS
+                oos_df = _run_raw(oos_cache, used_ht, used_k)
+                oos_m  = _metrics(oos_df)
+
+                # Collecte
+                if not oos_df.empty:
+                    oos_trades.append(oos_df)
+
+                wf_rows.append({
+                    "Fenêtre":   idx + 1,
+                    "IS":        f"{is_mths[0]} → {is_mths[-1]}",
+                    "OOS":       f"{oos_mths[0]} → {oos_mths[-1]}",
+                    "H seuil":   f"{used_ht:.2f}",
+                    "K bande":   f"{used_k:.2f}",
+                    "IS PF":     round(is_m["pf"], 2),
+                    "OOS PF":    round(oos_m["pf"], 2),
+                    "OOS WR":    f"{oos_m['wr']*100:.1f}%",
+                    "OOS Sharpe":round(oos_m["sharpe"], 2),
+                    "OOS MaxDD": f"{oos_m['max_dd']:.1f}%",
+                    "OOS Trades":oos_m["n"],
+                    "OOS P&L":   f"${oos_m['pnl']:+,.0f}",
+                    "_oos_pf":   oos_m["pf"],
+                    "_oos_sh":   oos_m["sharpe"],
+                    "_oos_pnl":  oos_m["pnl"],
+                })
+
+            prog_bar.empty()
+            st.session_state["wf_result"]    = wf_rows
+            st.session_state["wf_oos_trades"] = oos_trades
+
+        # ── 5. Affichage ─────────────────────────────────────────────
+        wf_rows    = st.session_state.get("wf_result", [])
+        oos_trades = st.session_state.get("wf_oos_trades", [])
+
+        if not wf_rows:
+            st.warning("Pas de résultats — relance le walk-forward.")
+        else:
+            wf_df = pd.DataFrame(wf_rows)
+
+            # ── KPIs OOS globaux ─────────────────────────────────────
+            pfs_oos = wf_df["_oos_pf"].values
+            shs_oos = wf_df["_oos_sh"].values
+            n_wins_wf = int((pfs_oos > 1.0).sum())
+            consistency = n_wins_wf / len(pfs_oos) * 100
+
+            def kpi_wf(val, lbl, col="#fff"):
+                return (f'<div class="stat-cell"><div class="stat-num" style="color:{col}">{val}</div>'
+                        f'<div class="stat-lbl">{lbl}</div></div>')
+
+            pf_mean = pfs_oos.mean()
+            sh_mean = shs_oos.mean()
+            cons_col = GREEN if consistency >= 75 else YELLOW if consistency >= 50 else RED
+            pfm_col  = GREEN if pf_mean >= 1.5 else YELLOW if pf_mean >= 1.2 else RED
+            shm_col  = GREEN if sh_mean >= 2.0 else YELLOW if sh_mean >= 1.0 else RED
+
+            st.markdown(f"""<div class="stat-row">
+                {kpi_wf(len(wf_df), "Fenêtres testées")}
+                {kpi_wf(f"{pf_mean:.2f}", "PF moyen OOS", pfm_col)}
+                {kpi_wf(f"{sh_mean:.2f}", "Sharpe moyen OOS", shm_col)}
+                {kpi_wf(f"{consistency:.0f}%", "Fenêtres OOS > PF 1.0", cons_col)}
+                {kpi_wf(f"{'Optimisé' if wf_opt else 'Fixe'}", "Paramètres")}
+            </div>""", unsafe_allow_html=True)
+
+            # ── Equity curve OOS concaténée ──────────────────────────
+            if oos_trades:
+                oos_all = pd.concat(oos_trades, ignore_index=True)
+                oos_all = oos_all.sort_values("date")
+                eq_oos  = np.concatenate([[capital_ui],
+                                          np.cumsum(oos_all["pnl"].values) + capital_ui])
+                pk_oos  = np.maximum.accumulate(eq_oos)
+                dd_oos  = (pk_oos - eq_oos) / np.maximum(pk_oos, capital_ui) * 100
+
+                c_eq, c_dd = st.columns([2, 1])
+                with c_eq:
+                    fig_wf = go.Figure()
+                    fig_wf.add_trace(go.Scatter(
+                        y=eq_oos, mode="lines", name="Equity OOS",
+                        line=dict(color=TEAL, width=2),
+                        fill="tozeroy", fillcolor="rgba(60,196,183,0.05)"
+                    ))
+                    fig_wf.add_hline(y=capital_ui + profit_target_ui,
+                                     line=dict(color=GREEN, dash="dash", width=1),
+                                     annotation_text=f"Target +${profit_target_ui:,.0f}")
+                    fig_wf.add_hline(y=capital_ui - max_dd_ui,
+                                     line=dict(color=RED, dash="dash", width=1),
+                                     annotation_text=f"Bust −${max_dd_ui:,.0f}")
+
+                    # Délimiteurs de fenêtres OOS
+                    n_cum = 0
+                    for row in wf_rows:
+                        n_t = row["OOS Trades"]
+                        if n_t > 0:
+                            fig_wf.add_vline(x=n_cum, line=dict(color="#333", dash="dot", width=1))
+                            fig_wf.add_annotation(
+                                x=n_cum + n_t / 2, y=eq_oos.min(),
+                                text=f"W{row['Fenêtre']}", showarrow=False,
+                                font=dict(color="#444", size=9), yanchor="bottom"
+                            )
+                            n_cum += n_t
+
+                    fig_wf.update_layout(**DARK, height=320,
+                                         title=f"Equity OOS concaténée — {len(oos_all)} trades réels",
+                                         yaxis=dict(tickprefix="$"),
+                                         xaxis_title="Trades OOS (chronologique)")
+                    st.plotly_chart(fig_wf, use_container_width=True)
+
+                with c_dd:
+                    # Stabilité PF + Sharpe par fenêtre
+                    wf_plot = wf_df[wf_df["OOS Trades"] > 0].copy()
+                    colors_pf = [GREEN if v >= 1.5 else YELLOW if v >= 1.0 else RED
+                                 for v in wf_plot["_oos_pf"]]
+                    fig_stab = go.Figure()
+                    fig_stab.add_trace(go.Bar(
+                        x=[f"W{r}" for r in wf_plot["Fenêtre"]],
+                        y=wf_plot["_oos_pf"],
+                        marker_color=colors_pf,
+                        text=[f"{v:.2f}" for v in wf_plot["_oos_pf"]],
+                        textposition="outside",
+                        name="PF OOS", showlegend=False,
+                    ))
+                    fig_stab.add_hline(y=1.0, line=dict(color=RED, dash="dash", width=1),
+                                       annotation_text="PF=1")
+                    fig_stab.add_hline(y=1.5, line=dict(color=YELLOW, dash="dot", width=1),
+                                       annotation_text="PF=1.5")
+                    fig_stab.update_layout(**DARK, height=320,
+                                           title="Profit Factor OOS par fenêtre",
+                                           yaxis=dict(title="PF"),
+                                           xaxis_title="Fenêtre OOS")
+                    st.plotly_chart(fig_stab, use_container_width=True)
+
+            # ── Tableau détaillé ──────────────────────────────────────
+            st.markdown('<div class="section-lbl">Détail par fenêtre</div>',
+                        unsafe_allow_html=True)
+            disp_cols = ["Fenêtre","IS","OOS","H seuil","K bande",
+                         "IS PF","OOS PF","OOS WR","OOS Sharpe","OOS MaxDD","OOS Trades","OOS P&L"]
+            st.dataframe(
+                wf_df[disp_cols].style.apply(
+                    lambda col: [
+                        (f"color:{GREEN}" if v >= 1.5 else
+                         f"color:{YELLOW}" if v >= 1.0 else f"color:{RED}")
+                        if col.name == "OOS PF" else ""
+                        for v in col
+                    ], axis=0
+                ),
+                use_container_width=True, hide_index=True,
+            )
+
+            # ── Verdict ───────────────────────────────────────────────
+            st.markdown("---")
+            if pf_mean >= 1.5 and consistency >= 75:
+                st.success(
+                    f"**Edge robuste.** PF moyen OOS = {pf_mean:.2f} · "
+                    f"{consistency:.0f}% des fenêtres > PF 1.0. "
+                    f"La stratégie n'est pas curve-fitted — elle est généralisable."
+                )
+            elif pf_mean >= 1.2 and consistency >= 50:
+                st.warning(
+                    f"**Edge modéré.** PF moyen = {pf_mean:.2f} · "
+                    f"{consistency:.0f}% de fenêtres positives. "
+                    f"Quelques fenêtres OOS < 1.0 → le régime change parfois. "
+                    f"Envisage une re-calibration trimestrielle."
+                )
+            else:
+                st.error(
+                    f"**Edge fragile ou curve-fitting.** PF moyen = {pf_mean:.2f} · "
+                    f"seulement {consistency:.0f}% de fenêtres OOS positives. "
+                    f"Les paramètres ne se généralisent pas bien hors IS."
+                )
+
+            # ── Export WF ─────────────────────────────────────────────
+            st.markdown('<div class="section-lbl">Export</div>', unsafe_allow_html=True)
+            ec1, ec2 = st.columns(2)
+            with ec1:
+                wf_csv = wf_df[disp_cols].to_csv(index=False).encode("utf-8")
+                st.download_button("⬇ Walk-Forward CSV", data=wf_csv,
+                                   file_name=f"wf_results_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+                                   mime="text/csv", use_container_width=True)
+            with ec2:
+                if oos_trades:
+                    oos_csv = oos_all.to_csv(index=False).encode("utf-8")
+                    st.download_button("⬇ Trades OOS CSV", data=oos_csv,
+                                       file_name=f"wf_oos_trades_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+                                       mime="text/csv", use_container_width=True)
