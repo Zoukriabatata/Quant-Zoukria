@@ -65,12 +65,12 @@ with st.sidebar:
     csv_path = st.text_input("CSV MNQ M1", value=MNQ_CSV)
     st.markdown("---")
     st.header("Hurst_MR")
-    hurst_threshold = st.slider("Seuil Hurst H <", 0.35, 0.60, 0.52, 0.01,
+    hurst_threshold = st.slider("Seuil Hurst H <", 0.35, 0.60, 0.53, 0.01,
         help="H < seuil → session anti-persistante → MR valide")
     hurst_win = st.select_slider("Hurst window (returns)", [20, 30, 40, 50, 60, 80, 100], value=60,
         help="Fenêtre rolling R/S — paramètre le plus sensible du signal")
     lookback = st.select_slider("Lookback (barres)", [15, 20, 30, 45, 60, 90, 120], value=30)
-    band_k   = st.slider("Bande k (σ)", 1.5, 4.0, 3.25, 0.25)
+    band_k   = st.slider("Bande k (σ)", 1.5, 4.0, 3.00, 0.25)
     st.markdown("---")
     st.header("Exécution")
     sl_mult      = st.slider("SL = k × σ", 0.5, 3.0, 0.75, 0.25)
