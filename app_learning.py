@@ -11,5 +11,5 @@ pg = st.navigation([
     st.Page("pages/7_Etude.py",        title="Étude",          icon="🎓"),
     st.Page("pages/8_Library.py",      title="Bibliothèque",   icon="📚"),
     st.Page("pages/9_BTC_DCA.py",      title="BTC DCA",        icon="🪙"),
-])
+], position="hidden")
 pg.run()

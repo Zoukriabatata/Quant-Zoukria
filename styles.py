@@ -1046,17 +1046,20 @@ def inject():
         + _LAYOUT + _CHARTS + _COMPAT + _ANIMATIONS + _ADVANCED
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
-    with st.sidebar:
-        st.page_link("Accueil.py",              label="⚡ Accueil",       use_container_width=True)
-        st.page_link("pages/7_Etude.py",        label="🎓 Étude",         use_container_width=True)
-        st.page_link("pages/5_Backtest.py",     label="📊 Backtest",      use_container_width=True)
-        st.page_link("pages/3_Live_Signal.py",  label="📡 Live Signal",   use_container_width=True)
-        st.page_link("pages/4_Journal.py",      label="📒 Journal",       use_container_width=True)
-        st.page_link("pages/2_Session_Prep.py", label="🕐 Session Prep",  use_container_width=True)
-        st.page_link("pages/6_Multi_Model.py",  label="🤖 Multi-Model",   use_container_width=True)
-        st.page_link("pages/8_Library.py",      label="📚 Bibliothèque",  use_container_width=True)
-        st.page_link("pages/9_BTC_DCA.py",      label="🪙 BTC DCA",       use_container_width=True)
-        st.page_link("pages/1_Demarrage.py",    label="🔌 Démarrage",     use_container_width=True)
+    # Barre de navigation — dans le contenu principal, visible PC + mobile
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1: st.page_link("Accueil.py",              label="⚡ Accueil",     use_container_width=True)
+    with c2: st.page_link("pages/7_Etude.py",        label="🎓 Étude",       use_container_width=True)
+    with c3: st.page_link("pages/5_Backtest.py",     label="📊 Backtest",    use_container_width=True)
+    with c4: st.page_link("pages/3_Live_Signal.py",  label="📡 Signal",      use_container_width=True)
+    with c5: st.page_link("pages/4_Journal.py",      label="📒 Journal",     use_container_width=True)
+    c6, c7, c8, c9, c10 = st.columns(5)
+    with c6: st.page_link("pages/2_Session_Prep.py", label="🕐 Session",     use_container_width=True)
+    with c7: st.page_link("pages/6_Multi_Model.py",  label="🤖 Multi",       use_container_width=True)
+    with c8: st.page_link("pages/8_Library.py",      label="📚 Biblio",      use_container_width=True)
+    with c9: st.page_link("pages/9_BTC_DCA.py",      label="🪙 BTC",         use_container_width=True)
+    with c10: st.page_link("pages/1_Demarrage.py",   label="🔌 Bridge",      use_container_width=True)
+    st.divider()
 
 
 # ════════════════════════════════════════════════════════════════════════════
