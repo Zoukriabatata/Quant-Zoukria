@@ -106,41 +106,9 @@ footer           { display: none !important; }
 [data-testid="stDecoration"]  { display: none !important; }
 [data-testid="stHeader"]      { background: transparent !important; }
 
-/* ── Hamburger menu — fixé en haut à gauche, toujours visible ── */
-[data-testid="collapsedControl"] {
-  display: flex !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-  position: fixed !important;
-  top: 0.6rem !important;
-  left: 0.6rem !important;
-  z-index: 999999 !important;
-}
-[data-testid="collapsedControl"] button {
-  background: var(--bg-surface) !important;
-  border: 1px solid var(--border-default) !important;
-  border-radius: var(--r-md) !important;
-  width: 2.4rem !important;
-  height: 2.4rem !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  cursor: pointer !important;
-  padding: 0 !important;
-  transition: var(--t-fast) !important;
-}
-[data-testid="collapsedControl"] button:hover {
-  background: var(--bg-elevated) !important;
-  border-color: var(--border-active) !important;
-}
-[data-testid="collapsedControl"] button svg { display: none !important; }
-[data-testid="collapsedControl"] button::before {
-  content: "☰" !important;
-  font-size: 1.05rem !important;
-  color: var(--text-secondary) !important;
-  line-height: 1 !important;
-}
+/* Sidebar natif masqué — remplacé par hamburger custom */
+[data-testid="stSidebar"]        { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
 
 /* Scrollbar */
 ::-webkit-scrollbar         { width: 4px; height: 4px; }
@@ -1074,6 +1042,61 @@ _FONT_LINK = (
 # ════════════════════════════════════════════════════════════════════════════
 # inject() — public API
 # ════════════════════════════════════════════════════════════════════════════
+_HAMBURGER = """
+<div id="qm-ham" onclick="qmOpen()">
+  <span></span><span></span><span></span>
+</div>
+<div id="qm-backdrop" onclick="qmClose()"></div>
+<nav id="qm-drawer">
+  <div class="qm-logo">⚡ QUANT MATHS</div>
+  <a class="qm-lnk" href="/"          onclick="qmClose()">⚡ Accueil</a>
+  <a class="qm-lnk" href="/Etude"     onclick="qmClose()">🎓 Étude</a>
+  <a class="qm-lnk" href="/Backtest"  onclick="qmClose()">📊 Backtest</a>
+  <a class="qm-lnk" href="/Live_Signal" onclick="qmClose()">📡 Live Signal</a>
+  <a class="qm-lnk" href="/Journal"   onclick="qmClose()">📒 Journal</a>
+  <a class="qm-lnk" href="/Session_Prep" onclick="qmClose()">🕐 Session Prep</a>
+  <a class="qm-lnk" href="/Multi_Model"  onclick="qmClose()">🤖 Multi-Model</a>
+  <a class="qm-lnk" href="/Library"   onclick="qmClose()">📚 Bibliothèque</a>
+  <a class="qm-lnk" href="/BTC_DCA"   onclick="qmClose()">🪙 BTC DCA</a>
+  <a class="qm-lnk" href="/Demarrage" onclick="qmClose()">🔌 Démarrage</a>
+</nav>
+<style>
+#qm-ham{position:fixed;top:.65rem;left:.65rem;z-index:999999;
+  width:2.4rem;height:2.4rem;background:#0a0a0a;border:1px solid #1e2433;
+  border-radius:8px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:5px;cursor:pointer;padding:.55rem;
+  transition:border-color .15s,box-shadow .15s;}
+#qm-ham:hover{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15);}
+#qm-ham span{display:block;width:16px;height:2px;background:#94a3b8;
+  border-radius:2px;transition:all .2s;}
+#qm-backdrop{display:none;position:fixed;inset:0;z-index:99997;
+  background:rgba(0,0,0,.55);backdrop-filter:blur(2px);}
+#qm-drawer{position:fixed;top:0;left:-260px;width:240px;height:100vh;
+  z-index:99998;background:#060606;border-right:1px solid #1e2433;
+  padding:1rem 0;transition:left .25s cubic-bezier(.16,1,.3,1);
+  overflow-y:auto;display:flex;flex-direction:column;}
+.qm-logo{padding:.6rem 1.2rem 1rem;font-family:'JetBrains Mono',monospace;
+  font-size:.58rem;letter-spacing:.22em;color:#3b82f6;
+  border-bottom:1px solid #1e2433;margin-bottom:.5rem;}
+.qm-lnk{display:block;padding:.62rem 1.2rem;color:#64748b;
+  text-decoration:none!important;font-size:.82rem;font-family:'Inter',sans-serif;
+  border-left:3px solid transparent;transition:all .12s;white-space:nowrap;}
+.qm-lnk:hover{color:#f1f5f9;background:#111827;border-left-color:#3b82f6;}
+</style>
+<script>
+function qmOpen(){
+  document.getElementById('qm-drawer').style.left='0';
+  document.getElementById('qm-backdrop').style.display='block';
+}
+function qmClose(){
+  document.getElementById('qm-drawer').style.left='-260px';
+  document.getElementById('qm-backdrop').style.display='none';
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')qmClose();});
+</script>
+"""
+
+
 def inject():
     """Inject fonts + full design system CSS into the current Streamlit page.
     Call after st.set_page_config(), before page-specific CSS."""
@@ -1084,6 +1107,7 @@ def inject():
         + _LAYOUT + _CHARTS + _COMPAT + _ANIMATIONS + _ADVANCED
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    st.markdown(_HAMBURGER, unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
