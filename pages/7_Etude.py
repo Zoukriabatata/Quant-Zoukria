@@ -382,16 +382,16 @@ def load_module(file_path: str):
 
 
 @st.cache_resource(show_spinner=False)
-def precompute_charts():
-    """Compute ALL chart figures once at startup. Never recomputed on nav."""
-    result = {}
-    for module_file, chart_list in CHARTS.items():
-        result[module_file] = [(title, chart_fn()) for title, chart_fn in chart_list]
-    return result
+def get_module_charts(module_file: str):
+    """Compute charts for the selected module only — cached after first visit."""
+    return [(title, chart_fn()) for title, chart_fn in CHARTS.get(module_file, [])]
 
 
-# Déclenche la précalculation dès que l'app démarre (en arrière-plan)
-_CHARTS_CACHE = precompute_charts()
+@st.cache_resource(show_spinner=False)
+def get_inline_chart(chart_name: str):
+    """Compute and cache a single inline chart — never recomputed."""
+    fn = INLINE_CHARTS.get(chart_name)
+    return fn() if fn else None
 
 
 # ── State ────────────────────────────────────────────────────────────
@@ -505,11 +505,11 @@ def render_math_markdown(text: str):
                         st.markdown('\n'.join(buffer), unsafe_allow_html=True)
                         buffer = []
                     chart_name = chart_match.group(1)
-                    chart_fn = INLINE_CHARTS.get(chart_name)
-                    if chart_fn:
+                    fig = get_inline_chart(chart_name)
+                    if fig is not None:
                         _CHART_RENDER_COUNTERS[chart_name] = _CHART_RENDER_COUNTERS.get(chart_name, 0) + 1
                         key = f"inline_{chart_name}_{_CHART_RENDER_COUNTERS[chart_name]}"
-                        st.plotly_chart(chart_fn(), use_container_width=True, key=key)
+                        st.plotly_chart(fig, use_container_width=True, key=key)
                     continue
                 is_table      = line.strip().startswith('|')
                 has_inline_math = re.search(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)', line)
@@ -525,8 +525,8 @@ def render_math_markdown(text: str):
 
 
 def render_charts(selected_file: str):
-    """Render precomputed chart figures — zero compute cost after first load."""
-    chart_list = _CHARTS_CACHE.get(selected_file, [])
+    """Render charts for the selected module — computed once then cached."""
+    chart_list = get_module_charts(selected_file)
     if not chart_list:
         return
     st.markdown(
