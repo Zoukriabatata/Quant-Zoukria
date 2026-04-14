@@ -1055,29 +1055,30 @@ def inject():
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
-    # ── Navbar horizontale compacte ────────────────────────────────────────
-    st.markdown('<div class="qm-nav-bar">', unsafe_allow_html=True)
-    cols = st.columns(10)
-    _nav = [
+    # ── Navbar — 2 rangées de 5 boutons bien visibles ──────────────────────
+    _nav_r1 = [
         ("Accueil.py",              "⚡ Accueil"),
         ("pages/7_Etude.py",        "🎓 Étude"),
         ("pages/5_Backtest.py",     "📊 Backtest"),
-        ("pages/3_Live_Signal.py",  "📡 Signal"),
+        ("pages/3_Live_Signal.py",  "📡 Live Signal"),
         ("pages/4_Journal.py",      "📒 Journal"),
-        ("pages/2_Session_Prep.py", "🕐 Session"),
-        ("pages/6_Multi_Model.py",  "🤖 Multi"),
-        ("pages/8_Library.py",      "📚 Biblio"),
-        ("pages/9_BTC_DCA.py",      "🪙 BTC"),
+    ]
+    _nav_r2 = [
+        ("pages/2_Session_Prep.py", "🕐 Session Prep"),
+        ("pages/6_Multi_Model.py",  "🤖 Multi Model"),
+        ("pages/8_Library.py",      "📚 Bibliothèque"),
+        ("pages/9_BTC_DCA.py",      "🪙 BTC DCA"),
         ("pages/1_Demarrage.py",    "🔌 Bridge"),
     ]
-    for col, (path, label) in zip(cols, _nav):
+    r1 = st.columns(5)
+    for col, (path, label) in zip(r1, _nav_r1):
         with col:
             st.page_link(path, label=label, use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div style="height:1px;background:var(--border-subtle);margin:0.4rem 0 1rem;"></div>',
-        unsafe_allow_html=True,
-    )
+    r2 = st.columns(5)
+    for col, (path, label) in zip(r2, _nav_r2):
+        with col:
+            st.page_link(path, label=label, use_container_width=True)
+    st.divider()
 
 
 # ════════════════════════════════════════════════════════════════════════════
