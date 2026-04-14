@@ -1024,27 +1024,36 @@ try:
             showlegend=False, name=d,
         ), row=1, col=1)
 
-    # TP / SL lignes horizontales (row 1 uniquement)
+    # TP / SL / Entry lignes horizontales (row 1 uniquement)
     n_disp = len(d_closes)
     if last_signal:
-        tp_nq = last_signal["tp_price"]
-        sl_nq = last_signal["price"] - last_signal["sl_pts_mnq"] * 10 * (
+        entry_nq = last_signal["price"]
+        tp_nq    = last_signal["tp_price"]
+        sl_nq    = last_signal["price"] - last_signal["sl_pts_mnq"] * 10 * (
             1 if last_signal["direction"] == "LONG" else -1)
-        for y_val, clr, lbl in [
-            (tp_nq, TEAL, f"TP {tp_nq/10:.2f}"),
-            (sl_nq, RED,  f"SL {sl_nq/10:.2f}"),
+        sig_dir  = last_signal["direction"]
+        for y_val, clr, dash, lbl in [
+            (entry_nq, "#ffffff", "dot",  f"ENT {entry_nq/10:.2f}"),
+            (tp_nq,    TEAL,     "dash", f"TP  {tp_nq/10:.2f}"),
+            (sl_nq,    RED,      "dash", f"SL  {sl_nq/10:.2f}"),
         ]:
             fig.add_shape(type="line", x0=0, x1=n_disp-1, y0=y_val, y1=y_val,
-                          line=dict(color=clr, dash="dash", width=1), row=1, col=1)
-            fig.add_annotation(x=n_disp-1, y=y_val, text=f" {lbl}",
-                               showarrow=False, font=dict(color=clr, size=9, family="JetBrains Mono"),
-                               xanchor="left", row=1, col=1)
+                          line=dict(color=clr, dash=dash, width=1.5), row=1, col=1)
+            fig.add_annotation(
+                x=n_disp - 1, y=y_val, text=f"  {lbl}  ",
+                showarrow=False,
+                font=dict(color=clr, size=10, family="JetBrains Mono", weight="bold"),
+                bgcolor="rgba(5,5,5,0.85)", bordercolor=clr, borderwidth=1, borderpad=3,
+                xanchor="left", row=1, col=1,
+            )
 
     # Prix actuel
     fig.add_annotation(
         x=n_disp-1, y=price_now,
-        text=f" ◄ {mnq_price:.1f}",
-        showarrow=False, font=dict(color=YELLOW, size=11, family="JetBrains Mono"),
+        text=f"  ◄ {mnq_price:.2f}  ",
+        showarrow=False,
+        font=dict(color=YELLOW, size=11, family="JetBrains Mono", weight="bold"),
+        bgcolor="rgba(5,5,5,0.85)", bordercolor=YELLOW, borderwidth=1, borderpad=3,
         xanchor="left", row=1, col=1,
     )
 
@@ -1095,18 +1104,25 @@ try:
         height=620,
         showlegend=True,
         hovermode="x unified",
-        xaxis=dict(showticklabels=False, gridcolor="#0f0f0f", rangeslider=dict(visible=False)),
-        xaxis2=dict(showticklabels=False, gridcolor="#0f0f0f"),
-        xaxis3=dict(tickvals=tick_vals, ticktext=tick_text, gridcolor="#0f0f0f"),
-        yaxis=dict(gridcolor="#0f0f0f", tickformat=",.0f", side="right"),
-        yaxis2=dict(gridcolor="#0f0f0f", side="right", showticklabels=False, title="Vol"),
+        dragmode="pan",
+        xaxis=dict(showticklabels=False, gridcolor="#0f0f0f", rangeslider=dict(visible=False), fixedrange=False),
+        xaxis2=dict(showticklabels=False, gridcolor="#0f0f0f", fixedrange=False),
+        xaxis3=dict(tickvals=tick_vals, ticktext=tick_text, gridcolor="#0f0f0f", fixedrange=False),
+        yaxis=dict(gridcolor="#0f0f0f", tickformat=",.0f", side="right", fixedrange=False),
+        yaxis2=dict(gridcolor="#0f0f0f", side="right", showticklabels=False, title="Vol", fixedrange=False),
         yaxis3=dict(gridcolor="#0f0f0f", side="right", zeroline=False,
-                    range=[-BAND_K*1.6, BAND_K*1.6]),
+                    range=[-BAND_K*1.6, BAND_K*1.6], fixedrange=False),
     )
     fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
                                   font=dict(size=10), bgcolor="rgba(0,0,0,0)"))
+    _cfg = dict(
+        scrollZoom=True,
+        displayModeBar=True,
+        displaylogo=False,
+        modeBarButtonsToRemove=["select2d", "lasso2d", "autoScale2d", "toImage"],
+    )
     with col_chart:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config=_cfg)
 except Exception as _e:
     with col_chart:
         st.error(f"⚠️ Chart error: {_e}")
