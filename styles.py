@@ -107,8 +107,11 @@ footer           { display: none !important; }
 [data-testid="stDecoration"]  { display: none !important; }
 [data-testid="stHeader"]      { background: transparent !important; }
 
-/* Sidebar natif — géré par Streamlit, toggle bouton caché (remplacé par hamburger) */
+/* Sidebar — masquée par défaut, révélée par body.qm-open */
+[data-testid="stSidebar"]        { display: none !important; }
 [data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stSidebarCollapseButton"] { display: none !important; }
+body.qm-open [data-testid="stSidebar"] { display: flex !important; }
 
 /* Scrollbar */
 ::-webkit-scrollbar         { width: 4px; height: 4px; }
@@ -1060,28 +1063,24 @@ _HAMBURGER_JS = """
 <script>
 (function() {
   var p = window.parent.document;
-  function qmToggle() {
-    /* essaie dans cet ordre : bouton collapse/expand natif Streamlit */
-    var selectors = [
-      '[data-testid="collapsedControl"] button',
-      '[data-testid="stSidebarCollapseButton"] button',
-      'button[aria-label="Close sidebar"]',
-      'button[aria-label="Open sidebar"]',
-      'button[aria-label="open sidebar"]',
-      'button[aria-label="close sidebar"]',
-    ];
-    for (var i = 0; i < selectors.length; i++) {
-      var b = p.querySelector(selectors[i]);
-      if (b) { b.click(); return; }
-    }
-    /* fallback : toggle display de la sidebar */
-    var sb = p.querySelector('[data-testid="stSidebar"]');
-    if (sb) sb.style.display = (sb.style.display === 'none') ? '' : 'none';
-  }
   function init() {
     var btn = p.getElementById('qm-ham');
     if (!btn) { setTimeout(init, 50); return; }
-    btn.addEventListener('click', qmToggle);
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      p.body.classList.toggle('qm-open');
+    });
+    p.addEventListener('click', function(e) {
+      if (!p.body.classList.contains('qm-open')) return;
+      var sidebar = p.querySelector('[data-testid="stSidebar"]');
+      var ham = p.getElementById('qm-ham');
+      if (sidebar && !sidebar.contains(e.target) && !ham.contains(e.target)) {
+        p.body.classList.remove('qm-open');
+      }
+    });
+    p.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') p.body.classList.remove('qm-open');
+    });
   }
   init();
 })();
