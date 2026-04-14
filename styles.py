@@ -100,16 +100,8 @@ html, body {
 }
 
 /* Hide Streamlit chrome */
-#MainMenu        { display: none !important; }
 footer           { display: none !important; }
-[data-testid="stToolbar"]     { display: none !important; }
 [data-testid="stDecoration"]  { display: none !important; }
-[data-testid="stHeader"]      { background: transparent !important; }
-
-/* Sidebar native masquée — navigation via popover ☰ */
-[data-testid="stSidebar"]               { display: none !important; }
-[data-testid="collapsedControl"]        { display: none !important; }
-[data-testid="stSidebarCollapseButton"] { display: none !important; }
 
 /* Scrollbar */
 ::-webkit-scrollbar         { width: 4px; height: 4px; }
@@ -1054,8 +1046,7 @@ def inject():
         + _LAYOUT + _CHARTS + _COMPAT + _ANIMATIONS + _ADVANCED
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
-    # Popover natif Streamlit — routing interne garanti, zéro JS
-    with st.popover("☰", use_container_width=False):
+    with st.sidebar:
         st.page_link("Accueil.py",              label="⚡ Accueil",       use_container_width=True)
         st.page_link("pages/7_Etude.py",        label="🎓 Étude",         use_container_width=True)
         st.page_link("pages/5_Backtest.py",     label="📊 Backtest",      use_container_width=True)
