@@ -107,11 +107,18 @@ footer           { display: none !important; }
 [data-testid="stDecoration"]  { display: none !important; }
 [data-testid="stHeader"]      { background: transparent !important; }
 
-/* Sidebar — masquée par défaut, révélée par body.qm-open */
-[data-testid="stSidebar"]        { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; }
+/* Sidebar — hors écran par défaut (transform garde les event listeners actifs) */
+[data-testid="stSidebar"] {
+  transform: translateX(-110%) !important;
+  transition: transform .25s cubic-bezier(.16,1,.3,1) !important;
+  pointer-events: none !important;
+}
+body.qm-open [data-testid="stSidebar"] {
+  transform: translateX(0) !important;
+  pointer-events: auto !important;
+}
+[data-testid="collapsedControl"]        { display: none !important; }
 [data-testid="stSidebarCollapseButton"] { display: none !important; }
-body.qm-open [data-testid="stSidebar"] { display: flex !important; }
 
 /* Scrollbar */
 ::-webkit-scrollbar         { width: 4px; height: 4px; }
