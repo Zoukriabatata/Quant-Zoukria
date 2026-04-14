@@ -1143,8 +1143,7 @@ try:
                             font-family:'JetBrains Mono',monospace">{icon} {d}</div>
                 <div style="font-size:.6rem;color:{col};font-family:'JetBrains Mono',monospace;
                             letter-spacing:.15em;margin:-.1rem 0 .4rem">
-                    {last_signal["time"][11:16]} · Z={last_signal["z_score"]:+.2f}σ
-                    {"&nbsp;&nbsp;<span style='color:#ff9100;background:rgba(255,145,0,0.12);padding:1px 6px;border-radius:4px;font-size:.58rem'>⏱ EXPIRÉ " + f"{int(_sig_age_min)}min" + "</span>" if _sig_expired else ""}
+                    {last_signal["time"][11:16]} · Z={last_signal["z_score"]:+.2f}σ{"&nbsp;&nbsp;<span style='color:#ff9100;background:rgba(255,145,0,0.12);padding:1px 6px;border-radius:4px;font-size:.58rem'>⏱ EXPIRÉ " + str(int(_sig_age_min)) + "min</span>" if _sig_expired else ""}
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;
                             font-family:'JetBrains Mono',monospace">
