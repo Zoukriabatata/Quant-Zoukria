@@ -670,19 +670,19 @@ def _send_ntfy(sig):
             f"SL      : {sl:.2f} pts  ·  R:R {rr:.1f}\n"
             f"H={h:.3f}  ·  Z={z:+.2f}σ  ·  {t[:5]} Paris"
         )
-        title_emoji = "📈" if d == "LONG" else "📉"
-        tags        = "chart_with_upwards_trend,white_check_mark" if d == "LONG" \
-                      else "chart_with_downwards_trend,red_circle"
+        tags = "chart_with_upwards_trend,white_check_mark" if d == "LONG" \
+               else "chart_with_downwards_trend,red_circle"
         req = urllib.request.Request(
             f"https://ntfy.sh/{NTFY_TOPIC}",
             data=msg.encode("utf-8"),
             method="POST",
             headers={
-                "X-Title":    f"{title_emoji} SIGNAL {d} MNQ @ {entry:.2f}",
-                "X-Tags":     tags,
-                "X-Priority": "urgent",
-                "X-Click":    "https://quant-zoukria.streamlit.app/Live_Signal",
-                "X-Actions":  "view, Dashboard, https://quant-zoukria.streamlit.app/Live_Signal",
+                "X-Title":      f"SIGNAL {d} MNQ @ {entry:.2f}",
+                "X-Tags":       tags,
+                "X-Priority":   "urgent",
+                "X-Click":      "https://quant-zoukria.streamlit.app/Live_Signal",
+                "X-Actions":    "view, Dashboard, https://quant-zoukria.streamlit.app/Live_Signal",
+                "Content-Type": "text/plain; charset=utf-8",
             }
         )
         urllib.request.urlopen(req, timeout=8)
@@ -1279,6 +1279,7 @@ try:
                                 "X-Tags":     "test_tube,bell",
                                 "X-Priority": "urgent",
                                 "X-Click":    "https://quant-zoukria.streamlit.app/Live_Signal",
+                                "Content-Type": "text/plain; charset=utf-8",
                             }
                         )
                         urllib.request.urlopen(req, timeout=8)
