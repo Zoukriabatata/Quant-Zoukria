@@ -7,10 +7,12 @@ from pathlib import Path
 from datetime import datetime
 import streamlit as st
 import pytz
+from streamlit_autorefresh import st_autorefresh
 from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET, DAILY_LOSS_LIM
 
 st.set_page_config(page_title="Session Prep", page_icon="🎯", layout="wide")
 from styles import inject as _inj; _inj()
+st_autorefresh(interval=30_000, key="sp_refresh")  # rafraîchit le countdown toutes les 30s
 
 # ── Config ────────────────────────────────────────────────────────────
 PARIS          = pytz.timezone("Europe/Paris")
@@ -111,15 +113,46 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Header ────────────────────────────────────────────────────────────
+# ── Header + Countdown ───────────────────────────────────────────────
 now_paris = datetime.now(PARIS)
 s = _load_stats()
 cl_data   = load_checklist()
 
+# Calcul countdown vers 15h30
+_session_open = now_paris.replace(hour=15, minute=30, second=0, microsecond=0)
+_session_close = now_paris.replace(hour=22, minute=0, second=0, microsecond=0)
+_in_session = _session_open <= now_paris < _session_close
+_before_session = now_paris < _session_open
+
+if _in_session:
+    _remaining = _session_close - now_paris
+    _h, _rem = divmod(int(_remaining.total_seconds()), 3600)
+    _m, _s   = divmod(_rem, 60)
+    _countdown_txt = f"SESSION ACTIVE — ferme dans {_h}h{_m:02d}m{_s:02d}s"
+    _countdown_col = "#10b981"
+    _countdown_badge = "qm-badge--green"
+elif _before_session:
+    _remaining = _session_open - now_paris
+    _h, _rem = divmod(int(_remaining.total_seconds()), 3600)
+    _m, _s   = divmod(_rem, 60)
+    _countdown_txt = f"Session dans {_h}h{_m:02d}m{_s:02d}s"
+    _countdown_col = "#f59e0b" if _remaining.total_seconds() < 1800 else "#94a3b8"
+    _countdown_badge = "qm-badge--amber" if _remaining.total_seconds() < 1800 else "qm-badge--blue"
+else:
+    _countdown_txt = "Session NY terminee — 9h30 demain"
+    _countdown_col = "#475569"
+    _countdown_badge = "qm-badge--blue"
+
 st.markdown(f"""
-<div class="ph">
-    <div class="ph-tag">PRÉPARATION SESSION · MNQ · 4PROPTRADER</div>
-    <div class="ph-title">Session Prep</div>
+<div class="ph" style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:.5rem">
+    <div>
+        <div class="ph-tag">PRÉPARATION SESSION · MNQ · 4PROPTRADER</div>
+        <div class="ph-title">Session Prep</div>
+    </div>
+    <span class="qm-badge {_countdown_badge}" style="font-size:.72rem; padding:5px 14px; margin-bottom:.6rem">
+        {'<span class="qm-live-dot qm-live-dot--green" style="width:6px;height:6px;margin:0 6px 0 0"></span>' if _in_session else ''}
+        {_countdown_txt}
+    </span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -160,10 +193,10 @@ with col_left:
     ITEMS = [
         ("setup",    "15h15 — Ouvre ATAS",
                      "Vérifie que dxFeed prop est connecté (point vert)"),
-        ("bridge",   "15h18 — Lance le bridge",
-                     "cd QUANT MATHS → node dxfeed_bridge.js → attends '✓ Ticks reçus'"),
+        ("bridge",   "15h18 — Lance le bridge dxFeed",
+                     "Page Demarrage → colle l URL Volumetric → copie la commande → node dxfeed_bridge.js"),
         ("streamlit","15h20 — Lance Streamlit",
-                     "streamlit run Accueil.py → ouvre localhost:8501/Live_Signal"),
+                     "streamlit run Accueil.py → ouvre localhost:8501 → Live Signal"),
         ("discord",  "15h22 — Vérifie Discord",
                      "Notifs activées sur téléphone pour le channel MNQ Signal"),
         ("atas_ctx", "15h25 — Contexte ATAS",

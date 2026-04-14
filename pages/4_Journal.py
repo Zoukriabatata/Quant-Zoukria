@@ -17,7 +17,7 @@ from plotly.subplots import make_subplots
 from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET, HURST_THRESHOLD
 
 st.set_page_config(page_title="Journal", page_icon="📒", layout="wide")
-from styles import inject as _inj; _inj()
+from styles import inject as _inj, empty_state, toast; _inj()
 
 # ── Theme ─────────────────────────────────────────────────────────────
 TEAL   = "#06b6d4"
@@ -144,6 +144,11 @@ def delete_trade(trade_id: int):
 df = load_trades()
 no_data = df.empty
 
+# ── Toast persistant après rerun ──────────────────────────────────────
+if "_toast" in st.session_state:
+    _t = st.session_state.pop("_toast")
+    st.markdown(toast(_t["msg"], variant=_t["variant"]), unsafe_allow_html=True)
+
 # ── KPIs globaux ─────────────────────────────────────────────────────
 
 def _kpi(val, lbl, color="#fff"):
@@ -153,7 +158,7 @@ def _kpi(val, lbl, color="#fff"):
 
 
 if no_data:
-    st.info("Aucun trade en base. Ajoute ton premier trade ci-dessous.")
+    st.markdown(empty_state("📭", "Aucun trade en base", "Ajoute ton premier trade dans l onglet Saisie ci-dessous."), unsafe_allow_html=True)
     n = wr = pf = sharpe = max_dd_pct = total = 0
     eq = np.array([0.0])
 else:
@@ -196,13 +201,13 @@ if not no_data:
 # TABS
 # ═══════════════════════════════════════════════════════════════════════
 
-tabs = st.tabs(["📈 Equity & P&L", "📋 Trades", "📊 Stats", "➕ Ajouter", "⬇ Export"])
-t_equity, t_trades, t_stats, t_add, t_export = tabs
+tabs = st.tabs(["📈 Equity & P&L", "📋 Trades", "📊 Stats", "📅 Semaine", "➕ Ajouter", "⬇ Export"])
+t_equity, t_trades, t_stats, t_week, t_add, t_export = tabs
 
 # ── TAB 1 : EQUITY & P&L ─────────────────────────────────────────────
 with t_equity:
     if no_data:
-        st.info("Pas encore de données.")
+        st.markdown(empty_state("📈", "Courbe d equity vide", "Enregistre ton premier trade pour voir la courbe."), unsafe_allow_html=True)
     else:
         c1, c2 = st.columns([2, 1])
         with c1:
@@ -257,7 +262,7 @@ with t_equity:
 # ── TAB 2 : TRADES ───────────────────────────────────────────────────
 with t_trades:
     if no_data:
-        st.info("Pas encore de données.")
+        st.markdown(empty_state("📋", "Aucun trade", "Aucun trade enregistre pour le moment."), unsafe_allow_html=True)
     else:
         # Filtres
         fc1, fc2, fc3 = st.columns(3)
@@ -308,13 +313,13 @@ with t_trades:
             del_id = st.number_input("ID du trade à supprimer", min_value=1, step=1)
             if st.button("Supprimer", type="secondary"):
                 delete_trade(int(del_id))
-                st.success(f"Trade #{del_id} supprimé.")
+                st.session_state["_toast"] = {"msg": f"Trade #{del_id} supprime.", "variant": "info"}
                 st.rerun()
 
 # ── TAB 3 : STATS ────────────────────────────────────────────────────
 with t_stats:
     if no_data:
-        st.info("Pas encore de données.")
+        st.markdown(empty_state("📊", "Stats indisponibles", "Les statistiques apparaitront apres le premier trade."), unsafe_allow_html=True)
     else:
         c1, c2 = st.columns(2)
 
@@ -471,13 +476,97 @@ with t_add:
                     "notes":      notes,
                 })
                 if ok:
-                    st.success(f"Trade enregistré — P&L ${pnl_auto:+.2f}")
+                    st.session_state["_toast"] = {"msg": f"Trade enregistre — P&L ${pnl_auto:+.2f}", "variant": "success"}
                     st.rerun()
+
+# ── TAB 4 : SEMAINE ──────────────────────────────────────────────────
+with t_week:
+    if no_data:
+        st.markdown(empty_state("📅", "Aucun trade", "Le bilan hebdo apparaitra apres le premier trade."), unsafe_allow_html=True)
+    else:
+        df["week"] = pd.to_datetime(df["date"]).dt.to_period("W").apply(lambda r: str(r.start_time.date()))
+
+        weekly = (
+            df.groupby("week")
+            .agg(
+                trades  = ("pnl", "count"),
+                wins    = ("win",  "sum"),
+                pnl     = ("pnl",  "sum"),
+                best    = ("pnl",  "max"),
+                worst   = ("pnl",  "min"),
+                avg_h   = ("hurst","mean"),
+            )
+            .reset_index()
+            .sort_values("week", ascending=False)
+        )
+        weekly["wr"]  = (weekly["wins"] / weekly["trades"] * 100).round(1)
+        weekly["pf"]  = weekly.apply(
+            lambda r: df[df["week"] == r["week"]]["pnl"].clip(lower=0).sum() /
+                      max(abs(df[df["week"] == r["week"]]["pnl"].clip(upper=0).sum()), 0.01),
+            axis=1
+        ).round(2)
+
+        # KPI semaine courante
+        if not weekly.empty:
+            cur = weekly.iloc[0]
+            c1, c2, c3, c4, c5 = st.columns(5)
+            def _wkpi(col, val, lbl, color="#f1f5f9"):
+                col.markdown(
+                    f'<div class="qm-metric qm-metric--neutral" style="text-align:center">'
+                    f'<div class="qm-metric__value" style="color:{color};font-size:1.4rem">{val}</div>'
+                    f'<div class="qm-metric__label">{lbl}</div></div>',
+                    unsafe_allow_html=True
+                )
+            _wkpi(c1, int(cur["trades"]), "Trades semaine")
+            _wkpi(c2, f"{cur['wr']:.0f}%", "Win Rate", GREEN if cur["wr"] >= 50 else RED)
+            _wkpi(c3, f"${cur['pnl']:+.0f}", "P&L semaine", GREEN if cur["pnl"] >= 0 else RED)
+            _wkpi(c4, f"{cur['pf']:.2f}", "Profit Factor", GREEN if cur["pf"] >= 1.5 else YELLOW)
+            _wkpi(c5, f"${cur['best']:+.0f}", "Meilleur trade", GREEN)
+            st.markdown("<div style='margin-top:.8rem'></div>", unsafe_allow_html=True)
+
+        # Graphe P&L hebdo
+        fig_w = go.Figure()
+        colors_w = [GREEN if v >= 0 else RED for v in weekly["pnl"]]
+        fig_w.add_trace(go.Bar(
+            x=weekly["week"], y=weekly["pnl"],
+            marker_color=colors_w,
+            marker_line_width=0,
+            text=[f"${v:+.0f}" for v in weekly["pnl"]],
+            textposition="outside",
+            textfont=dict(size=10, color="#94a3b8"),
+            name="P&L hebdo",
+        ))
+        fig_w.add_hline(y=0, line_color="rgba(148,163,184,0.15)", line_width=1)
+        fig_w.update_layout(
+            **DARK,
+            title=dict(text="P&L par semaine", font=dict(size=13, color="#94a3b8")),
+            xaxis=dict(**AXIS, title=""),
+            yaxis=dict(**AXIS, title="P&L ($)"),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_w, use_container_width=True)
+
+        # Tableau récap toutes semaines
+        st.markdown('<div class="sec-label">Historique hebdomadaire</div>', unsafe_allow_html=True)
+        for _, row in weekly.iterrows():
+            pnl_col_w = GREEN if row["pnl"] >= 0 else RED
+            wr_col_w  = GREEN if row["wr"] >= 50 else RED
+            st.markdown(
+                f'<div class="trade-row">'
+                f'<span style="color:#475569;min-width:110px;font-size:.75rem">Sem. {row["week"]}</span>'
+                f'<span style="color:#94a3b8;min-width:60px">{int(row["trades"])} trades</span>'
+                f'<span style="color:{wr_col_w};min-width:60px">{row["wr"]:.0f}% WR</span>'
+                f'<span style="color:{pnl_col_w};min-width:80px;font-weight:700">${row["pnl"]:+.0f}</span>'
+                f'<span style="color:#475569;min-width:60px">PF {row["pf"]:.2f}</span>'
+                f'<span style="color:#475569;font-size:.7rem">best ${row["best"]:+.0f} / worst ${row["worst"]:+.0f}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
 
 # ── TAB 5 : EXPORT ───────────────────────────────────────────────────
 with t_export:
     if no_data:
-        st.info("Pas encore de données à exporter.")
+        st.markdown(empty_state("💾", "Rien a exporter", "Aucun trade en base."), unsafe_allow_html=True)
     else:
         st.markdown("**Exporter le journal**")
 

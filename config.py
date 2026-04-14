@@ -10,9 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 
 # ── Données live (dxfeed_bridge.js → Live Signal) ─────────────────────
-_TMP = Path(tempfile.gettempdir())
+# C:\tmp est le path hardcodé dans dxfeed_bridge.js — on l'utilise comme fallback
+_TMP = Path("C:/tmp")
 DXFEED_FILE  = os.environ.get("DXFEED_FILE",  str(_TMP / "mnq_live.json"))
-JOURNAL_DB   = os.environ.get("JOURNAL_DB",   str(_TMP / "mnq_journal.db"))
+JOURNAL_DB   = os.environ.get("JOURNAL_DB",   str(Path(tempfile.gettempdir()) / "mnq_journal.db"))
 
 # ── Données historiques (backtests) ───────────────────────────────────
 MNQ_CSV = os.environ.get(

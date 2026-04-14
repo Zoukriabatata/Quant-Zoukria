@@ -853,11 +853,9 @@ with t4:
                          annotation_text="Bust max toléré 10%", secondary_y=False)
         fig_sw.add_hline(y=40, line=dict(color=GREEN, dash="dash", width=1),
                          annotation_text="Pass cible 40%", secondary_y=False)
-        fig_sw.update_layout(
-            **DARK, height=380,
-            title="Pass Rate & Bust Rate selon le Risk % par trade",
-            legend=dict(orientation="h", y=1.12),
-        )
+        fig_sw.update_layout(**DARK, height=380,
+                             title="Pass Rate & Bust Rate selon le Risk % par trade")
+        fig_sw.update_layout(legend=dict(orientation="h", y=1.12))
         fig_sw.update_yaxes(title_text="Taux (%)", range=[0, 100], secondary_y=False)
         fig_sw.update_yaxes(title_text="Jours jusqu'au pass", secondary_y=True)
         st.plotly_chart(fig_sw, use_container_width=True)
@@ -1013,13 +1011,11 @@ with t5:
                                 yaxis="y2"))
     fig_ht.add_hline(y=1.5, line=dict(color=GREEN, dash="dash"), yref="y2",
                      annotation_text="PF 1.5 cible")
-    fig_ht.update_layout(
-        **DARK, height=300,
-        title="PF vs seuil Hurst — tradeoff qualité/quantité",
-        yaxis=dict(title="Nb trades"),
-        yaxis2=dict(title="PF", overlaying="y", side="right", range=[0.5, 3]),
-        legend=dict(orientation="h", y=1.1),
-    )
+    fig_ht.update_layout(**DARK, height=300,
+                         title="PF vs seuil Hurst — tradeoff qualité/quantité",
+                         yaxis=dict(title="Nb trades"),
+                         yaxis2=dict(title="PF", overlaying="y", side="right", range=[0.5, 3]))
+    fig_ht.update_layout(legend=dict(orientation="h", y=1.1))
     st.plotly_chart(fig_ht, use_container_width=True)
 
 

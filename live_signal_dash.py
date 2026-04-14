@@ -34,10 +34,15 @@ except ImportError:
 # ═══════════════════════════════════════════════════════
 
 st.set_page_config(page_title="Live Signal", page_icon="⚡", layout="wide")
-from styles import inject as _inj; _inj()
+from styles import inject as _inj, refresh_bar as _refresh_bar, toast as _toast; _inj()
 
 # Auto-refresh toutes les 2s (non-bloquant, pas de time.sleep)
 st_autorefresh(interval=2000, key="live_autorefresh")
+
+# Toast persistant après rerun
+if "_ls_toast" in st.session_state:
+    _t = st.session_state.pop("_ls_toast")
+    st.markdown(_toast(_t, variant="success"), unsafe_allow_html=True)
 
 from config import (DXFEED_FILE, JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET,
                    NTFY_TOPIC as _NTFY_TOPIC,
@@ -57,10 +62,10 @@ SESSION_END     = (22,  0)   # 16:00 NY = 22:00 Paris
 
 TICK_VALUE      = 2.0       # $/pt MNQ (NQ full = 20.0)
 
-DISCORD_WEBHOOK = (
-    st.secrets.get("DISCORD_WEBHOOK", None) or
-    os.environ.get("DISCORD_WEBHOOK", "")
-)
+try:
+    DISCORD_WEBHOOK = st.secrets.get("DISCORD_WEBHOOK", None) or os.environ.get("DISCORD_WEBHOOK", "")
+except FileNotFoundError:
+    DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK", "")
 NTFY_TOPIC      = _NTFY_TOPIC
 
 PARIS = pytz.timezone("Europe/Paris")
@@ -507,8 +512,11 @@ with st.spinner("Chargement données..."):
 
 # Badge source données
 src_color = TEAL if "dxFeed" in data_source else YELLOW
-st.markdown(f'<div style="font-size:.75rem;color:{src_color};margin-bottom:.5rem">📡 Source : {data_source}</div>',
-            unsafe_allow_html=True)
+st.markdown(
+    f'<div style="font-size:.75rem;color:{src_color};margin-bottom:.3rem">📡 Source : {data_source}</div>'
+    + _refresh_bar(duration_s=2.0),
+    unsafe_allow_html=True,
+)
 
 if err or df is None:
     st.error(f"🔴 {err or 'Bridge dxFeed inactif'}")
@@ -603,7 +611,7 @@ def _build_discord_payload(sig):
             ],
             "footer":    {"text": "Hurst_MR · MNQ · 4PropTrader $50K"},
             "timestamp": sig["time"].replace(" ", "T") + "Z" if "T" not in sig["time"] else sig["time"] + "Z",
-            "url":       "https://quant-zoukria.streamlit.app/5_Live_Signal",
+            "url":       "https://quant-zoukria.streamlit.app/3_Live_Signal",
         }]
     }
 
@@ -656,8 +664,8 @@ def _send_ntfy(sig):
                 "X-Title":    f"{title_emoji} SIGNAL {d} MNQ @ {entry:.2f}",
                 "X-Tags":     tags,
                 "X-Priority": "high",
-                "X-Click":    "https://quant-zoukria.streamlit.app/5_Live_Signal",
-                "X-Actions":  "view, Dashboard, https://quant-zoukria.streamlit.app/5_Live_Signal",
+                "X-Click":    "https://quant-zoukria.streamlit.app/3_Live_Signal",
+                "X-Actions":  "view, Dashboard, https://quant-zoukria.streamlit.app/3_Live_Signal",
             }
         )
         urllib.request.urlopen(req, timeout=5)
@@ -736,6 +744,86 @@ if _daily_blocked:
             ⚠️ <b>MAX TRADES ATTEINT</b> — {_trades_today}/{MAX_TRADES_DAY} trades aujourd'hui<br>
             <span style="color:#555;font-size:.75rem">Limite journalière atteinte. Session terminée.</span>
         </div>""", unsafe_allow_html=True)
+
+# ── Daily Limit Tracker ───────────────────────────────
+_loss_used   = max(0.0, -_pnl_today)                          # perte nette du jour (≥0)
+_loss_pct    = min(100.0, _loss_used / DAILY_LOSS_LIM * 100)  # % de la limite utilisé
+_gain_today  = max(0.0, _pnl_today)                           # gain net du jour
+_trades_left = max(0, MAX_TRADES_DAY - _trades_today)
+
+# Couleur de la barre de perte
+if _loss_pct >= 100:
+    _bar_clr = "#ef4444"   # rouge — limite atteinte
+elif _loss_pct >= 80:
+    _bar_clr = "#f97316"   # orange — danger
+elif _loss_pct >= 50:
+    _bar_clr = "#f59e0b"   # amber — attention
+else:
+    _bar_clr = "#10b981"   # vert — safe
+
+# Couleur P&L texte
+_pnl_clr = "#ef4444" if _pnl_today < 0 else ("#10b981" if _pnl_today > 0 else "#94a3b8")
+
+# Status global
+if _daily_blocked:
+    _status_cls, _status_txt = "qm-badge--red",   "STOP"
+elif _loss_pct >= 80:
+    _status_cls, _status_txt = "qm-badge--amber",  "ATTENTION"
+elif _loss_pct >= 50:
+    _status_cls, _status_txt = "qm-badge--amber",  "SURVEILLER"
+else:
+    _status_cls, _status_txt = "qm-badge--green",  "SAFE"
+
+# Dots trades (● = utilisé, ○ = dispo)
+_dots = "".join(
+    f'<span style="color:#ef4444;font-size:.75rem">●</span>' if i < _trades_today
+    else f'<span style="color:#334155;font-size:.75rem">○</span>'
+    for i in range(MAX_TRADES_DAY)
+)
+
+st.markdown(f"""
+<div style="background:var(--bg-surface);border:1px solid var(--border-default);
+            border-radius:var(--r-lg);padding:.9rem 1.3rem;margin-bottom:.9rem;
+            display:grid;grid-template-columns:1fr auto 1fr;gap:1.5rem;align-items:center">
+    <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.4rem">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:.6rem;
+                         font-weight:700;letter-spacing:.14em;color:var(--text-muted);
+                         text-transform:uppercase">Limite journalière</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:.78rem;font-weight:700;
+                         color:{_pnl_clr}">{_pnl_today:+.0f}$</span>
+        </div>
+        <div style="background:var(--bg-elevated);border-radius:var(--r-pill);height:6px;overflow:hidden">
+            <div style="width:{_loss_pct:.1f}%;height:100%;background:{_bar_clr};
+                        border-radius:var(--r-pill);
+                        transition:width .5s cubic-bezier(.16,1,.3,1)"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:.3rem">
+            <span style="font-size:.7rem;color:{_bar_clr}">{_loss_pct:.0f}% utilisé</span>
+            <span style="font-size:.7rem;color:var(--text-muted)">max −{DAILY_LOSS_LIM:.0f}$</span>
+        </div>
+    </div>
+    <div style="text-align:center">
+        <span class="qm-badge {_status_cls}" style="font-size:.75rem;padding:.3rem .8rem">{_status_txt}</span>
+        <div style="font-size:.62rem;color:var(--text-muted);margin-top:.4rem;opacity:{1 if _gain_today > 0 else 0}">{f'+{_gain_today:.0f}$' if _gain_today > 0 else '—'} gain</div>
+    </div>
+    <div style="text-align:right">
+        <div style="display:flex;justify-content:flex-end;align-items:baseline;gap:.5rem;margin-bottom:.4rem">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:.6rem;
+                         font-weight:700;letter-spacing:.14em;color:var(--text-muted);
+                         text-transform:uppercase">Trades</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:.78rem;font-weight:700;
+                         color:{'#ef4444' if _trades_today >= MAX_TRADES_DAY else 'var(--text-primary)'}">
+                {_trades_today}<span style="color:var(--text-muted);font-size:.7rem">/{MAX_TRADES_DAY}</span>
+            </span>
+        </div>
+        <div style="letter-spacing:4px">{_dots}</div>
+        <div style="font-size:.7rem;color:var(--text-muted);margin-top:.3rem">
+            {_trades_left} restant{'s' if _trades_left != 1 else ''}
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── KPI Cards ─────────────────────────────────────────
 c1, c2, c3, c4, c5 = st.columns(5)
@@ -1003,8 +1091,6 @@ try:
         ),
         height=620,
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
-                    font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
         hovermode="x unified",
         xaxis=dict(showticklabels=False, gridcolor="#0f0f0f", rangeslider=dict(visible=False)),
         xaxis2=dict(showticklabels=False, gridcolor="#0f0f0f"),
@@ -1014,6 +1100,8 @@ try:
         yaxis3=dict(gridcolor="#0f0f0f", side="right", zeroline=False,
                     range=[-BAND_K*1.6, BAND_K*1.6]),
     )
+    fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                                  font=dict(size=10), bgcolor="rgba(0,0,0,0)"))
     with col_chart:
         st.plotly_chart(fig, use_container_width=True)
 except Exception as _e:
@@ -1036,6 +1124,8 @@ try:
             fv_mnq     = last_signal["fair_value"] / 10
             sl_price   = entry_mnq - sl_mnq if d == "LONG" else entry_mnq + sl_mnq
             rr         = abs(tp_mnq - entry_mnq) / sl_mnq if sl_mnq > 0 else 0
+            # Flash class for brand-new signals (< 30s)
+            _flash_cls = " qm-signal-new" if _sig_age_min < 0.5 else ""
             # statut Discord (lu depuis fichier — persiste entre reruns)
             ds = _discord_read_status()
             if ds["ok"] is True:
@@ -1045,7 +1135,7 @@ try:
             else:
                 disc_lbl = '<span style="color:#333">Discord —</span>'
             st.markdown(f"""
-            <div class="{cls}">
+            <div class="{cls}{_flash_cls}">
                 <div style="font-size:1.8rem;font-weight:700;color:{col};
                             font-family:'JetBrains Mono',monospace">{icon} {d}</div>
                 <div style="font-size:.6rem;color:{col};font-family:'JetBrains Mono',monospace;
@@ -1081,15 +1171,14 @@ try:
                 </div>
             </div>""", unsafe_allow_html=True)
         else:
-            regime_txt = "Attente signal MR" if h_val < HURST_THRESHOLD else "Trending — no trade"
-            regime_sub = f"H={h_val:.3f} < {HURST_THRESHOLD} ✓" if h_val < HURST_THRESHOLD else f"H={h_val:.3f} ≥ {HURST_THRESHOLD}"
-            st.markdown(f"""
-            <div class="sig-none">
-                <div style="font-size:2rem;margin-bottom:.3rem">◎</div>
-                <div style="font-size:.9rem;color:#333;font-weight:600">{regime_txt}</div>
-                <div style="font-size:.7rem;color:#222;margin-top:.3rem;
-                            font-family:'JetBrains Mono',monospace">{regime_sub}</div>
-            </div>""", unsafe_allow_html=True)
+            if h_val < HURST_THRESHOLD:
+                _es_icon, _es_title = "◎", "Attente signal MR"
+                _es_sub = f"H={h_val:.3f} < {HURST_THRESHOLD} — systeme actif, attente Z ≥ ±{BAND_K}σ"
+            else:
+                _es_icon, _es_title = "📈", "Regime trending — no trade"
+                _es_sub = f"H={h_val:.3f} ≥ {HURST_THRESHOLD} — systeme inactif"
+            from styles import empty_state as _es
+            st.markdown(_es(_es_icon, _es_title, _es_sub), unsafe_allow_html=True)
 
         # Bouton test Discord
         if st.button("🔔 Test Discord", use_container_width=True):
@@ -1229,7 +1318,7 @@ with tab_journal:
             journal_add(datetime.now().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M"),
                         j_dir, j_entry, j_sl, j_tp, j_contracts, j_exit, pre_h, pre_z, j_notes)
             journal_load.clear()
-            st.success("Trade enregistré ✓")
+            st.session_state["_ls_toast"] = f"Trade {j_dir} enregistre — P&L ${pnl_preview:+.2f}"
             st.rerun()
 
     # Tableau
@@ -1408,8 +1497,9 @@ with tab_signaux:
             entry_mnq = last_signal["price"] / 10
             rr        = abs(tp_mnq - entry_mnq) / sl_mnq if sl_mnq > 0 else 0
             st.markdown('<div class="sec-label" style="margin-top:1rem">Dernier signal actif</div>', unsafe_allow_html=True)
+            _flash2 = " qm-signal-new" if _sig_age_min < 0.5 else ""
             st.markdown(f"""
-            <div class="{cls}" style="max-width:480px">
+            <div class="{cls}{_flash2}" style="max-width:480px">
                 <div style="font-size:1.6rem;font-weight:700;color:{col};
                             font-family:'JetBrains Mono',monospace">{icon} {d}</div>
                 <div style="font-size:.6rem;color:{col};font-family:'JetBrains Mono',monospace;
@@ -1437,14 +1527,9 @@ with tab_signaux:
                 </div>
             </div>""", unsafe_allow_html=True)
     else:
-        regime = "Session MR active — attente Z ≥ ±3σ" if h_val < HURST_THRESHOLD else f"Régime trending (H ≥ {HURST_THRESHOLD}) — pas de signal MR"
-        st.markdown(f"""
-        <div class="sig-none" style="max-width:480px">
-            <div style="font-size:2rem;margin-bottom:.3rem">◎</div>
-            <div style="font-size:.9rem;color:#333;font-weight:600">Aucun signal aujourd'hui</div>
-            <div style="font-size:.7rem;color:#222;margin-top:.3rem;
-                        font-family:'JetBrains Mono',monospace">{regime}</div>
-        </div>""", unsafe_allow_html=True)
+        _reg2 = f"H={h_val:.3f} — systeme actif, attente Z" if h_val < HURST_THRESHOLD else f"H={h_val:.3f} — regime trending, pas de trade"
+        from styles import empty_state as _es2
+        st.markdown(_es2("◎", "Aucun signal aujourd hui", _reg2), unsafe_allow_html=True)
 
 # ── Footer ────────────────────────────────────────────
 st.divider()

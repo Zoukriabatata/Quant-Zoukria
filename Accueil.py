@@ -3,7 +3,8 @@ import sqlite3
 from pathlib import Path
 import pandas as pd
 import streamlit as st
-from styles import inject as _inject_styles
+import streamlit.components.v1 as _components
+from styles import inject as _inject_styles, count_up_stats
 from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET
 
 st.set_page_config(page_title="Quant Maths", page_icon="⚡", layout="wide")
@@ -225,46 +226,57 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Stats live ────────────────────────────────────────────────────────
-wr_col   = "green" if s["wr"] >= 50 else ("white" if s["n"] == 0 else "red")
-pnl_col  = "green" if s["pnl"] >= 0 else "red"
-dd_col   = "green" if s["dd_used"] < CHALLENGE_DD * 0.4 else ("yellow" if s["dd_used"] < CHALLENGE_DD * 0.7 else "red")
-rr_col   = "green" if s["rr"] >= 1.5 else "white"
+# ── Stats live (animated count-up) ───────────────────────────────────
+_wr_color  = "#10b981" if s["wr"] >= 50 else ("#f1f5f9" if s["n"] == 0 else "#ef4444")
+_pnl_color = "#10b981" if s["pnl"] >= 0 else "#ef4444"
+_dd_color  = "#10b981" if s["dd_used"] < CHALLENGE_DD * 0.4 else ("#f59e0b" if s["dd_used"] < CHALLENGE_DD * 0.7 else "#ef4444")
+_rr_color  = "#10b981" if s["rr"] >= 1.5 else "#f1f5f9"
 
-wr_disp  = f"{s['wr']:.0f}%" if s["n"] > 0 else "—"
-pnl_disp = f"{pnl_sign}{s['pnl']:.0f}$"
-dd_disp  = f"{s['dd_rem']:.0f}$"
-rr_disp  = f"{s['rr']:.2f}x" if s["n"] > 0 else "—"
-
-st.markdown(f"""
-<div class="stats-row">
-    <div class="stat-cell">
-        <div class="stat-num {wr_col}">{wr_disp}</div>
-        <div class="stat-lbl">Win Rate</div>
-        <div class="stat-live">{'LIVE · ' + str(s['n']) + ' TRADES' if s['n'] > 0 else 'EN ATTENTE'}</div>
-    </div>
-    <div class="stat-cell">
-        <div class="stat-num {rr_col}">{rr_disp}</div>
-        <div class="stat-lbl">Risk / Reward</div>
-        <div class="stat-live">AVG WIN / AVG LOSS</div>
-    </div>
-    <div class="stat-cell">
-        <div class="stat-num {pnl_col}">{pnl_disp}</div>
-        <div class="stat-lbl">P&L Challenge</div>
-        <div class="stat-live">TARGET {CHALLENGE_TARGET:.0f}$</div>
-    </div>
-    <div class="stat-cell">
-        <div class="stat-num {dd_col}">{dd_disp}</div>
-        <div class="stat-lbl">DD Restant</div>
-        <div class="stat-live">MAX {CHALLENGE_DD:.0f}$</div>
-    </div>
-    <div class="stat-cell">
-        <div class="stat-num white">{s['n']}</div>
-        <div class="stat-lbl">Trades</div>
-        <div class="stat-live">CHALLENGE TOTAL</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+_cu_stats = [
+    {
+        "value":    round(s["wr"], 1) if s["n"] > 0 else 0,
+        "label":    "Win Rate",
+        "suffix":   "%",
+        "decimals": 1,
+        "color":    _wr_color,
+        "sub":      f"LIVE · {s['n']} TRADES" if s["n"] > 0 else "EN ATTENTE",
+        "static":   s["n"] == 0,
+    },
+    {
+        "value":    round(s["rr"], 2) if s["n"] > 0 else 0,
+        "label":    "Risk / Reward",
+        "suffix":   "x",
+        "decimals": 2,
+        "color":    _rr_color,
+        "sub":      "AVG WIN / AVG LOSS",
+        "static":   s["n"] == 0,
+    },
+    {
+        "value":    abs(round(s["pnl"])),
+        "label":    "P&L Challenge",
+        "prefix":   ("+" if s["pnl"] >= 0 else "-"),
+        "suffix":   "$",
+        "decimals": 0,
+        "color":    _pnl_color,
+        "sub":      f"TARGET {CHALLENGE_TARGET:.0f}$",
+    },
+    {
+        "value":    round(s["dd_rem"]),
+        "label":    "DD Restant",
+        "suffix":   "$",
+        "decimals": 0,
+        "color":    _dd_color,
+        "sub":      f"MAX {CHALLENGE_DD:.0f}$",
+    },
+    {
+        "value":    s["n"],
+        "label":    "Trades",
+        "decimals": 0,
+        "color":    "#f1f5f9",
+        "sub":      "CHALLENGE TOTAL",
+    },
+]
+_components.html(count_up_stats(_cu_stats), height=115, scrolling=False)
 
 # ── DD gauge ──────────────────────────────────────────────────────────
 dd_pct_used = min(100., s["dd_used"] / CHALLENGE_DD * 100)

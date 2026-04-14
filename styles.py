@@ -611,6 +611,16 @@ _CHARTS = """
   border-radius: var(--r-lg) !important;
   overflow: hidden !important;
   border: 1px solid var(--border-subtle) !important;
+  transition: border-color .22s ease, box-shadow .22s ease !important;
+}
+[data-testid="stPlotlyChart"]:hover {
+  border-color: var(--border-default) !important;
+  box-shadow: 0 0 24px rgba(59,130,246,0.08) !important;
+}
+/* Crosshair cursor on chart canvas */
+[data-testid="stPlotlyChart"] canvas,
+[data-testid="stPlotlyChart"] .js-plotly-plot {
+  cursor: crosshair !important;
 }
 """
 
@@ -835,6 +845,180 @@ _ANIMATIONS = """
 
 /* Page entrance */
 .main { animation: fadeIn .22s ease both; }
+
+@keyframes skeletonShimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+@keyframes toastSlide {
+  from { opacity:0; transform:translateX(32px) scale(.95); }
+  to   { opacity:1; transform:translateX(0)    scale(1);   }
+}
+@keyframes signalFlash {
+  0%   { background-color: rgba(59,130,246,0.18); }
+  50%  { background-color: rgba(59,130,246,0.06); }
+  100% { background-color: rgba(59,130,246,0.18); }
+}
+@keyframes borderSpin {
+  from { --_angle: 0deg;   }
+  to   { --_angle: 360deg; }
+}
+@keyframes progressShrink {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+@keyframes checkPop {
+  0%   { transform: scale(1);    }
+  50%  { transform: scale(1.12); }
+  100% { transform: scale(1);    }
+}
+"""
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADVANCED — Skeleton, Toast, Empty State, Refresh Bar, Signal Flash,
+#            Spinning-border card, Checkbox micro-animation
+# ════════════════════════════════════════════════════════════════════════════
+_ADVANCED = """
+/* ── Skeleton loader ─────────────────────────────────────────── */
+.qm-skeleton {
+  border-radius: var(--r-md);
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    rgba(148,163,184,0.06) 50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.6s ease-in-out infinite;
+}
+.qm-skeleton--text  { height: 12px; width: 100%; margin-bottom: 8px; }
+.qm-skeleton--title { height: 20px; width: 60%; margin-bottom: 12px; }
+.qm-skeleton--chart { height: 200px; width: 100%; }
+.qm-skeleton--card  { height: 90px;  width: 100%; }
+
+/* ── Toast notification ──────────────────────────────────────── */
+.qm-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  min-width: 260px;
+  max-width: 360px;
+  padding: .85rem 1.1rem;
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), var(--shadow-glow);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  animation: toastSlide .28s cubic-bezier(.16,1,.3,1) both;
+}
+.qm-toast--success { border-color: rgba(16,185,129,0.35);  box-shadow: 0 8px 32px rgba(0,0,0,0.5), var(--shadow-green); }
+.qm-toast--error   { border-color: rgba(239,68,68,0.35);   box-shadow: 0 8px 32px rgba(0,0,0,0.5), var(--shadow-red);   }
+.qm-toast--info    { border-color: rgba(59,130,246,0.35);  }
+.qm-toast__icon    { font-size: 1.15rem; flex-shrink: 0; }
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.qm-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 3rem 2rem;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--r-lg);
+  background: var(--bg-surface);
+  text-align: center;
+  animation: fadeIn .3s ease both;
+}
+.qm-empty-state__icon { font-size: 2.4rem; opacity: .45; }
+.qm-empty-state__title {
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.qm-empty-state__sub {
+  font-size: .78rem;
+  color: var(--text-muted);
+  max-width: 320px;
+}
+
+/* ── Refresh countdown bar ───────────────────────────────────── */
+.qm-refresh-bar-wrap {
+  width: 100%;
+  height: 3px;
+  background: var(--bg-elevated);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  margin: .5rem 0;
+}
+.qm-refresh-bar {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--grad-primary);
+  animation: progressShrink linear both;
+  transform-origin: left center;
+}
+
+/* ── Signal flash (new signal detected) ─────────────────────── */
+.qm-signal-new {
+  animation: signalFlash .7s ease 3;
+}
+
+/* @property for conic-gradient rotation (Chrome 85+, Safari 16.4+) */
+@property --_angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* ── Animated conic border card ──────────────────────────────── */
+.qm-card--border-spin {
+  position: relative;
+  background: var(--bg-surface);
+  border-radius: var(--r-lg);
+  padding: 1.25rem 1.4rem;
+  overflow: hidden;
+  isolation: isolate;
+}
+.qm-card--border-spin::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--_angle, 0deg),
+    var(--accent-blue),
+    var(--accent-cyan),
+    var(--accent-purple),
+    var(--accent-blue)
+  );
+  animation: borderSpin 3s linear infinite;
+  z-index: -1;
+}
+.qm-card--border-spin::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: calc(var(--r-lg) - 2px);
+  background: var(--bg-surface);
+  z-index: -1;
+}
+
+/* ── Checkbox micro-animation ────────────────────────────────── */
+[data-testid="stCheckbox"] label:has(input:checked) {
+  animation: checkPop .18s cubic-bezier(.16,1,.3,1) both;
+}
+[data-testid="stCheckbox"]:hover label {
+  color: var(--text-primary) !important;
+  transform: translateX(2px);
+  transition: var(--t-fast);
+}
 """
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -861,7 +1045,7 @@ def inject():
     css = (
         _TOKENS + _BASE + _SIDEBAR + _CARDS + _BADGES + _BUTTONS
         + _TABLES + _INPUTS + _TABS + _EXPANDERS + _METRICS
-        + _LAYOUT + _CHARTS + _COMPAT + _ANIMATIONS
+        + _LAYOUT + _CHARTS + _COMPAT + _ANIMATIONS + _ADVANCED
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
@@ -950,3 +1134,153 @@ def gradient_text(text: str, gradient: str = "var(--grad-primary)") -> str:
         f'<span style="background:{gradient};-webkit-background-clip:text;'
         f'-webkit-text-fill-color:transparent;background-clip:text">{text}</span>'
     )
+
+
+def toast(message: str, variant: str = "info", icon: str | None = None) -> str:
+    """Return a fixed-position toast notification HTML.
+    variant: "info" | "success" | "error"
+    Inject via st.markdown(..., unsafe_allow_html=True).
+    """
+    _icons = {"info": "ℹ️", "success": "✅", "error": "❌"}
+    _icon = icon or _icons.get(variant, "ℹ️")
+    return (
+        f'<div class="qm-toast qm-toast--{variant}">'
+        f'  <span class="qm-toast__icon">{_icon}</span>'
+        f'  <span>{message}</span>'
+        f'</div>'
+    )
+
+
+def skeleton(variant: str = "text", count: int = 1) -> str:
+    """Return skeleton loader HTML.
+    variant: "text" | "title" | "chart" | "card"
+    count: number of skeleton rows (ignored for chart/card).
+    """
+    if variant in ("chart", "card"):
+        return f'<div class="qm-skeleton qm-skeleton--{variant}"></div>'
+    rows = "".join(
+        f'<div class="qm-skeleton qm-skeleton--{variant}" '
+        f'style="width:{100 - (i * 12) % 35}%"></div>'
+        for i in range(count)
+    )
+    return rows
+
+
+def empty_state(
+    icon: str = "📭",
+    title: str = "Aucune donnée",
+    subtitle: str = "Rien à afficher pour le moment.",
+) -> str:
+    """Return a centered empty-state HTML block."""
+    return (
+        f'<div class="qm-empty-state">'
+        f'  <div class="qm-empty-state__icon">{icon}</div>'
+        f'  <div class="qm-empty-state__title">{title}</div>'
+        f'  <div class="qm-empty-state__sub">{subtitle}</div>'
+        f'</div>'
+    )
+
+
+def refresh_bar(duration_s: float = 2.0) -> str:
+    """Return a top-of-card countdown progress bar.
+    duration_s: matches the autorefresh interval in seconds.
+    """
+    return (
+        f'<div class="qm-refresh-bar-wrap">'
+        f'  <div class="qm-refresh-bar" '
+        f'style="animation-duration:{duration_s}s"></div>'
+        f'</div>'
+    )
+
+
+def count_up_stats(stats: list[dict], height: int = 110) -> str:
+    """Inject an animated count-up stat row via JS.
+
+    Each stat dict keys:
+      value    (number)  — final value to animate to
+      label    (str)     — uppercase label below
+      prefix   (str)     — e.g. "$", "+" — prepended as-is (not animated)
+      suffix   (str)     — e.g. "%", "x"
+      decimals (int)     — decimal places (default 0)
+      color    (str)     — CSS color for the number (default "#06b6d4")
+      sub      (str)     — tiny sub-label line (optional)
+      static   (bool)    — if True skip animation, show value as-is (for "—" etc)
+
+    Returns an HTML+JS string.
+    Usage: st.components.v1.html(count_up_stats([...]), height=110)
+    """
+    import json as _json
+    data_json = _json.dumps(stats)
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  * {{ box-sizing:border-box; margin:0; padding:0; }}
+  body {{ background:transparent; font-family:'Inter',sans-serif; }}
+  .cu-row {{
+    display:flex; gap:0;
+    border:1px solid rgba(148,163,184,0.10);
+    border-radius:16px; overflow:hidden;
+  }}
+  .cu-cell {{
+    flex:1; padding:1rem .6rem; text-align:center;
+    border-right:1px solid rgba(148,163,184,0.06);
+    background:rgba(10,10,10,0.85);
+    transition:background .15s ease;
+  }}
+  .cu-cell:last-child {{ border-right:none; }}
+  .cu-cell:hover {{ background:rgba(20,20,20,0.95); }}
+  .cu-num {{
+    font-size:1.5rem; font-weight:700;
+    font-family:'JetBrains Mono',monospace;
+    letter-spacing:-0.02em; line-height:1.1;
+  }}
+  .cu-lbl {{
+    font-size:.52rem; color:#475569; letter-spacing:.14em;
+    text-transform:uppercase; margin-top:.25rem;
+  }}
+  .cu-sub {{
+    font-size:.5rem; color:#334155; letter-spacing:.1em;
+    text-transform:uppercase; margin-top:.15rem;
+  }}
+</style>
+</head><body>
+<div class="cu-row" id="cu-row"></div>
+<script>
+(function() {{
+  const stats = {data_json};
+  const row = document.getElementById('cu-row');
+  stats.forEach((s, i) => {{
+    const cell = document.createElement('div');
+    cell.className = 'cu-cell';
+    const color = s.color || '#06b6d4';
+    const sub = s.sub ? `<div class="cu-sub">${{s.sub}}</div>` : '';
+    cell.innerHTML = `<div class="cu-num" id="cu-${{i}}" style="color:${{color}}">${{s.prefix||''}}0${{s.suffix||''}}</div>
+                      <div class="cu-lbl">${{s.label}}</div>${{sub}}`;
+    row.appendChild(cell);
+  }});
+  stats.forEach((s, i) => {{
+    const el = document.getElementById('cu-' + i);
+    if (s.static) {{
+      el.textContent = (s.prefix||'') + s.value + (s.suffix||'');
+      return;
+    }}
+    const dec = s.decimals || 0;
+    const raw = parseFloat(String(s.value).replace(/[^0-9.\-]/g,'')) || 0;
+    const sign = raw < 0 ? '-' : (s.prefix === '+' ? '+' : '');
+    const target = Math.abs(raw);
+    const duration = 900;
+    const start = performance.now();
+    const pfx = s.prefix && s.prefix !== '+' ? s.prefix : '';
+    function step(now) {{
+      const p = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      const cur = (target * ease).toFixed(dec);
+      el.textContent = sign + pfx + cur + (s.suffix||'');
+      if (p < 1) requestAnimationFrame(step);
+    }}
+    requestAnimationFrame(step);
+  }});
+}})();
+</script>
+</body></html>
+"""
