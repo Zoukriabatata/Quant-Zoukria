@@ -297,6 +297,22 @@ st.markdown(f"""
 # ── Section pages ─────────────────────────────────────────────────────
 st.markdown('<div class="sec-label">Navigation</div>', unsafe_allow_html=True)
 
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.page_link("pages/7_Etude.py",        label="📚 Étude",         use_container_width=True)
+with col2:
+    st.page_link("pages/5_Backtest.py",     label="📊 Backtest",      use_container_width=True)
+with col3:
+    st.page_link("pages/3_Live_Signal.py",  label="📡 Live Signal",   use_container_width=True)
+
+col4, col5, col6 = st.columns(3)
+with col4:
+    st.page_link("pages/4_Journal.py",      label="📒 Journal",       use_container_width=True)
+with col5:
+    st.page_link("pages/2_Session_Prep.py", label="🕐 Session Prep",  use_container_width=True)
+with col6:
+    st.page_link("pages/8_Library.py",      label="📚 Bibliothèque",  use_container_width=True)
+
 st.markdown("""
 <div class="cards-grid">
     <div class="card card-1 anim-fade-up anim-stagger-1">
@@ -348,4 +364,4 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="footer">← SIDEBAR POUR NAVIGUER &nbsp;·&nbsp; ÉTUDE &nbsp;·&nbsp; BACKTEST &nbsp;·&nbsp; LIVE SIGNAL →</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">ÉTUDE &nbsp;·&nbsp; BACKTEST &nbsp;·&nbsp; LIVE SIGNAL &nbsp;·&nbsp; JOURNAL</div>', unsafe_allow_html=True)
