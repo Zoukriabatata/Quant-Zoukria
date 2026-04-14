@@ -26,10 +26,10 @@ CHALLENGE_DD     = float(os.environ.get("CHALLENGE_DD",     "2500"))
 CHALLENGE_TARGET = float(os.environ.get("CHALLENGE_TARGET", "3000"))
 
 # ── Paramètres Hurst_MR validés walk-forward ─────────────────────────
-HURST_THRESHOLD = float(os.environ.get("HURST_THRESHOLD", "0.52"))
+HURST_THRESHOLD = float(os.environ.get("HURST_THRESHOLD", "0.53"))
 HURST_WIN       = int(os.environ.get("HURST_WIN",         "60"))
 LOOKBACK        = int(os.environ.get("LOOKBACK",          "30"))
-BAND_K          = float(os.environ.get("BAND_K",          "3.25"))
+BAND_K          = float(os.environ.get("BAND_K",          "3.00"))
 SL_MULT         = float(os.environ.get("SL_MULT",         "0.75"))
 
 # ── Alertes ───────────────────────────────────────────────────────────
