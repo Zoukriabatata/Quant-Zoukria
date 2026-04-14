@@ -616,6 +616,9 @@ def _build_discord_payload(sig):
     }
 
 def _send_discord(sig):
+    if not DISCORD_WEBHOOK:
+        _discord_write_status(False, "webhook non configuré")
+        return
     try:
         data = json.dumps(_build_discord_payload(sig)).encode("utf-8")
         req  = urllib.request.Request(
@@ -1182,29 +1185,32 @@ try:
 
         # Bouton test Discord
         if st.button("🔔 Test Discord", use_container_width=True):
-            test_sig = last_signal if last_signal else {
-                "direction": "LONG", "price": 250000, "tp_price": 251000,
-                "sl_pts_mnq": 1.5, "z_score": -3.1, "hurst": 0.41,
-                "time": "2026-01-01 00:00:00",
-            }
-            try:
-                data = json.dumps(_build_discord_payload(test_sig)).encode("utf-8")
-                req  = urllib.request.Request(
-                    DISCORD_WEBHOOK, data=data,
-                    headers={"Content-Type": "application/json",
-                             "User-Agent": "QuantMaster/1.0"},
-                    method="POST",
-                )
-                urllib.request.urlopen(req, timeout=5)
-                _discord_write_status(True)
-                st.success("Discord ✓ — message envoyé")
-            except urllib.error.HTTPError as e:
-                body = e.read().decode("utf-8", errors="ignore")
-                _discord_write_status(False, f"{e.code} {body[:120]}")
-                st.error(f"Discord ✗ HTTP {e.code} — {body[:300]}")
-            except Exception as e:
-                _discord_write_status(False, str(e)[:80])
-                st.error(f"Discord ✗ — {e}")
+            if not DISCORD_WEBHOOK:
+                st.warning("Discord non configuré — ajoute DISCORD_WEBHOOK dans les secrets Streamlit Cloud")
+            else:
+                test_sig = last_signal if last_signal else {
+                    "direction": "LONG", "price": 250000, "tp_price": 251000,
+                    "sl_pts_mnq": 1.5, "z_score": -3.1, "hurst": 0.41,
+                    "time": "2026-01-01 00:00:00",
+                }
+                try:
+                    data = json.dumps(_build_discord_payload(test_sig)).encode("utf-8")
+                    req  = urllib.request.Request(
+                        DISCORD_WEBHOOK, data=data,
+                        headers={"Content-Type": "application/json",
+                                 "User-Agent": "QuantMaster/1.0"},
+                        method="POST",
+                    )
+                    urllib.request.urlopen(req, timeout=5)
+                    _discord_write_status(True)
+                    st.success("Discord ✓ — message envoyé")
+                except urllib.error.HTTPError as e:
+                    body = e.read().decode("utf-8", errors="ignore")
+                    _discord_write_status(False, f"{e.code} {body[:120]}")
+                    st.error(f"Discord ✗ HTTP {e.code} — {body[:300]}")
+                except Exception as e:
+                    _discord_write_status(False, str(e)[:80])
+                    st.error(f"Discord ✗ — {e}")
 
         # Status box
         st.markdown('<div class="sec-label">Régime marché</div>', unsafe_allow_html=True)
