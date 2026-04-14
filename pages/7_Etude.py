@@ -23,7 +23,7 @@ st.set_page_config(
     page_title="Quant Maths — Étude",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="expanded",   # évite l'animation d'ouverture
+    initial_sidebar_state="collapsed",
 )
 _inject_styles()
 

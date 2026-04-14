@@ -7,7 +7,7 @@ import streamlit.components.v1 as _components
 from styles import inject as _inject_styles, count_up_stats
 from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET
 
-st.set_page_config(page_title="Quant Maths", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Quant Maths", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
 _inject_styles()
 
 def _load_stats():
@@ -293,25 +293,6 @@ st.markdown(f"""
     </div>
 </div>
 """, unsafe_allow_html=True)
-
-# ── Section pages ─────────────────────────────────────────────────────
-st.markdown('<div class="sec-label">Navigation</div>', unsafe_allow_html=True)
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.page_link("pages/7_Etude.py",        label="📚 Étude",         use_container_width=True)
-with col2:
-    st.page_link("pages/5_Backtest.py",     label="📊 Backtest",      use_container_width=True)
-with col3:
-    st.page_link("pages/3_Live_Signal.py",  label="📡 Live Signal",   use_container_width=True)
-
-col4, col5, col6 = st.columns(3)
-with col4:
-    st.page_link("pages/4_Journal.py",      label="📒 Journal",       use_container_width=True)
-with col5:
-    st.page_link("pages/2_Session_Prep.py", label="🕐 Session Prep",  use_container_width=True)
-with col6:
-    st.page_link("pages/8_Library.py",      label="📚 Bibliothèque",  use_container_width=True)
 
 st.markdown("""
 <div class="cards-grid">
