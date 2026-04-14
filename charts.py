@@ -1957,20 +1957,16 @@ def gmm_three_regimes():
     n_per = 2000
     sigs = [0.0005, 0.0015, 0.0040]
     labels = ["LOW (vol faible)", "MED (vol moyenne)", "HIGH (vol forte)"]
-    colors = [TEAL, YELLOW, RED]
+    colors      = [TEAL, YELLOW, RED]
+    fill_colors = ["rgba(6,182,212,0.06)", "rgba(245,158,11,0.06)", "rgba(239,68,68,0.06)"]
     x = np.linspace(0, 0.012, 400)
     fig = go.Figure()
-    for sig, lbl, col in zip(sigs, labels, colors):
+    for sig, lbl, col, fcol in zip(sigs, labels, colors, fill_colors):
         pdf = np.exp(-0.5 * (x / sig) ** 2) / (sig * np.sqrt(2 * np.pi))
         fig.add_trace(go.Scatter(x=x, y=pdf, mode="lines", name=lbl,
                                  line=dict(color=col, width=2),
                                  fill="tozeroy",
-                                 fillcolor=col.replace("#", "rgba(") + ",0.06)".replace("rgba(#", "rgba(")
-                                 if col.startswith("#") else col))
-    # Reformat fill with proper rgba
-    fig.data[0].fillcolor = "rgba(60,196,183,0.06)"
-    fig.data[1].fillcolor = "rgba(255,214,0,0.06)"
-    fig.data[2].fillcolor = "rgba(255,51,102,0.06)"
+                                 fillcolor=fcol))
     fig.update_layout(
         **DARK, height=340,
         title="GMM — 3 distributions de |returns| MNQ",
