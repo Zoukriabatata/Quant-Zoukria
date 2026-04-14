@@ -1105,13 +1105,14 @@ try:
         showlegend=True,
         hovermode="x unified",
         dragmode="pan",
-        xaxis=dict(showticklabels=False, gridcolor="#0f0f0f", rangeslider=dict(visible=False), fixedrange=False),
-        xaxis2=dict(showticklabels=False, gridcolor="#0f0f0f", fixedrange=False),
-        xaxis3=dict(tickvals=tick_vals, ticktext=tick_text, gridcolor="#0f0f0f", fixedrange=False),
-        yaxis=dict(gridcolor="#0f0f0f", tickformat=",.0f", side="right", fixedrange=False),
-        yaxis2=dict(gridcolor="#0f0f0f", side="right", showticklabels=False, title="Vol", fixedrange=False),
+        uirevision="live_chart",          # préserve zoom/pan entre les reruns
+        xaxis=dict(showticklabels=False, gridcolor="#0f0f0f", rangeslider=dict(visible=False), fixedrange=False, uirevision="live_chart"),
+        xaxis2=dict(showticklabels=False, gridcolor="#0f0f0f", fixedrange=False, uirevision="live_chart"),
+        xaxis3=dict(tickvals=tick_vals, ticktext=tick_text, gridcolor="#0f0f0f", fixedrange=False, uirevision="live_chart"),
+        yaxis=dict(gridcolor="#0f0f0f", tickformat=",.0f", side="right", fixedrange=False, uirevision="live_chart"),
+        yaxis2=dict(gridcolor="#0f0f0f", side="right", showticklabels=False, title="Vol", fixedrange=False, uirevision="live_chart"),
         yaxis3=dict(gridcolor="#0f0f0f", side="right", zeroline=False,
-                    range=[-BAND_K*1.6, BAND_K*1.6], fixedrange=False),
+                    range=[-BAND_K*1.6, BAND_K*1.6], fixedrange=False, uirevision="live_chart"),
     )
     fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
                                   font=dict(size=10), bgcolor="rgba(0,0,0,0)"))
@@ -1122,7 +1123,7 @@ try:
         modeBarButtonsToRemove=["select2d", "lasso2d", "autoScale2d", "toImage"],
     )
     with col_chart:
-        st.plotly_chart(fig, use_container_width=True, config=_cfg)
+        st.plotly_chart(fig, use_container_width=True, config=_cfg, key="live_chart")
 except Exception as _e:
     with col_chart:
         st.error(f"⚠️ Chart error: {_e}")
