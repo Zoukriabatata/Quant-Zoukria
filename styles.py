@@ -106,12 +106,40 @@ footer           { display: none !important; }
 [data-testid="stDecoration"]  { display: none !important; }
 [data-testid="stHeader"]      { background: transparent !important; }
 
-/* Sidebar toggle — toujours visible même sidebar fermée */
+/* ── Hamburger menu — fixé en haut à gauche, toujours visible ── */
 [data-testid="collapsedControl"] {
   display: flex !important;
   visibility: visible !important;
   opacity: 1 !important;
   pointer-events: auto !important;
+  position: fixed !important;
+  top: 0.6rem !important;
+  left: 0.6rem !important;
+  z-index: 999999 !important;
+}
+[data-testid="collapsedControl"] button {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: var(--r-md) !important;
+  width: 2.4rem !important;
+  height: 2.4rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  transition: var(--t-fast) !important;
+}
+[data-testid="collapsedControl"] button:hover {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-active) !important;
+}
+[data-testid="collapsedControl"] button svg { display: none !important; }
+[data-testid="collapsedControl"] button::before {
+  content: "☰" !important;
+  font-size: 1.05rem !important;
+  color: var(--text-secondary) !important;
+  line-height: 1 !important;
 }
 
 /* Scrollbar */
