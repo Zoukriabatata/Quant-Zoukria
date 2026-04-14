@@ -14,6 +14,7 @@ Helper components (return HTML strings for st.markdown(..., unsafe_allow_html=Tr
     divider() → str
 """
 import streamlit as st
+import streamlit.components.v1 as _stc
 
 # ════════════════════════════════════════════════════════════════════════════
 # DESIGN TOKENS (CSS custom properties)
@@ -1043,22 +1044,20 @@ _FONT_LINK = (
 # inject() — public API
 # ════════════════════════════════════════════════════════════════════════════
 _HAMBURGER = """
-<div id="qm-ham" onclick="qmOpen()">
-  <span></span><span></span><span></span>
-</div>
-<div id="qm-backdrop" onclick="qmClose()"></div>
+<div id="qm-ham"><span></span><span></span><span></span></div>
+<div id="qm-backdrop"></div>
 <nav id="qm-drawer">
   <div class="qm-logo">⚡ QUANT MATHS</div>
-  <a class="qm-lnk" href="/"          onclick="qmClose()">⚡ Accueil</a>
-  <a class="qm-lnk" href="/Etude"     onclick="qmClose()">🎓 Étude</a>
-  <a class="qm-lnk" href="/Backtest"  onclick="qmClose()">📊 Backtest</a>
-  <a class="qm-lnk" href="/Live_Signal" onclick="qmClose()">📡 Live Signal</a>
-  <a class="qm-lnk" href="/Journal"   onclick="qmClose()">📒 Journal</a>
-  <a class="qm-lnk" href="/Session_Prep" onclick="qmClose()">🕐 Session Prep</a>
-  <a class="qm-lnk" href="/Multi_Model"  onclick="qmClose()">🤖 Multi-Model</a>
-  <a class="qm-lnk" href="/Library"   onclick="qmClose()">📚 Bibliothèque</a>
-  <a class="qm-lnk" href="/BTC_DCA"   onclick="qmClose()">🪙 BTC DCA</a>
-  <a class="qm-lnk" href="/Demarrage" onclick="qmClose()">🔌 Démarrage</a>
+  <a class="qm-lnk" href="/">⚡ Accueil</a>
+  <a class="qm-lnk" href="/Etude">🎓 Étude</a>
+  <a class="qm-lnk" href="/Backtest">📊 Backtest</a>
+  <a class="qm-lnk" href="/Live_Signal">📡 Live Signal</a>
+  <a class="qm-lnk" href="/Journal">📒 Journal</a>
+  <a class="qm-lnk" href="/Session_Prep">🕐 Session Prep</a>
+  <a class="qm-lnk" href="/Multi_Model">🤖 Multi-Model</a>
+  <a class="qm-lnk" href="/Library">📚 Bibliothèque</a>
+  <a class="qm-lnk" href="/BTC_DCA">🪙 BTC DCA</a>
+  <a class="qm-lnk" href="/Demarrage">🔌 Démarrage</a>
 </nav>
 <style>
 #qm-ham{position:fixed;top:.65rem;left:.65rem;z-index:999999;
@@ -1083,16 +1082,34 @@ _HAMBURGER = """
   border-left:3px solid transparent;transition:all .12s;white-space:nowrap;}
 .qm-lnk:hover{color:#f1f5f9;background:#111827;border-left-color:#3b82f6;}
 </style>
+"""
+
+_HAMBURGER_JS = """
 <script>
-function qmOpen(){
-  document.getElementById('qm-drawer').style.left='0';
-  document.getElementById('qm-backdrop').style.display='block';
-}
-function qmClose(){
-  document.getElementById('qm-drawer').style.left='-260px';
-  document.getElementById('qm-backdrop').style.display='none';
-}
-document.addEventListener('keydown',function(e){if(e.key==='Escape')qmClose();});
+(function() {
+  var p = window.parent.document;
+  function init() {
+    var btn = p.getElementById('qm-ham');
+    var bd  = p.getElementById('qm-backdrop');
+    var dr  = p.getElementById('qm-drawer');
+    if (!btn || !dr) { setTimeout(init, 50); return; }
+    btn.addEventListener('click', function() {
+      dr.style.left = '0';
+      bd.style.display = 'block';
+    });
+    bd.addEventListener('click', function() {
+      dr.style.left = '-260px';
+      bd.style.display = 'none';
+    });
+    p.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        dr.style.left = '-260px';
+        bd.style.display = 'none';
+      }
+    });
+  }
+  init();
+})();
 </script>
 """
 
@@ -1108,6 +1125,7 @@ def inject():
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
     st.markdown(_HAMBURGER, unsafe_allow_html=True)
+    _stc.html(_HAMBURGER_JS, height=0)
 
 
 # ════════════════════════════════════════════════════════════════════════════
