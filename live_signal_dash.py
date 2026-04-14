@@ -47,7 +47,7 @@ if "_ls_toast" in st.session_state:
 from config import (DXFEED_FILE, JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET,
                    NTFY_TOPIC as _NTFY_TOPIC,
                    HURST_THRESHOLD, HURST_WIN, LOOKBACK, BAND_K, SL_MULT,
-                   DISCORD_STATUS_FILE, DAILY_LOSS_LIM as _DAILY_LOSS_LIM)
+                   DISCORD_STATUS_FILE, NTFY_STATUS_FILE, DAILY_LOSS_LIM as _DAILY_LOSS_LIM)
 
 SYMBOL          = "NQ=F"
 TP_OVERSHOOT    = 0.0       # fair value pure
@@ -636,20 +636,35 @@ def _send_discord_async(sig):
     threading.Thread(target=_send_discord, args=(sig,), daemon=True).start()
 
 # ── Alerte ntfy ─────────────────────────────────────────────────────────────
-def _send_ntfy(sig):
+def _ntfy_write_status(ok: bool, err: str = ""):
     try:
-        d     = sig["direction"]
-        entry = sig["price"] / 10
-        tp    = sig.get("tp_price", sig["price"]) / 10
-        sl    = sig.get("sl_pts_mnq", 0)
-        z     = sig.get("z_score", 0)
-        h     = sig.get("hurst", 0)
-        t     = sig.get("time", "")[:16]
+        with open(NTFY_STATUS_FILE, "w") as f:
+            json.dump({"ok": ok, "err": err}, f)
+    except Exception:
+        pass
+
+def _ntfy_read_status():
+    try:
+        with open(NTFY_STATUS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {"ok": None, "err": ""}
+
+def _send_ntfy(sig):
+    if not NTFY_TOPIC:
+        _ntfy_write_status(False, "topic non configuré")
+        return
+    try:
+        d      = sig["direction"]
+        entry  = sig["price"] / 10
+        tp     = sig.get("tp_price", sig["price"]) / 10
+        sl     = sig.get("sl_pts_mnq", 0)
+        z      = sig.get("z_score", 0)
+        h      = sig.get("hurst", 0)
+        t      = sig.get("time", "")[:16]
         pts_tp = abs(tp - entry)
         rr     = pts_tp / sl if sl > 0 else 0
-
-        # Corps du message : compact et lisible sur mobile
-        msg   = (
+        msg    = (
             f"Entrée  : {entry:,.2f}\n"
             f"TP      : {tp:,.2f}  (+{pts_tp:.2f} pts)\n"
             f"SL      : {sl:.2f} pts  ·  R:R {rr:.1f}\n"
@@ -658,7 +673,6 @@ def _send_ntfy(sig):
         title_emoji = "📈" if d == "LONG" else "📉"
         tags        = "chart_with_upwards_trend,white_check_mark" if d == "LONG" \
                       else "chart_with_downwards_trend,red_circle"
-
         req = urllib.request.Request(
             f"https://ntfy.sh/{NTFY_TOPIC}",
             data=msg.encode("utf-8"),
@@ -666,14 +680,17 @@ def _send_ntfy(sig):
             headers={
                 "X-Title":    f"{title_emoji} SIGNAL {d} MNQ @ {entry:.2f}",
                 "X-Tags":     tags,
-                "X-Priority": "high",
-                "X-Click":    "https://quant-zoukria.streamlit.app/3_Live_Signal",
-                "X-Actions":  "view, Dashboard, https://quant-zoukria.streamlit.app/3_Live_Signal",
+                "X-Priority": "urgent",
+                "X-Click":    "https://quant-zoukria.streamlit.app/Live_Signal",
+                "X-Actions":  "view, Dashboard, https://quant-zoukria.streamlit.app/Live_Signal",
             }
         )
-        urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        pass
+        urllib.request.urlopen(req, timeout=8)
+        _ntfy_write_status(True)
+    except urllib.error.HTTPError as e:
+        _ntfy_write_status(False, f"HTTP {e.code}")
+    except Exception as e:
+        _ntfy_write_status(False, str(e)[:80])
 
 def _send_ntfy_async(sig):
     threading.Thread(target=_send_ntfy, args=(sig,), daemon=True).start()
@@ -1146,7 +1163,7 @@ try:
             rr         = abs(tp_mnq - entry_mnq) / sl_mnq if sl_mnq > 0 else 0
             # Flash class for brand-new signals (< 30s)
             _flash_cls = " qm-signal-new" if _sig_age_min < 0.5 else ""
-            # statut Discord (lu depuis fichier — persiste entre reruns)
+            # statut Discord
             ds = _discord_read_status()
             if ds["ok"] is True:
                 disc_lbl = '<span style="color:#3CC4B7">Discord ✓</span>'
@@ -1154,6 +1171,14 @@ try:
                 disc_lbl = f'<span style="color:#ff3366">Discord ✗ {ds["err"]}</span>'
             else:
                 disc_lbl = '<span style="color:#333">Discord —</span>'
+            # statut ntfy
+            ns = _ntfy_read_status()
+            if ns["ok"] is True:
+                ntfy_lbl = '<span style="color:#3CC4B7">ntfy ✓</span>'
+            elif ns["ok"] is False:
+                ntfy_lbl = f'<span style="color:#ff3366">ntfy ✗ {ns["err"]}</span>'
+            else:
+                ntfy_lbl = '<span style="color:#333">ntfy —</span>'
             st.markdown(f"""
             <div class="{cls}{_flash_cls}">
                 <div style="font-size:1.8rem;font-weight:700;color:{col};
@@ -1186,7 +1211,7 @@ try:
                 <div style="margin-top:.6rem;font-family:'JetBrains Mono',monospace;
                             font-size:.65rem;color:#333;display:flex;justify-content:space-between">
                     <span>H={last_signal["hurst"]:.3f} · {HURST_WIN} bars</span>
-                    <span style="font-size:.6rem">{disc_lbl}</span>
+                    <span style="font-size:.6rem;display:flex;gap:8px">{disc_lbl}{ntfy_lbl}</span>
                 </div>
             </div>""", unsafe_allow_html=True)
         else:
@@ -1199,34 +1224,72 @@ try:
             from styles import empty_state as _es
             st.markdown(_es(_es_icon, _es_title, _es_sub), unsafe_allow_html=True)
 
-        # Bouton test Discord
-        if st.button("🔔 Test Discord", use_container_width=True):
-            if not DISCORD_WEBHOOK:
-                st.warning("Discord non configuré — ajoute DISCORD_WEBHOOK dans les secrets Streamlit Cloud")
-            else:
-                test_sig = last_signal if last_signal else {
-                    "direction": "LONG", "price": 250000, "tp_price": 251000,
-                    "sl_pts_mnq": 1.5, "z_score": -3.1, "hurst": 0.41,
-                    "time": "2026-01-01 00:00:00",
-                }
-                try:
-                    data = json.dumps(_build_discord_payload(test_sig)).encode("utf-8")
-                    req  = urllib.request.Request(
-                        DISCORD_WEBHOOK, data=data,
-                        headers={"Content-Type": "application/json",
-                                 "User-Agent": "QuantMaster/1.0"},
-                        method="POST",
-                    )
-                    urllib.request.urlopen(req, timeout=5)
-                    _discord_write_status(True)
-                    st.success("Discord ✓ — message envoyé")
-                except urllib.error.HTTPError as e:
-                    body = e.read().decode("utf-8", errors="ignore")
-                    _discord_write_status(False, f"{e.code} {body[:120]}")
-                    st.error(f"Discord ✗ HTTP {e.code} — {body[:300]}")
-                except Exception as e:
-                    _discord_write_status(False, str(e)[:80])
-                    st.error(f"Discord ✗ — {e}")
+        # Boutons test alertes
+        _test_sig = last_signal if last_signal else {
+            "direction": "SHORT", "price": 256760, "tp_price": 256581,
+            "sl_pts_mnq": 0.39, "z_score": 3.25, "hurst": 0.41,
+            "time": "2026-04-14 14:30:00", "fair_value": 256581,
+        }
+        _bc1, _bc2 = st.columns(2)
+        with _bc1:
+            if st.button("🔔 Test Discord", use_container_width=True):
+                if not DISCORD_WEBHOOK:
+                    st.warning("Ajoute DISCORD_WEBHOOK dans les secrets Streamlit Cloud")
+                else:
+                    try:
+                        data = json.dumps(_build_discord_payload(_test_sig)).encode("utf-8")
+                        req  = urllib.request.Request(
+                            DISCORD_WEBHOOK, data=data,
+                            headers={"Content-Type": "application/json", "User-Agent": "QuantMaster/1.0"},
+                            method="POST",
+                        )
+                        urllib.request.urlopen(req, timeout=5)
+                        _discord_write_status(True)
+                        st.success("Discord ✓")
+                    except urllib.error.HTTPError as e:
+                        body = e.read().decode("utf-8", errors="ignore")
+                        _discord_write_status(False, f"{e.code} {body[:80]}")
+                        st.error(f"Discord ✗ HTTP {e.code}")
+                    except Exception as e:
+                        _discord_write_status(False, str(e)[:80])
+                        st.error(f"Discord ✗ {e}")
+        with _bc2:
+            if st.button("📱 Test ntfy", use_container_width=True):
+                if not NTFY_TOPIC:
+                    st.warning("NTFY_TOPIC non configuré")
+                else:
+                    try:
+                        d      = _test_sig["direction"]
+                        entry  = _test_sig["price"] / 10
+                        tp     = _test_sig.get("tp_price", _test_sig["price"]) / 10
+                        sl     = _test_sig.get("sl_pts_mnq", 0)
+                        pts_tp = abs(tp - entry)
+                        rr     = pts_tp / sl if sl > 0 else 0
+                        msg    = (
+                            f"[TEST] Entrée : {entry:,.2f}\n"
+                            f"TP : {tp:,.2f}  (+{pts_tp:.2f} pts)\n"
+                            f"SL : {sl:.2f} pts  ·  R:R {rr:.1f}"
+                        )
+                        req = urllib.request.Request(
+                            f"https://ntfy.sh/{NTFY_TOPIC}",
+                            data=msg.encode("utf-8"),
+                            method="POST",
+                            headers={
+                                "X-Title":    f"[TEST] SIGNAL {d} MNQ @ {entry:.2f}",
+                                "X-Tags":     "test_tube,bell",
+                                "X-Priority": "urgent",
+                                "X-Click":    "https://quant-zoukria.streamlit.app/Live_Signal",
+                            }
+                        )
+                        urllib.request.urlopen(req, timeout=8)
+                        _ntfy_write_status(True)
+                        st.success(f"ntfy ✓ — envoyé sur '{NTFY_TOPIC}'")
+                    except urllib.error.HTTPError as e:
+                        _ntfy_write_status(False, f"HTTP {e.code}")
+                        st.error(f"ntfy ✗ HTTP {e.code} — vérifie le topic")
+                    except Exception as e:
+                        _ntfy_write_status(False, str(e)[:80])
+                        st.error(f"ntfy ✗ {e}")
 
         # Status box
         st.markdown('<div class="sec-label">Régime marché</div>', unsafe_allow_html=True)
