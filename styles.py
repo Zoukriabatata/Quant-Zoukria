@@ -78,7 +78,7 @@ _TOKENS = """
 # BASE — Body, app shell, layout
 # ════════════════════════════════════════════════════════════════════════════
 _BASE = """
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   background: var(--bg-void) !important;
