@@ -7,7 +7,7 @@ import streamlit.components.v1 as _components
 from styles import inject as _inject_styles, count_up_stats
 from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET
 
-st.set_page_config(page_title="Quant Maths", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Quant Maths", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
 _inject_styles()
 
 def _load_stats():

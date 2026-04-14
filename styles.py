@@ -114,52 +114,45 @@ footer           { display: none !important; }
 # SIDEBAR — Premium navigation
 # ════════════════════════════════════════════════════════════════════════════
 _SIDEBAR = """
-/* ── Sidebar + hamburger complètement masqués ── */
-[data-testid="stSidebar"],
-[data-testid="stSidebarCollapsedControl"],
-[data-testid="stSidebarCollapseButton"],
-[data-testid="collapsedControl"],
-section[data-testid="stSidebar"] {
-  display: none !important;
-  width: 0 !important;
-  visibility: hidden !important;
-}
-/* Hamburger button dans le header */
-[data-testid="stBaseButton-headerNoPadding"],
-button[aria-label="Open sidebar"],
-button[aria-label="Close sidebar"] {
-  display: none !important;
-}
-/* Supprime l'espace réservé à la sidebar */
-[data-testid="stAppViewContainer"] > .main {
-  margin-left: 0 !important;
-}
+/* ── Masque uniquement la nav auto-générée (noms de fichiers moches) ── */
+[data-testid="stSidebarNav"] { display: none !important; }
 
-/* ── Navbar horizontale — styles des page_link ── */
-.qm-nav-bar [data-testid="stPageLink"] a,
-.qm-nav-bar [data-testid="stPageLink-NavLink"] {
-  background: transparent !important;
-  border: 1px solid var(--border-default) !important;
-  border-radius: var(--r-md) !important;
-  color: var(--text-muted) !important;
-  font-size: 0.75rem !important;
+/* ── Style de la sidebar ── */
+[data-testid="stSidebar"] {
+  background: #0a0a0a !important;
+  border-right: 1px solid rgba(148,163,184,0.08) !important;
+  min-width: 220px !important;
+}
+[data-testid="stSidebarContent"] { padding: 0.5rem !important; }
+
+/* ── Style des page_link dans la sidebar ── */
+[data-testid="stSidebar"] [data-testid="stPageLink"] a,
+[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"] {
+  display: flex !important;
+  align-items: center !important;
+  padding: 0.6rem 0.9rem !important;
+  margin: 2px 0 !important;
+  border-radius: 8px !important;
+  font-size: 0.85rem !important;
   font-weight: 500 !important;
-  padding: 0.35rem 0.6rem !important;
-  text-align: center !important;
-  transition: var(--t-fast) !important;
+  color: #94a3b8 !important;
   text-decoration: none !important;
+  border: 1px solid transparent !important;
+  transition: all .15s ease !important;
+  width: 100% !important;
 }
-.qm-nav-bar [data-testid="stPageLink"] a:hover,
-.qm-nav-bar [data-testid="stPageLink-NavLink"]:hover {
-  background: var(--bg-elevated) !important;
-  border-color: var(--border-active) !important;
-  color: var(--text-primary) !important;
+[data-testid="stSidebar"] [data-testid="stPageLink"] a:hover,
+[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"]:hover {
+  background: #111 !important;
+  color: #f1f5f9 !important;
+  border-color: rgba(59,130,246,0.3) !important;
 }
-.qm-nav-bar [data-testid="stPageLink"][aria-current="page"] a,
-.qm-nav-bar [data-testid="stPageLink-NavLink"][aria-current="page"] {
+[data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"],
+[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"][aria-current="page"] {
   background: rgba(59,130,246,0.12) !important;
-  border-color: var(--border-active) !important;
-  color: var(--accent-blue) !important;
+  color: #3b82f6 !important;
+  border-color: rgba(59,130,246,0.4) !important;
+  border-left: 3px solid #3b82f6 !important;
 }
 """
 
@@ -1055,30 +1048,26 @@ def inject():
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
-    # ── Navbar — 2 rangées de 5 boutons bien visibles ──────────────────────
-    _nav_r1 = [
-        ("Accueil.py",              "⚡ Accueil"),
-        ("pages/7_Etude.py",        "🎓 Étude"),
-        ("pages/5_Backtest.py",     "📊 Backtest"),
-        ("pages/3_Live_Signal.py",  "📡 Live Signal"),
-        ("pages/4_Journal.py",      "📒 Journal"),
+    # ── Navigation dans la sidebar (hamburger = menu) ──────────────────────
+    _pages = [
+        ("Accueil.py",              "⚡  Accueil"),
+        ("pages/7_Etude.py",        "🎓  Étude"),
+        ("pages/5_Backtest.py",     "📊  Backtest"),
+        ("pages/3_Live_Signal.py",  "📡  Live Signal"),
+        ("pages/4_Journal.py",      "📒  Journal"),
+        ("pages/2_Session_Prep.py", "🕐  Session Prep"),
+        ("pages/6_Multi_Model.py",  "🤖  Multi Model"),
+        ("pages/8_Library.py",      "📚  Bibliothèque"),
+        ("pages/9_BTC_DCA.py",      "🪙  BTC DCA"),
+        ("pages/1_Demarrage.py",    "🔌  Bridge"),
     ]
-    _nav_r2 = [
-        ("pages/2_Session_Prep.py", "🕐 Session Prep"),
-        ("pages/6_Multi_Model.py",  "🤖 Multi Model"),
-        ("pages/8_Library.py",      "📚 Bibliothèque"),
-        ("pages/9_BTC_DCA.py",      "🪙 BTC DCA"),
-        ("pages/1_Demarrage.py",    "🔌 Bridge"),
-    ]
-    r1 = st.columns(5)
-    for col, (path, label) in zip(r1, _nav_r1):
-        with col:
-            st.page_link(path, label=label, use_container_width=True)
-    r2 = st.columns(5)
-    for col, (path, label) in zip(r2, _nav_r2):
-        with col:
-            st.page_link(path, label=label, use_container_width=True)
-    st.divider()
+    st.sidebar.markdown(
+        "<p style='font-size:0.65rem;letter-spacing:.15em;color:#475569;"
+        "text-transform:uppercase;padding:0.5rem 0.9rem 0.2rem;'>Navigation</p>",
+        unsafe_allow_html=True,
+    )
+    for path, label in _pages:
+        st.sidebar.page_link(path, label=label)
 
 
 # ════════════════════════════════════════════════════════════════════════════
