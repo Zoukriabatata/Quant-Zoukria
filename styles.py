@@ -107,8 +107,7 @@ footer           { display: none !important; }
 [data-testid="stDecoration"]  { display: none !important; }
 [data-testid="stHeader"]      { background: transparent !important; }
 
-/* Sidebar natif masqué — remplacé par hamburger custom */
-[data-testid="stSidebar"]        { display: none !important; }
+/* Sidebar natif — géré par Streamlit, toggle bouton caché (remplacé par hamburger) */
 [data-testid="collapsedControl"] { display: none !important; }
 
 /* Scrollbar */
@@ -1045,20 +1044,6 @@ _FONT_LINK = (
 # ════════════════════════════════════════════════════════════════════════════
 _HAMBURGER = """
 <div id="qm-ham"><span></span><span></span><span></span></div>
-<div id="qm-backdrop"></div>
-<nav id="qm-drawer">
-  <div class="qm-logo">⚡ QUANT MATHS</div>
-  <a class="qm-lnk" href="/">⚡ Accueil</a>
-  <a class="qm-lnk" href="/Etude">🎓 Étude</a>
-  <a class="qm-lnk" href="/Backtest">📊 Backtest</a>
-  <a class="qm-lnk" href="/Live_Signal">📡 Live Signal</a>
-  <a class="qm-lnk" href="/Journal">📒 Journal</a>
-  <a class="qm-lnk" href="/Session_Prep">🕐 Session Prep</a>
-  <a class="qm-lnk" href="/Multi_Model">🤖 Multi-Model</a>
-  <a class="qm-lnk" href="/Library">📚 Bibliothèque</a>
-  <a class="qm-lnk" href="/BTC_DCA">🪙 BTC DCA</a>
-  <a class="qm-lnk" href="/Demarrage">🔌 Démarrage</a>
-</nav>
 <style>
 #qm-ham{position:fixed;top:.65rem;left:.65rem;z-index:999999;
   width:2.4rem;height:2.4rem;background:#0a0a0a;border:1px solid #1e2433;
@@ -1067,20 +1052,7 @@ _HAMBURGER = """
   transition:border-color .15s,box-shadow .15s;}
 #qm-ham:hover{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15);}
 #qm-ham span{display:block;width:16px;height:2px;background:#94a3b8;
-  border-radius:2px;transition:all .2s;}
-#qm-backdrop{display:none;position:fixed;inset:0;z-index:99997;
-  background:rgba(0,0,0,.55);backdrop-filter:blur(2px);}
-#qm-drawer{position:fixed;top:0;left:-260px;width:240px;height:100vh;
-  z-index:99998;background:#060606;border-right:1px solid #1e2433;
-  padding:1rem 0;transition:left .25s cubic-bezier(.16,1,.3,1);
-  overflow-y:auto;display:flex;flex-direction:column;}
-.qm-logo{padding:.6rem 1.2rem 1rem;font-family:'JetBrains Mono',monospace;
-  font-size:.58rem;letter-spacing:.22em;color:#3b82f6;
-  border-bottom:1px solid #1e2433;margin-bottom:.5rem;}
-.qm-lnk{display:block;padding:.62rem 1.2rem;color:#64748b;
-  text-decoration:none!important;font-size:.82rem;font-family:'Inter',sans-serif;
-  border-left:3px solid transparent;transition:all .12s;white-space:nowrap;}
-.qm-lnk:hover{color:#f1f5f9;background:#111827;border-left-color:#3b82f6;}
+  border-radius:2px;}
 </style>
 """
 
@@ -1088,25 +1060,28 @@ _HAMBURGER_JS = """
 <script>
 (function() {
   var p = window.parent.document;
+  function qmToggle() {
+    /* essaie dans cet ordre : bouton collapse/expand natif Streamlit */
+    var selectors = [
+      '[data-testid="collapsedControl"] button',
+      '[data-testid="stSidebarCollapseButton"] button',
+      'button[aria-label="Close sidebar"]',
+      'button[aria-label="Open sidebar"]',
+      'button[aria-label="open sidebar"]',
+      'button[aria-label="close sidebar"]',
+    ];
+    for (var i = 0; i < selectors.length; i++) {
+      var b = p.querySelector(selectors[i]);
+      if (b) { b.click(); return; }
+    }
+    /* fallback : toggle display de la sidebar */
+    var sb = p.querySelector('[data-testid="stSidebar"]');
+    if (sb) sb.style.display = (sb.style.display === 'none') ? '' : 'none';
+  }
   function init() {
     var btn = p.getElementById('qm-ham');
-    var bd  = p.getElementById('qm-backdrop');
-    var dr  = p.getElementById('qm-drawer');
-    if (!btn || !dr) { setTimeout(init, 50); return; }
-    btn.addEventListener('click', function() {
-      dr.style.left = '0';
-      bd.style.display = 'block';
-    });
-    bd.addEventListener('click', function() {
-      dr.style.left = '-260px';
-      bd.style.display = 'none';
-    });
-    p.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') {
-        dr.style.left = '-260px';
-        bd.style.display = 'none';
-      }
-    });
+    if (!btn) { setTimeout(init, 50); return; }
+    btn.addEventListener('click', qmToggle);
   }
   init();
 })();
@@ -1124,6 +1099,19 @@ def inject():
         + _LAYOUT + _CHARTS + _COMPAT + _ANIMATIONS + _ADVANCED
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    # Sidebar peuplée avec st.page_link() — routing Streamlit natif (pas de rechargement)
+    with st.sidebar:
+        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:.58rem;letter-spacing:.2em;color:#3b82f6;padding:.4rem 0 .8rem;border-bottom:1px solid #1e2433;margin-bottom:.4rem;">⚡ QUANT MATHS</div>', unsafe_allow_html=True)
+        st.page_link("Accueil.py",              label="⚡ Accueil",       use_container_width=True)
+        st.page_link("pages/7_Etude.py",        label="🎓 Étude",         use_container_width=True)
+        st.page_link("pages/5_Backtest.py",     label="📊 Backtest",      use_container_width=True)
+        st.page_link("pages/3_Live_Signal.py",  label="📡 Live Signal",   use_container_width=True)
+        st.page_link("pages/4_Journal.py",      label="📒 Journal",       use_container_width=True)
+        st.page_link("pages/2_Session_Prep.py", label="🕐 Session Prep",  use_container_width=True)
+        st.page_link("pages/6_Multi_Model.py",  label="🤖 Multi-Model",   use_container_width=True)
+        st.page_link("pages/8_Library.py",      label="📚 Bibliothèque",  use_container_width=True)
+        st.page_link("pages/9_BTC_DCA.py",      label="🪙 BTC DCA",       use_container_width=True)
+        st.page_link("pages/1_Demarrage.py",    label="🔌 Démarrage",     use_container_width=True)
     st.markdown(_HAMBURGER, unsafe_allow_html=True)
     _stc.html(_HAMBURGER_JS, height=0)
 
