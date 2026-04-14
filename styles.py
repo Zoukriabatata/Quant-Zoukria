@@ -14,7 +14,6 @@ Helper components (return HTML strings for st.markdown(..., unsafe_allow_html=Tr
     divider() → str
 """
 import streamlit as st
-import streamlit.components.v1 as _stc
 
 # ════════════════════════════════════════════════════════════════════════════
 # DESIGN TOKENS (CSS custom properties)
@@ -107,16 +106,8 @@ footer           { display: none !important; }
 [data-testid="stDecoration"]  { display: none !important; }
 [data-testid="stHeader"]      { background: transparent !important; }
 
-/* Sidebar — hors écran par défaut (transform garde les event listeners actifs) */
-[data-testid="stSidebar"] {
-  transform: translateX(-110%) !important;
-  transition: transform .25s cubic-bezier(.16,1,.3,1) !important;
-  pointer-events: none !important;
-}
-body.qm-open [data-testid="stSidebar"] {
-  transform: translateX(0) !important;
-  pointer-events: auto !important;
-}
+/* Sidebar native masquée — navigation via popover ☰ */
+[data-testid="stSidebar"]               { display: none !important; }
 [data-testid="collapsedControl"]        { display: none !important; }
 [data-testid="stSidebarCollapseButton"] { display: none !important; }
 
@@ -1050,51 +1041,9 @@ _FONT_LINK = (
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
 # inject() — public API
 # ════════════════════════════════════════════════════════════════════════════
-_HAMBURGER = """
-<div id="qm-ham"><span></span><span></span><span></span></div>
-<style>
-#qm-ham{position:fixed;top:.65rem;left:.65rem;z-index:999999;
-  width:2.4rem;height:2.4rem;background:#0a0a0a;border:1px solid #1e2433;
-  border-radius:8px;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:5px;cursor:pointer;padding:.55rem;
-  transition:border-color .15s,box-shadow .15s;}
-#qm-ham:hover{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15);}
-#qm-ham span{display:block;width:16px;height:2px;background:#94a3b8;
-  border-radius:2px;}
-</style>
-"""
-
-_HAMBURGER_JS = """
-<script>
-(function() {
-  var p = window.parent.document;
-  function init() {
-    var btn = p.getElementById('qm-ham');
-    if (!btn) { setTimeout(init, 50); return; }
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      p.body.classList.toggle('qm-open');
-    });
-    p.addEventListener('click', function(e) {
-      if (!p.body.classList.contains('qm-open')) return;
-      var sidebar = p.querySelector('[data-testid="stSidebar"]');
-      var ham = p.getElementById('qm-ham');
-      if (sidebar && !sidebar.contains(e.target) && !ham.contains(e.target)) {
-        p.body.classList.remove('qm-open');
-      }
-    });
-    p.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') p.body.classList.remove('qm-open');
-    });
-  }
-  init();
-})();
-</script>
-"""
-
-
 def inject():
     """Inject fonts + full design system CSS into the current Streamlit page.
     Call after st.set_page_config(), before page-specific CSS."""
@@ -1105,9 +1054,8 @@ def inject():
         + _LAYOUT + _CHARTS + _COMPAT + _ANIMATIONS + _ADVANCED
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
-    # Sidebar peuplée avec st.page_link() — routing Streamlit natif (pas de rechargement)
-    with st.sidebar:
-        st.markdown('<div style="font-family:\'JetBrains Mono\',monospace;font-size:.58rem;letter-spacing:.2em;color:#3b82f6;padding:.4rem 0 .8rem;border-bottom:1px solid #1e2433;margin-bottom:.4rem;">⚡ QUANT MATHS</div>', unsafe_allow_html=True)
+    # Popover natif Streamlit — routing interne garanti, zéro JS
+    with st.popover("☰", use_container_width=False):
         st.page_link("Accueil.py",              label="⚡ Accueil",       use_container_width=True)
         st.page_link("pages/7_Etude.py",        label="🎓 Étude",         use_container_width=True)
         st.page_link("pages/5_Backtest.py",     label="📊 Backtest",      use_container_width=True)
@@ -1118,8 +1066,6 @@ def inject():
         st.page_link("pages/8_Library.py",      label="📚 Bibliothèque",  use_container_width=True)
         st.page_link("pages/9_BTC_DCA.py",      label="🪙 BTC DCA",       use_container_width=True)
         st.page_link("pages/1_Demarrage.py",    label="🔌 Démarrage",     use_container_width=True)
-    st.markdown(_HAMBURGER, unsafe_allow_html=True)
-    _stc.html(_HAMBURGER_JS, height=0)
 
 
 # ════════════════════════════════════════════════════════════════════════════
