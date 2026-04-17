@@ -3,6 +3,9 @@ import streamlit as st
 _KEY = "_qm_auth"
 
 def is_authenticated() -> bool:
+    # DEV_MODE: bypass auth en local (secrets.toml local uniquement)
+    if st.secrets.get("DEV_MODE", False):
+        return True
     return st.session_state.get(_KEY, False)
 
 def login_sidebar():
