@@ -1048,20 +1048,24 @@ def inject():
     )
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
-    # ── Navigation dans la sidebar (hamburger = menu) ──────────────────────
-    _pages = [
+    # ── Navigation dans la sidebar — conditionnelle selon auth ─────────────
+    from auth import is_authenticated as _is_auth
+    _pages_public = [
+        ("pages/7_Etude.py",   "🎓  Étude"),
+        ("pages/8_Library.py", "📚  Bibliothèque"),
+    ]
+    _pages_private = [
         ("Accueil.py",              "⚡  Accueil"),
-        ("pages/7_Etude.py",        "🎓  Étude"),
-        ("pages/5_Backtest.py",     "📊  Backtest"),
         ("pages/3_Live_Signal.py",  "📡  Live Signal"),
+        ("pages/5_Backtest.py",     "📊  Backtest"),
         ("pages/4_Journal.py",      "📒  Journal"),
         ("pages/2_Session_Prep.py", "🕐  Session Prep"),
         ("pages/6_Multi_Model.py",  "🤖  Multi Model"),
-        ("pages/8_Library.py",      "📚  Bibliothèque"),
-        ("pages/9_BTC_DCA.py",      "🪙  BTC DCA"),
+        ("pages/9_BTC_DCA.py",      "🟡  BTC DCA"),
         ("pages/1_Demarrage.py",    "🚀  Démarrage"),
         ("pages/Apex_Rules.py",     "🛡  Apex Rules"),
     ]
+    _pages = _pages_public + _pages_private if _is_auth() else _pages_public
     st.sidebar.markdown(
         "<p style='font-size:0.65rem;letter-spacing:.15em;color:#475569;"
         "text-transform:uppercase;padding:0.5rem 0.9rem 0.2rem;'>Navigation</p>",
