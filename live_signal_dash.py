@@ -36,8 +36,8 @@ except ImportError:
 st.set_page_config(page_title="Live Signal", page_icon="⚡", layout="wide")
 from styles import inject as _inj, refresh_bar as _refresh_bar, toast as _toast; _inj()
 
-# Auto-refresh toutes les 2s (non-bloquant, pas de time.sleep)
-st_autorefresh(interval=2000, key="live_autorefresh")
+# Auto-refresh toutes les 1s (non-bloquant, pas de time.sleep)
+st_autorefresh(interval=1000, key="live_autorefresh")
 
 # Toast persistant après rerun
 if "_ls_toast" in st.session_state:
@@ -573,11 +573,20 @@ elif "Volume" in df.columns:
     volumes = df["Volume"].values.astype(float)
 else:
     volumes = np.zeros(len(closes))
-hurst_arr, h_val = precompute_hurst_arr(closes)   # O(n) — précalculé une fois
-signals          = find_signals(closes, times_str, hurst_arr)
-mids, upper_band, lower_band = compute_bands(closes)
-price_now = float(closes[-1])
+price_now  = float(closes[-1])
 bars_count = len(closes)
+
+# ── Smart cache : Hurst + signaux + bandes seulement sur nouvelle bougie ──
+# Clé = (n_barres, temps_dernière_bougie) → recalcul 1×/min au lieu de 60×/min
+_bar_key = (bars_count, times_str[-1] if times_str else "")
+if st.session_state.get("_comp_key") != _bar_key:
+    hurst_arr, h_val          = precompute_hurst_arr(closes)
+    signals                   = find_signals(closes, times_str, hurst_arr)
+    mids, upper_band, lower_band = compute_bands(closes)
+    st.session_state["_comp_key"]  = _bar_key
+    st.session_state["_comp_data"] = (hurst_arr, h_val, signals, mids, upper_band, lower_band)
+else:
+    hurst_arr, h_val, signals, mids, upper_band, lower_band = st.session_state["_comp_data"]
 
 # ── Limites journalières — lues depuis journal ────────
 _today_str   = now_ny.strftime("%Y-%m-%d")
