@@ -24,7 +24,7 @@ pages_private = [
     st.Page("pages/4_Journal.py",      title="Journal",      icon="📋"),
     st.Page("pages/2_Session_Prep.py", title="Session Prep", icon="🎯"),
     st.Page("pages/6_Multi_Model.py",  title="Multi Model",  icon="🤖"),
-    st.Page("pages/9_BTC_DCA.py",      title="BTC DCA",      icon="₿"),
+    st.Page("pages/9_BTC_DCA.py",      title="BTC DCA",      icon="🟡"),
     st.Page("pages/1_Demarrage.py",    title="Démarrage",    icon="🚀"),
     st.Page("pages/Apex_Rules.py",     title="Apex Rules",   icon="○"),
 ]
