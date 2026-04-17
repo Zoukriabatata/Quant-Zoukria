@@ -191,10 +191,10 @@ with col_left:
     st.markdown('<div class="sec-label">Checklist avant 15h30</div>', unsafe_allow_html=True)
 
     ITEMS = [
-        ("setup",    "15h15 — Ouvre ATAS",
-                     "Vérifie que dxFeed prop est connecté (point vert)"),
-        ("bridge",   "15h18 — Lance le bridge dxFeed",
-                     "Page Demarrage → colle l URL Volumetric → copie la commande → node dxfeed_bridge.js"),
+        ("setup",    "15h15 — Ouvre NinjaTrader",
+                     "Vérifie que Rithmic (Apex) est connecté (point vert en bas)"),
+        ("bridge",   "15h18 — Vérifie le chart MNQ",
+                     "Chart MNQM26 1min ouvert → indicateur RithmicBridge actif → C:\\tmp\\mnq_live.json se met à jour"),
         ("streamlit","15h20 — Lance Streamlit",
                      "streamlit run Accueil.py → ouvre localhost:8501 → Live Signal"),
         ("discord",  "15h22 — Vérifie Discord",

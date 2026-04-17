@@ -322,23 +322,26 @@ def find_signals(closes, times_str, hurst_arr):
 DXFEED_STALE_SECONDS = 120  # si le fichier n'a pas été mis à jour depuis 2min → stale
 
 def _fetch_dxfeed() -> tuple:
-    """Lit C:/tmp/mnq_live.json écrit par dxfeed_bridge.js (Node.js)."""
+    """Lit C:/tmp/mnq_live.json écrit par RithmicBridge (NinjaTrader)."""
     import json, os, time as _t
     if not os.path.exists(DXFEED_FILE):
-        return None, "dxfeed_bridge.js non lancé"
+        return None, "RithmicBridge non actif — ouvre le chart MNQ dans NinjaTrader"
     # Contrôle fraîcheur — si fichier pas modifié depuis 2min, bridge probablement mort
     age = _t.time() - os.path.getmtime(DXFEED_FILE)
     if age > DXFEED_STALE_SECONDS:
         return None, f"Bridge inactif — données figées depuis {int(age)}s (> {DXFEED_STALE_SECONDS}s)"
     try:
-        with open(DXFEED_FILE, encoding="utf-8") as f:
+        with open(DXFEED_FILE, encoding="utf-8-sig") as f:
             raw = f.read().strip()
         if not raw:
-            return None, "dxfeed_bridge.js non lancé (fichier vide)"
+            cached = st.session_state.get("_dxfeed_last_valid")
+            if cached is not None:
+                return cached, None
+            return None, "RithmicBridge non actif (fichier vide)"
         data = json.loads(raw)
         bars = data.get("bars", [])
         if len(bars) < 1:
-            return None, "Pas assez de barres dxFeed"
+            return None, "Pas assez de barres Rithmic"
 
         df = pd.DataFrame(bars)
         df["bar"] = pd.to_datetime(df["time"], utc=True).dt.tz_convert(PARIS)
@@ -354,9 +357,16 @@ def _fetch_dxfeed() -> tuple:
 
         df["time_str"] = [str(x)[:16] for x in df["bar"]]
         df.reset_index(drop=True, inplace=True)
+        st.session_state["_dxfeed_last_valid"] = df
         return df, None
+    except json.JSONDecodeError:
+        # Lecture partielle pendant écriture fichier — retourne le dernier df valide silencieusement
+        cached = st.session_state.get("_dxfeed_last_valid")
+        if cached is not None:
+            return cached, None
+        return None, "Rithmic lecture: JSON invalide (démarrage en cours)"
     except Exception as e:
-        return None, f"dxFeed lecture: {e}"
+        return None, f"Rithmic lecture: {e}"
 
 
 def _fetch_yfinance_history() -> pd.DataFrame | None:
@@ -397,7 +407,7 @@ def _fetch_yfinance_history() -> pd.DataFrame | None:
 
 
 def fetch_session_data():
-    # 1. dxFeed temps réel (bridge Node.js)
+    # 1. Rithmic temps réel (RithmicBridge NinjaTrader)
     df_dx, dxfeed_err = _fetch_dxfeed()
 
     if df_dx is not None:
@@ -412,12 +422,12 @@ def fetch_session_data():
                     df_merged = pd.concat([df_hist, df_dx], ignore_index=True)
                     df_merged = df_merged.sort_values("bar").reset_index(drop=True)
                     n_hist = len(df_hist)
-                    return df_merged, None, f"dxFeed ⚡ + {n_hist} barres hist."
-        return df_dx, None, "dxFeed 4PropTrader ⚡"
+                    return df_merged, None, f"Rithmic ⚡ + {n_hist} barres hist."
+        return df_dx, None, "Rithmic · NinjaTrader ⚡"
 
-    # 2. Bridge non lancé — pas de fallback silencieux, on affiche l'erreur clairement
+    # 2. Bridge non actif — pas de fallback silencieux, on affiche l'erreur clairement
     _dxfeed_fail_reason = dxfeed_err or "raison inconnue"
-    return None, f"Bridge dxFeed inactif : {_dxfeed_fail_reason}", "dxFeed ✗"
+    return None, f"Bridge Rithmic inactif : {_dxfeed_fail_reason}", "Rithmic ✗"
 
 
 # ═══════════════════════════════════════════════════════
@@ -507,11 +517,22 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Fetch data ────────────────────────────────────────
-with st.spinner("Chargement données..."):
-    df, err, data_source = fetch_session_data()
+import time as _time
+df, err, data_source = fetch_session_data()
+
+# ── Tolérance erreur bridge : n'affiche l'erreur qu'après 10s consécutives ──
+if err or df is None:
+    # Initialise le compteur d'échecs
+    if "_bridge_fail_since" not in st.session_state:
+        st.session_state["_bridge_fail_since"] = _time.time()
+    fail_duration = _time.time() - st.session_state["_bridge_fail_since"]
+else:
+    # Succès → reset le compteur
+    st.session_state.pop("_bridge_fail_since", None)
+    fail_duration = 0
 
 # Badge source données
-src_color = TEAL if "dxFeed" in data_source else YELLOW
+src_color = TEAL if "Rithmic" in data_source else YELLOW
 st.markdown(
     f'<div style="font-size:.75rem;color:{src_color};margin-bottom:.3rem">📡 Source : {data_source}</div>'
     + _refresh_bar(duration_s=2.0),
@@ -519,11 +540,26 @@ st.markdown(
 )
 
 if err or df is None:
-    st.error(f"🔴 {err or 'Bridge dxFeed inactif'}")
-    st.info("▶ Lance le bridge : `cd QUANT MATHS` → `node dxfeed_bridge.js` → attends '✓ Ticks reçus'")
     if not in_session:
-        st.info("Session NY fermée (9:30-16:00 NY = 15:30-22:00 Paris).")
-    st.stop()  # autorefresh gère le retry toutes les 2s
+        # Hors session — message simple
+        st.markdown("""
+        <div style="background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.2);
+             border-radius:10px;padding:1rem 1.4rem;font-family:'JetBrains Mono',monospace;
+             font-size:.8rem;color:#06b6d4;line-height:2">
+            Session NY fermée · 9h30–16h00 NY = 15h30–22h00 Paris<br>
+            <span style="color:#475569">Le signal sera actif à 15h30 Paris — NinjaTrader doit être ouvert avec le chart MNQ.</span>
+        </div>""", unsafe_allow_html=True)
+    elif fail_duration < 10:
+        # En session, erreur récente (<10s) — on attend silencieusement
+        st.markdown(
+            '<div style="font-family:\'JetBrains Mono\',monospace;font-size:.75rem;'
+            'color:#475569;padding:.4rem">⏳ Connexion Rithmic...</div>',
+            unsafe_allow_html=True)
+    else:
+        # En session, erreur persistante (>10s) — là c'est un vrai problème
+        st.error(f"🔴 {err or 'Bridge Rithmic inactif'}")
+        st.info("▶ NinjaTrader → chart MNQ 1min → indicateur RithmicBridge doit être actif")
+    st.stop()
 
 closes    = df["close"].values.flatten()
 opens_arr = df["open"].values.flatten()
@@ -609,7 +645,7 @@ def _build_discord_payload(sig):
                 {"name": "📈 Z-score","value": f"`{z:+.2f}σ`",                 "inline": True},
                 {"name": "⚖️ R:R",   "value": f"`{rr:.1f}`",                  "inline": True},
             ],
-            "footer":    {"text": "Hurst_MR · MNQ · 4PropTrader $50K"},
+            "footer":    {"text": "Hurst_MR · MNQ · Apex $50K"},
             "timestamp": sig["time"].replace(" ", "T") + "Z" if "T" not in sig["time"] else sig["time"] + "Z",
             "url":       "https://quant-zoukria.streamlit.app/3_Live_Signal",
         }]

@@ -79,7 +79,7 @@ with st.sidebar:
     st.markdown("---")
     st.header("Session NY")
     sh, sm = st.columns(2)
-    with sh: s_h = st.number_input("Début h", 9, 15, 9)
+    with sh: s_h = st.number_input("Début h", 8, 15, 9, help="8 = premarket · 9 = open NY")
     with sm: s_m = st.number_input("Début m", 0, 59, 30)
     eh, em = st.columns(2)
     with eh: e_h = st.number_input("Fin h", 12, 21, 16)

@@ -1059,7 +1059,8 @@ def inject():
         ("pages/6_Multi_Model.py",  "🤖  Multi Model"),
         ("pages/8_Library.py",      "📚  Bibliothèque"),
         ("pages/9_BTC_DCA.py",      "🪙  BTC DCA"),
-        ("pages/1_Demarrage.py",    "🔌  Bridge"),
+        ("pages/1_Demarrage.py",    "🚀  Démarrage"),
+        ("pages/Apex_Rules.py",     "🛡  Apex Rules"),
     ]
     st.sidebar.markdown(
         "<p style='font-size:0.65rem;letter-spacing:.15em;color:#475569;"

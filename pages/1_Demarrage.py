@@ -146,35 +146,36 @@ st.markdown(f"""
 # ════════════════════════════════════════════════════════════════════
 # SECTION 1 — TOKEN VOLUMETRIC
 # ════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-title">Étape 1 — Renouveler le token dxFeed (chaque jour)</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Étape 1 — Vérifier NinjaTrader + Rithmic</div>', unsafe_allow_html=True)
 
 st.markdown("""
 <div class="step-wrap">
     <div class="step-num">1</div>
     <div class="step-body">
-        <div class="step-title">Ouvre la page Volumetric 4PropTrader</div>
+        <div class="step-title">Ouvre NinjaTrader 8</div>
         <div class="step-desc">
-            Clique sur ce lien et connecte-toi si besoin :<br>
-            <a href="https://4proptrader.com/iframes/volumetric-app/301700" target="_blank">
-                https://4proptrader.com/iframes/volumetric-app/301700
-            </a>
+            Lance NinjaTrader depuis le bureau.<br>
+            Vérifie que la connexion <b>Rithmic (Apex)</b> est active (point vert en bas).
         </div>
     </div>
 </div>
 <div class="step-wrap">
     <div class="step-num">2</div>
     <div class="step-body">
-        <div class="step-title">Copie l URL de la page qui s ouvre</div>
+        <div class="step-title">Ouvre le chart MNQ 1 Minute</div>
         <div class="step-desc">
-            Une nouvelle page <code>webapp.volumetricatrading.com</code> s ouvre.<br>
-            Copie toute l URL depuis la barre d adresse du navigateur.
+            New → Chart → Instrument <code>MNQM26</code> → Type <code>Minute</code> → Value <code>1</code>
         </div>
     </div>
 </div>
 <div class="step-wrap">
     <div class="step-num">3</div>
     <div class="step-body">
-        <div class="step-title">Colle l URL ici pour générer la commande</div>
+        <div class="step-title">Vérifie que l indicateur RithmicBridge est actif</div>
+        <div class="step-desc">
+            Clic droit chart → Indicators → RithmicBridge doit être dans la liste à droite.<br>
+            Le fichier <code>C:\\tmp\\mnq_live.json</code> se met à jour automatiquement.
+        </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -235,31 +236,30 @@ st.code(cmd_token, language="powershell")
 # ════════════════════════════════════════════════════════════════════
 # SECTION 2 — BRIDGE DXFEED
 # ════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-title">Étape 2 — Lancer le bridge dxFeed</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Étape 2 — Lancer Streamlit</div>', unsafe_allow_html=True)
 
 st.markdown("""
 <div class="step-wrap">
-    <div class="step-num">5</div>
+    <div class="step-num">4</div>
     <div class="step-body">
-        <div class="step-title">Lance le bridge Node.js</div>
+        <div class="step-title">Lance Streamlit dans un terminal</div>
         <div class="step-desc">
-            Dans un terminal PowerShell depuis <code>QUANT MATHS</code>.<br>
-            Attends <code>Token via Volumetric API ✓</code> puis <code>Ticks recus sur MNQ</code>.
+            Depuis le dossier <code>QUANT MATHS</code> dans PowerShell.
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-st.code("node dxfeed_bridge.js", language="powershell")
+st.code("streamlit run Accueil.py", language="powershell")
 
 st.markdown("""
 <div class="step-wrap">
-    <div class="step-num">6</div>
+    <div class="step-num">5</div>
     <div class="step-body">
-        <div class="step-title">Laisse ce terminal ouvert</div>
+        <div class="step-title">Laisse NinjaTrader et le chart ouverts</div>
         <div class="step-desc">
-            Le bridge tourne en continu et ecrit les ticks dans <code>C:/tmp/mnq_live.json</code>.<br>
-            Si tu le fermes, le Live Signal passe en fallback yfinance (~15 min de retard).
+            Le chart MNQ doit rester ouvert toute la session.<br>
+            Si tu fermes NinjaTrader, le Live Signal passe en fallback yfinance (~15 min de retard).
         </div>
     </div>
 </div>
@@ -297,12 +297,9 @@ st.markdown("""
 # ════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-title">Récap — ordre des commandes</div>', unsafe_allow_html=True)
 
-recap_url = f'"{url_input.strip()}"' if jtoken else '"<ton URL Volumetric>"'
-st.code(f"""# Terminal 1 — Token + Bridge
-powershell -File update_jtoken.ps1 {recap_url}
-node dxfeed_bridge.js
+st.code("""# 1. Ouvre NinjaTrader → connexion Rithmic verte → chart MNQM26 1min → indicateur RithmicBridge actif
 
-# Terminal 2 — Streamlit (si pas encore lancé)
+# 2. Terminal — Streamlit
 streamlit run Accueil.py""", language="powershell")
 
 # ════════════════════════════════════════════════════════════════════
