@@ -27,38 +27,38 @@ _TOKENS = """
   --bg-elevated: #111111;
   --bg-glass:    rgba(10,10,10,0.80);
 
-  /* Accents */
-  --accent-blue:   #3b82f6;
-  --accent-cyan:   #06b6d4;
-  --accent-green:  #10b981;
-  --accent-red:    #ef4444;
-  --accent-amber:  #f59e0b;
-  --accent-purple: #8b5cf6;
+  /* Accents — monochrome B&W/grey */
+  --accent-blue:   #d1d5db;
+  --accent-cyan:   #9ca3af;
+  --accent-green:  #e5e7eb;
+  --accent-red:    #6b7280;
+  --accent-amber:  #9ca3af;
+  --accent-purple: #4b5563;
 
-  /* Gradients */
-  --grad-primary: linear-gradient(135deg,#3b82f6 0%,#06b6d4 100%);
-  --grad-green:   linear-gradient(135deg,#10b981 0%,#06b6d4 100%);
-  --grad-red:     linear-gradient(135deg,#ef4444 0%,#f97316 100%);
-  --grad-amber:   linear-gradient(135deg,#f59e0b 0%,#f97316 100%);
-  --grad-surface: linear-gradient(145deg,rgba(59,130,246,0.05) 0%,rgba(6,182,212,0.02) 100%);
-  --grad-glow:    radial-gradient(ellipse at top,rgba(59,130,246,0.12) 0%,transparent 60%);
+  /* Gradients — grey scale */
+  --grad-primary: linear-gradient(135deg,#d1d5db 0%,#9ca3af 100%);
+  --grad-green:   linear-gradient(135deg,#e5e7eb 0%,#d1d5db 100%);
+  --grad-red:     linear-gradient(135deg,#6b7280 0%,#4b5563 100%);
+  --grad-amber:   linear-gradient(135deg,#9ca3af 0%,#6b7280 100%);
+  --grad-surface: linear-gradient(145deg,rgba(255,255,255,0.03) 0%,rgba(255,255,255,0.01) 100%);
+  --grad-glow:    radial-gradient(ellipse at top,rgba(255,255,255,0.06) 0%,transparent 60%);
 
   /* Text */
-  --text-primary:   #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted:     #475569;
+  --text-primary:   #f9fafb;
+  --text-secondary: #9ca3af;
+  --text-muted:     #4b5563;
 
   /* Borders */
-  --border-subtle:  rgba(148,163,184,0.06);
-  --border-default: rgba(148,163,184,0.10);
-  --border-active:  rgba(59,130,246,0.40);
-  --border-glow:    rgba(59,130,246,0.20);
+  --border-subtle:  rgba(255,255,255,0.05);
+  --border-default: rgba(255,255,255,0.09);
+  --border-active:  rgba(255,255,255,0.35);
+  --border-glow:    rgba(255,255,255,0.15);
 
   /* Shadows */
-  --shadow-card:  0 1px 3px rgba(0,0,0,0.4),0 4px 16px rgba(0,0,0,0.3);
-  --shadow-glow:  0 0 20px rgba(59,130,246,0.15),0 0 60px rgba(59,130,246,0.05);
-  --shadow-green: 0 0 20px rgba(16,185,129,0.15);
-  --shadow-red:   0 0 20px rgba(239,68,68,0.15);
+  --shadow-card:  0 1px 3px rgba(0,0,0,0.5),0 4px 16px rgba(0,0,0,0.4);
+  --shadow-glow:  0 0 20px rgba(255,255,255,0.06),0 0 60px rgba(255,255,255,0.02);
+  --shadow-green: 0 0 20px rgba(229,231,235,0.08);
+  --shadow-red:   0 0 20px rgba(107,114,128,0.12);
 
   /* Radius */
   --r-sm:  6px;
@@ -106,8 +106,8 @@ footer           { display: none !important; }
 /* Scrollbar */
 ::-webkit-scrollbar         { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track   { background: transparent; }
-::-webkit-scrollbar-thumb   { background: rgba(59,130,246,0.3); border-radius: var(--r-pill); }
-::-webkit-scrollbar-thumb:hover { background: rgba(59,130,246,0.6); }
+::-webkit-scrollbar-thumb   { background: rgba(148,163,184,0.2); border-radius: var(--r-pill); }
+::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.4); }
 """
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -145,14 +145,14 @@ _SIDEBAR = """
 [data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"]:hover {
   background: #111 !important;
   color: #f1f5f9 !important;
-  border-color: rgba(59,130,246,0.3) !important;
+  border-color: rgba(255,255,255,0.12) !important;
 }
 [data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"],
 [data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"][aria-current="page"] {
-  background: rgba(59,130,246,0.12) !important;
-  color: #3b82f6 !important;
-  border-color: rgba(59,130,246,0.4) !important;
-  border-left: 3px solid #3b82f6 !important;
+  background: rgba(255,255,255,0.05) !important;
+  color: #f1f5f9 !important;
+  border-color: rgba(255,255,255,0.18) !important;
+  border-left: 3px solid #d1d5db !important;
 }
 """
 
@@ -234,14 +234,14 @@ _CARDS = """
   border-radius: var(--r-pill);
 }
 .qm-metric__delta--up {
-  background: rgba(16,185,129,0.12);
-  color: #6ee7b7;
-  border: 1px solid rgba(16,185,129,0.25);
+  background: rgba(229,231,235,0.08);
+  color: #e5e7eb;
+  border: 1px solid rgba(229,231,235,0.18);
 }
 .qm-metric__delta--down {
-  background: rgba(239,68,68,0.12);
-  color: #fca5a5;
-  border: 1px solid rgba(239,68,68,0.25);
+  background: rgba(75,85,99,0.12);
+  color: #9ca3af;
+  border: 1px solid rgba(75,85,99,0.25);
 }
 
 /* ── Backward compat: old kpi-card ─────────────────────────── */
@@ -280,12 +280,12 @@ _BADGES = """
   border: 1px solid transparent;
   line-height: 1;
 }
-.qm-badge--blue   { background:rgba(59,130,246,0.12); color:#93c5fd; border-color:rgba(59,130,246,0.25); }
-.qm-badge--green  { background:rgba(16,185,129,0.12); color:#6ee7b7; border-color:rgba(16,185,129,0.25); }
-.qm-badge--red    { background:rgba(239,68,68,0.12);  color:#fca5a5; border-color:rgba(239,68,68,0.25);  }
-.qm-badge--amber  { background:rgba(245,158,11,0.12); color:#fcd34d; border-color:rgba(245,158,11,0.25); }
-.qm-badge--purple { background:rgba(139,92,246,0.12); color:#c4b5fd; border-color:rgba(139,92,246,0.25); }
-.qm-badge--cyan   { background:rgba(6,182,212,0.12);  color:#67e8f9; border-color:rgba(6,182,212,0.25);  }
+.qm-badge--blue   { background:rgba(209,213,219,0.08); color:#e5e7eb; border-color:rgba(209,213,219,0.2); }
+.qm-badge--green  { background:rgba(229,231,235,0.08); color:#f1f5f9; border-color:rgba(229,231,235,0.2); }
+.qm-badge--red    { background:rgba(107,114,128,0.12); color:#9ca3af; border-color:rgba(107,114,128,0.25); }
+.qm-badge--amber  { background:rgba(156,163,175,0.10); color:#d1d5db; border-color:rgba(156,163,175,0.22); }
+.qm-badge--purple { background:rgba(75,85,99,0.12);   color:#9ca3af; border-color:rgba(75,85,99,0.25);   }
+.qm-badge--cyan   { background:rgba(148,163,184,0.10); color:#d1d5db; border-color:rgba(148,163,184,0.22); }
 """
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -296,15 +296,15 @@ _BUTTONS = """
 [data-testid="baseButton-primary"] {
   background: var(--grad-primary) !important;
   border: none !important;
-  color: #fff !important;
+  color: #050505 !important;
   font-weight: 600 !important;
   border-radius: var(--r-pill) !important;
-  box-shadow: 0 4px 14px rgba(59,130,246,0.30) !important;
+  box-shadow: 0 4px 14px rgba(255,255,255,0.10) !important;
   transition: var(--t-fast) !important;
 }
 [data-testid="baseButton-primary"]:hover {
   transform: translateY(-1px) !important;
-  box-shadow: 0 6px 20px rgba(59,130,246,0.45) !important;
+  box-shadow: 0 6px 20px rgba(255,255,255,0.18) !important;
 }
 [data-testid="baseButton-primary"]:active { transform: translateY(0) !important; }
 
@@ -335,12 +335,12 @@ _BUTTONS = """
   border-radius: var(--r-pill);
   cursor: pointer;
   transition: var(--t-fast);
-  box-shadow: 0 4px 14px rgba(59,130,246,0.30);
+  box-shadow: 0 4px 14px rgba(255,255,255,0.08);
   text-decoration: none;
 }
 .qm-btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(59,130,246,0.45);
+  box-shadow: 0 6px 20px rgba(255,255,255,0.15);
 }
 .qm-btn-primary:active { transform: translateY(0); }
 
@@ -1050,29 +1050,59 @@ def inject():
 
     # ── Navigation dans la sidebar — conditionnelle selon auth ─────────────
     from auth import is_authenticated as _is_auth
+
     _pages_public = [
         ("pages/7_Etude.py",   "🎓  Étude"),
         ("pages/8_Library.py", "📚  Bibliothèque"),
     ]
-    _pages_private = [
-        ("Accueil.py",              "⚡  Accueil"),
-        ("pages/3_Live_Signal.py",  "📡  Live Signal"),
-        ("pages/5_Backtest.py",     "📊  Backtest"),
-        ("pages/4_Journal.py",      "📒  Journal"),
-        ("pages/2_Session_Prep.py", "🕐  Session Prep"),
-        ("pages/6_Multi_Model.py",  "🤖  Multi Model"),
-        ("pages/9_BTC_DCA.py",      "🟡  BTC DCA"),
-        ("pages/1_Demarrage.py",    "🚀  Démarrage"),
-        ("pages/Apex_Rules.py",     "🛡  Apex Rules"),
+
+    _sections_private = [
+        ("", [
+            ("pages/_home.py", "⚡  Accueil"),
+        ]),
+        ("Live", [
+            ("pages/3_Live_Signal.py",   "📡  MNQ Live"),
+            ("pages/Crypto_Live_SOL.py", "🟢  SOL Live"),
+        ]),
+        ("Analyse", [
+            ("pages/5_Backtest.py",    "📊  Backtest"),
+            ("pages/6_Multi_Model.py", "🤖  Multi Model"),
+            ("pages/Crypto_Swing.py",  "🔮  Crypto Swing"),
+        ]),
+        ("Gestion", [
+            ("pages/4_Journal.py",      "📒  Journal"),
+            ("pages/2_Session_Prep.py", "🕐  Session Prep"),
+            ("pages/9_BTC_DCA.py",      "🟡  BTC DCA"),
+        ]),
+        ("Setup", [
+            ("pages/1_Demarrage.py", "🚀  Démarrage"),
+            ("pages/Apex_Rules.py",  "🛡  Apex Rules"),
+        ]),
+        ("Public", _pages_public),
     ]
-    _pages = _pages_public + _pages_private if _is_auth() else _pages_public
-    st.sidebar.markdown(
-        "<p style='font-size:0.65rem;letter-spacing:.15em;color:#475569;"
-        "text-transform:uppercase;padding:0.5rem 0.9rem 0.2rem;'>Navigation</p>",
-        unsafe_allow_html=True,
+
+    _section_label_css = (
+        "font-size:0.6rem;letter-spacing:.18em;color:#374151;"
+        "text-transform:uppercase;padding:.6rem 0.9rem .1rem;"
+        "font-family:'JetBrains Mono',monospace;"
     )
-    for path, label in _pages:
-        st.sidebar.page_link(path, label=label)
+
+    if _is_auth():
+        for _section, _links in _sections_private:
+            if _section:
+                st.sidebar.markdown(
+                    f"<p style='{_section_label_css}'>{_section}</p>",
+                    unsafe_allow_html=True,
+                )
+            for _path, _label in _links:
+                st.sidebar.page_link(_path, label=_label)
+    else:
+        st.sidebar.markdown(
+            f"<p style='{_section_label_css}'>Navigation</p>",
+            unsafe_allow_html=True,
+        )
+        for _path, _label in _pages_public:
+            st.sidebar.page_link(_path, label=_label)
 
 
 # ════════════════════════════════════════════════════════════════════════════

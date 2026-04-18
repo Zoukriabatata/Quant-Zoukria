@@ -10,7 +10,6 @@ import pytz
 from streamlit_autorefresh import st_autorefresh
 from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET, DAILY_LOSS_LIM
 
-st.set_page_config(page_title="Session Prep", page_icon="🎯", layout="wide")
 from styles import inject as _inj; _inj()
 st_autorefresh(interval=30_000, key="sp_refresh")  # rafraîchit le countdown toutes les 30s
 

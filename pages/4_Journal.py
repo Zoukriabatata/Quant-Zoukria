@@ -16,7 +16,6 @@ from plotly.subplots import make_subplots
 
 from config import JOURNAL_DB, CHALLENGE_DD, CHALLENGE_TARGET, HURST_THRESHOLD
 
-st.set_page_config(page_title="Journal", page_icon="📒", layout="wide")
 from styles import inject as _inj, empty_state, toast; _inj()
 
 # ── Theme ─────────────────────────────────────────────────────────────

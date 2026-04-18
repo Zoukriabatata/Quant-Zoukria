@@ -16,7 +16,6 @@ def save_watched(w):
     try:    WATCHED_FILE.write_text(json.dumps(list(w)))
     except: pass
 
-st.set_page_config(page_title="Bibliothèque Quant", page_icon="📚", layout="wide")
 
 from styles import inject as _inject_styles; _inject_styles()
 

@@ -22,7 +22,6 @@ from config import (
     APEX_PAYOUT_LADDER,
 )
 
-st.set_page_config(page_title="Apex Rules", page_icon="🛡", layout="wide")
 from styles import inject as _inj; _inj()
 
 ET    = ZoneInfo("America/New_York")

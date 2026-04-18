@@ -1,4 +1,6 @@
 __pycache__/
+sol_journal.db
+.sol_last_signal.json
 *.pyc
 .claude/
 *.ipynb

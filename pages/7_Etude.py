@@ -19,12 +19,6 @@ def save_progress(completed: set):
     except Exception:
         pass
 
-st.set_page_config(
-    page_title="Quant Maths — Étude",
-    page_icon="🎓",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 _inject_styles()
 
 # ══════════════════════════════════════════════════════════════════════

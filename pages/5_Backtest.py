@@ -11,7 +11,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from config import MNQ_CSV
 
-st.set_page_config(page_title="Backtest Hurst_MR", page_icon="📊", layout="wide")
 from styles import inject as _inj; _inj()
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -234,7 +233,8 @@ def build_study_cache(csv_path, sh, sm, eh, em, hwin=60):
 def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
                        max_td, skip_o, skip_c, timeout_bars=120,
                        capital=50_000, max_dd=2_000, daily_lim=1_000,
-                       profit_target=3_000, risk_pct=0.10, atr_sl=False):
+                       profit_target=3_000, risk_pct=0.10, atr_sl=False,
+                       fixed_contracts=None):
     trades = []
     monthly = []
     running = capital; peak = capital
@@ -296,14 +296,17 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
             else:
                 tp_price = mid - tp_overshoot * std
 
-            dd_rem = max(0., max_dd - dd_used)
-            risk   = max(50., min(risk_pct * dd_rem, daily_lim * 0.40))
-            lpc    = sl_pts * 2.0
-            if lpc <= 0: continue
-            contracts = min(60, int(risk / lpc))
-            # Plafonne au budget journalier restant — ne force jamais 1 contrat si budget épuisé
-            budget_rem = max(0., daily_lim + daily_pnl)
-            contracts  = min(contracts, int(budget_rem / lpc))
+            # ── Sizing : fixe ou dynamique Kelly ─────────────────
+            if fixed_contracts is not None:
+                contracts = int(fixed_contracts)
+            else:
+                dd_rem = max(0., max_dd - dd_used)
+                risk   = max(50., min(risk_pct * dd_rem, daily_lim * 0.40))
+                lpc    = sl_pts * 2.0
+                if lpc <= 0: continue
+                contracts = min(60, int(risk / lpc))
+                budget_rem = max(0., daily_lim + daily_pnl)
+                contracts  = min(contracts, int(budget_rem / lpc))
             if contracts <= 0: continue
 
             # Simulate trade
@@ -404,9 +407,9 @@ _bar_h_vals = np.concatenate([
 mr_bars_pct = float((_bar_h_vals < hurst_threshold).mean() * 100) if len(_bar_h_vals) > 0 else 0.0
 
 # ─── TABS ────────────────────────────────────────────────────────────
-t1,t2,t3,t4,t5,t6,t7 = st.tabs([
+t1,t2,t3,t4,t5,t6,t7,t8,t9 = st.tabs([
     "📊 Résultats","🔬 Analyse Hurst","⏱ Signal & Timing",
-    "🎲 Monte Carlo","🧪 Preuve d'Edge","🔧 Grid Search","🔄 Walk-Forward"
+    "🎲 Monte Carlo","🧪 Preuve d'Edge","🔧 Grid Search","🔄 Walk-Forward","🎯 Apex Sizing","⚙️ Optimisation"
 ])
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1682,3 +1685,716 @@ with t7:
                     st.download_button("⬇ Trades OOS CSV", data=oos_csv,
                                        file_name=f"wf_oos_trades_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
                                        mime="text/csv", use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 8 — APEX SIZING — Sweep contrats fixes 1 → N MNQ
+# ═══════════════════════════════════════════════════════════════════════
+with t8:
+    st.markdown('<div class="section-lbl">Apex Sizing — Quel nombre de contrats MNQ est optimal ?</div>',
+                unsafe_allow_html=True)
+    st.caption(
+        "Backtest identique (parametres sidebar) avec contrats fixes 1 - N MNQ. "
+        "Objectif : trouver le sizing qui maximise le P&L mensuel tout en restant "
+        f"sous le seuil DD Apex ${max_dd_ui:,.0f}."
+    )
+
+    sa1, sa2, sa3 = st.columns(3)
+    with sa1:
+        apex_dd_limit  = st.number_input("DD max Apex ($)", 500, 5000, int(max_dd_ui), 100, key="apex_dd")
+        apex_target    = st.number_input("Profit target ($)", 500, 10000, int(profit_target_ui), 250, key="apex_tgt")
+    with sa2:
+        apex_capital   = st.number_input("Capital ($)", 10000, 200000, int(capital_ui), 5000, key="apex_cap")
+        apex_daily_lim = st.number_input("Daily loss limit ($)", 100, 2000, int(daily_lim_ui), 100, key="apex_dlim")
+    with sa3:
+        apex_max_c   = st.number_input("Contrats max a tester", 1, 10, 6, 1, key="apex_maxc")
+        apex_mc_sims = st.select_slider("Simulations MC / contrat", [200, 500, 1000, 2000], value=500, key="apex_sims")
+        apex_mc_days = st.number_input("Jours / simulation MC", 15, 30, 22, key="apex_days")
+
+    if st.button("Lancer Apex Sizing Sweep", type="primary", use_container_width=True, key="apex_run"):
+
+        sweep_rows = []
+        prog_apex  = st.progress(0)
+
+        for nc in range(1, int(apex_max_c) + 1):
+            t_df, _ = run_hurst_backtest(
+                day_cache,
+                ht=hurst_threshold, lb=lookback, bk=band_k,
+                sl_m=sl_mult, tp_overshoot=tp_overshoot, slip=slip_pts,
+                max_td=max_td, skip_o=skip_o, skip_c=skip_c,
+                capital=apex_capital, max_dd=apex_dd_limit,
+                daily_lim=apex_daily_lim, profit_target=apex_target,
+                fixed_contracts=nc,
+            )
+            prog_apex.progress(nc / int(apex_max_c))
+            if len(t_df) < 5:
+                continue
+
+            pos_s  = t_df[t_df["pnl"] > 0]["pnl"].sum()
+            neg_s  = abs(t_df[t_df["pnl"] < 0]["pnl"].sum())
+            pf_s   = pos_s / max(neg_s, 0.01)
+            wr_s   = float(t_df["win"].mean())
+            pnl_s  = t_df["pnl"].sum()
+
+            eq_s      = np.concatenate([[apex_capital], np.cumsum(t_df["pnl"].values) + apex_capital])
+            pk_s      = np.maximum.accumulate(eq_s)
+            dd_arr    = pk_s - eq_s
+            max_dd_dollar = float(dd_arr.max())
+            max_dd_pct_s  = max_dd_dollar / apex_capital * 100
+
+            _daily_s  = t_df.groupby("date")["pnl"].sum()
+            sharpe_s  = float(_daily_s.mean() / _daily_s.std() * np.sqrt(252)) if _daily_s.std() > 0 else 0.0
+            n_months  = max(1, len(t_df["date"].unique()) / 21)
+            pnl_month = pnl_s / n_months
+            apex_safe = max_dd_dollar < apex_dd_limit
+
+            daily_pnls_arr = _daily_s.values
+            passed_mc_s = 0
+            busted_mc_s = 0
+            if len(daily_pnls_arr) >= 5:
+                for _ in range(int(apex_mc_sims)):
+                    days_s = np.random.choice(daily_pnls_arr, size=int(apex_mc_days), replace=True)
+                    eq_mc = apex_capital
+                    pk_mc = apex_capital
+                    bust_mc = False
+                    done_mc = False
+                    for p in days_s:
+                        eq_mc += p
+                        if eq_mc > pk_mc:
+                            pk_mc = eq_mc
+                        if (pk_mc - eq_mc) >= apex_dd_limit:
+                            bust_mc = True
+                            break
+                        if (eq_mc - apex_capital) >= apex_target:
+                            done_mc = True
+                            break
+                    if bust_mc:
+                        busted_mc_s += 1
+                    elif done_mc:
+                        passed_mc_s += 1
+
+            pass_rate_s = passed_mc_s / int(apex_mc_sims) * 100
+            bust_rate_s = busted_mc_s / int(apex_mc_sims) * 100
+
+            sweep_rows.append(dict(
+                Contrats     = nc,
+                PF           = pf_s,
+                WR           = wr_s,
+                Sharpe       = sharpe_s,
+                MaxDD_dollar = max_dd_dollar,
+                MaxDD_pct    = max_dd_pct_s,
+                PnL_5ans     = pnl_s,
+                PnL_mois     = pnl_month,
+                Trades       = len(t_df),
+                PassRate     = pass_rate_s,
+                BustRate     = bust_rate_s,
+                Apex         = "SAFE" if apex_safe else "BUST",
+            ))
+
+        prog_apex.empty()
+
+        if not sweep_rows:
+            st.warning("Aucun resultat.")
+            st.stop()
+
+        sw = pd.DataFrame(sweep_rows)
+        safe_sw = sw[sw["MaxDD_dollar"] < apex_dd_limit]
+
+        st.markdown("---")
+        if len(safe_sw):
+            best   = safe_sw.loc[safe_sw["PassRate"].idxmax()]
+            nc_opt = int(best["Contrats"])
+            bc1, bc2, bc3, bc4, bc5 = st.columns(5)
+            bc1.metric("Contrat optimal", f"{nc_opt} MNQ")
+            bc2.metric("Pass Rate MC", f"{best['PassRate']:.0f}%")
+            bc3.metric("P&L / mois", f"${best['PnL_mois']:+,.0f}")
+            bc4.metric("Max DD $", f"${best['MaxDD_dollar']:,.0f}",
+                       delta=f"buffer ${apex_dd_limit - best['MaxDD_dollar']:,.0f}",
+                       delta_color="normal")
+            bc5.metric("Sharpe", f"{best['Sharpe']:.2f}")
+            st.success(
+                f"**{nc_opt} MNQ optimal** — Pass Rate {best['PassRate']:.0f}% | "
+                f"P&L mois ${best['PnL_mois']:+,.0f} | "
+                f"Max DD ${best['MaxDD_dollar']:,.0f} "
+                f"(buffer ${apex_dd_limit - best['MaxDD_dollar']:,.0f})"
+            )
+        else:
+            st.error("Aucun sizing ne respecte le seuil DD Apex.")
+
+        st.markdown('<div class="section-lbl">Resultats complets</div>', unsafe_allow_html=True)
+
+        def _row_color(row):
+            bg = "#0d2b1a" if row["MaxDD_dollar"] < apex_dd_limit else "#2b0d0d"
+            return [f"background-color:{bg}"] * len(row)
+
+        st.dataframe(
+            sw.style
+              .apply(_row_color, axis=1)
+              .format({
+                  "PF": "{:.2f}", "WR": "{:.1%}", "Sharpe": "{:.2f}",
+                  "MaxDD_dollar": "${:,.0f}", "MaxDD_pct": "{:.2f}%",
+                  "PnL_5ans": "${:+,.0f}", "PnL_mois": "${:+,.0f}",
+                  "PassRate": "{:.0f}%", "BustRate": "{:.0f}%",
+              })
+              .background_gradient(subset=["PassRate"], cmap="RdYlGn")
+              .background_gradient(subset=["BustRate"], cmap="RdYlGn_r")
+              .background_gradient(subset=["MaxDD_dollar"], cmap="RdYlGn_r"),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        fig_sizing = make_subplots(specs=[[{"secondary_y": True}]])
+        m_colors = [GREEN if r < apex_dd_limit else RED for r in sw["MaxDD_dollar"]]
+        fig_sizing.add_trace(go.Bar(
+            x=sw["Contrats"].astype(str) + " MNQ",
+            y=sw["PnL_mois"], name="P&L / mois", marker_color=m_colors,
+            text=[f"${v:+,.0f}" for v in sw["PnL_mois"]], textposition="outside",
+        ), secondary_y=False)
+        fig_sizing.add_trace(go.Scatter(
+            x=sw["Contrats"].astype(str) + " MNQ",
+            y=sw["MaxDD_dollar"], name="Max DD $",
+            mode="lines+markers", line=dict(color=RED, width=2, dash="dot"),
+            marker=dict(size=9, color=m_colors),
+        ), secondary_y=True)
+        fig_sizing.add_hline(y=apex_dd_limit,
+                             line=dict(color=RED, dash="dash", width=1.5),
+                             annotation_text=f"Seuil Apex ${apex_dd_limit:,.0f}",
+                             secondary_y=True)
+        fig_sizing.update_layout(**DARK, height=340,
+                                 title="P&L mensuel vs Max DD par nombre de contrats")
+        fig_sizing.update_layout(legend=dict(orientation="h", y=1.1))
+        fig_sizing.update_yaxes(title_text="P&L / mois ($)", tickformat="$,.0f", secondary_y=False)
+        fig_sizing.update_yaxes(title_text="Max DD ($)", tickformat="$,.0f", secondary_y=True)
+        st.plotly_chart(fig_sizing, use_container_width=True)
+
+        fig_pr = go.Figure()
+        fig_pr.add_trace(go.Bar(
+            x=sw["Contrats"].astype(str) + " MNQ", y=sw["PassRate"], name="Pass Rate",
+            marker_color=[GREEN if v >= 50 else YELLOW if v >= 30 else RED for v in sw["PassRate"]],
+            text=[f"{v:.0f}%" for v in sw["PassRate"]], textposition="outside",
+        ))
+        fig_pr.add_trace(go.Scatter(
+            x=sw["Contrats"].astype(str) + " MNQ", y=sw["BustRate"], name="Bust Rate",
+            mode="lines+markers", line=dict(color=RED, width=2, dash="dot"),
+            marker=dict(size=8, color=RED),
+        ))
+        fig_pr.add_hline(y=50, line=dict(color=GREEN, dash="dash"), annotation_text="Pass 50%")
+        fig_pr.add_hline(y=10, line=dict(color=RED, dash="dash"), annotation_text="Bust max 10%")
+        fig_pr.update_layout(**DARK, height=300,
+                             yaxis=dict(range=[0, 105], ticksuffix="%"),
+                             title=f"Pass Rate & Bust Rate ({int(apex_mc_days)} jours simules)")
+        st.plotly_chart(fig_pr, use_container_width=True)
+
+    else:
+        st.info("Configure les parametres et clique **Lancer Apex Sizing Sweep**.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 9 — OPTIMISATION COMPLETE — Meilleur parametrage Apex 50K EOD
+# ═══════════════════════════════════════════════════════════════════════
+with t9:
+    st.markdown('<div class="section-lbl">Optimisation Complète — Meilleur parametrage Apex 50K EOD</div>',
+                unsafe_allow_html=True)
+
+    # ── Objectifs fixes (reference utilisateur) ──────────────────────
+    st.markdown("""
+    <div style="background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.15);
+                border-radius:8px;padding:.9rem 1.2rem;font-family:JetBrains Mono,monospace;
+                font-size:.75rem;line-height:2.0;margin-bottom:1rem">
+    <span style="color:#06b6d4;font-weight:700">CIBLES APEX 50K EOD</span><br>
+    Trades/5ans : 1000–1400 idealement 1200 &nbsp;|&nbsp;
+    PF : ≥ 1.5 min &nbsp;|&nbsp;
+    WR : 25–45% idealement 30–45%<br>
+    Max DD : &lt; $2 000 &nbsp;|&nbsp;
+    P&amp;L/mois : ≥ $3 000 idealement &nbsp;|&nbsp;
+    Pass Rate : ≥ 45% objectif 50–60%
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Configuration du sweep ────────────────────────────────────────
+    oc1, oc2 = st.columns(2)
+
+    with oc1:
+        st.markdown("**Plages parametres**")
+        opt_ht   = st.multiselect("Hurst threshold H <",
+                                  [0.44, 0.46, 0.48, 0.50, 0.52, 0.53, 0.54, 0.56],
+                                  default=[0.46, 0.50, 0.53, 0.56])
+        opt_lb   = st.multiselect("Lookback (barres)",
+                                  [15, 20, 25, 30, 40, 50],
+                                  default=[25, 30, 40])
+        opt_bk   = st.multiselect("Band K (sigma)",
+                                  [2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 4.0],
+                                  default=[2.0, 2.25, 2.5, 2.75, 3.0])
+        opt_sl   = st.multiselect("SL mult",
+                                  [0.40, 0.50, 0.75, 1.0, 1.25],
+                                  default=[0.50, 0.75, 1.0])
+        opt_tp   = st.multiselect("TP overshoot (sigma)",
+                                  [0.0, 0.25, 0.5, 0.75, 1.0],
+                                  default=[0.0, 0.25, 0.5])
+        opt_to   = st.multiselect("Timeout (barres M1)",
+                                  [30, 45, 60, 90, 120],
+                                  default=[45, 60, 90, 120])
+
+    with oc2:
+        st.markdown("**Contracts et simulation**")
+        opt_contracts = st.multiselect("Contrats MNQ a tester",
+                                       [2, 3, 4, 5, 6],
+                                       default=[4, 5, 6])
+        opt_apex_dd      = st.number_input("DD max Apex ($)", 500, 5000, 2000, 100, key="opt_dd")
+        opt_apex_target  = st.number_input("Profit target ($)", 500, 10000, 3000, 250, key="opt_tgt")
+        opt_apex_capital = st.number_input("Capital ($)", 10000, 200000, 50000, 5000, key="opt_cap")
+        opt_daily_lim    = st.number_input("Daily loss limit ($)", 100, 2000, 1000, 100, key="opt_dlim")
+        opt_n_samples    = st.select_slider("Samples aleatoires",
+                                            [50, 100, 200, 400, "Tout"],
+                                            value=200)
+        opt_mc_sims = st.select_slider("MC sims / config (Phase 2)", [200, 500, 1000], value=500, key="opt_mc")
+        opt_mc_days = st.number_input("Jours / sim MC", 15, 30, 22, key="opt_mcdays")
+
+    if not all([opt_ht, opt_lb, opt_bk, opt_sl, opt_tp, opt_to, opt_contracts]):
+        st.warning("Selectionne au moins une valeur dans chaque parametre.")
+        st.stop()
+
+    total_grid = len(opt_ht) * len(opt_lb) * len(opt_bk) * len(opt_sl) * len(opt_tp) * len(opt_to)
+    n_samples  = total_grid if opt_n_samples == "Tout" else min(int(opt_n_samples), total_grid)
+    total_runs = n_samples * len(opt_contracts)
+
+    st.caption(
+        f"Grille : {total_grid:,} combos × {len(opt_contracts)} contrats = "
+        f"{total_grid * len(opt_contracts):,} total | "
+        f"Execution : {n_samples} samples × {len(opt_contracts)} contrats = {total_runs} backtests (Phase 1)"
+    )
+
+    if st.button("Lancer Optimisation Complete", type="primary", use_container_width=True, key="opt_run"):
+
+        import itertools, random as _rnd
+
+        # ── Phase 1 : sweep rapide sans MC ───────────────────────────
+        st.markdown("**Phase 1 — Sweep rapide**")
+        prog1 = st.progress(0)
+        status1 = st.empty()
+
+        # Grille complete + echantillonnage aleatoire
+        full_grid = list(itertools.product(opt_ht, opt_lb, opt_bk, opt_sl, opt_tp, opt_to))
+        _rnd.seed(42)
+        if n_samples < total_grid:
+            sampled = _rnd.sample(full_grid, n_samples)
+        else:
+            sampled = full_grid
+
+        phase1_rows = []
+        done = 0
+
+        for nc in opt_contracts:
+            for (ht_v, lb_v, bk_v, sl_v, tp_v, to_v) in sampled:
+                done += 1
+                if done % 10 == 0:
+                    prog1.progress(done / total_runs)
+                    status1.caption(f"Phase 1 : {done}/{total_runs} — H={ht_v} K={bk_v} SL={sl_v} TP={tp_v} TO={to_v} C={nc}")
+
+                t_df, _ = run_hurst_backtest(
+                    day_cache,
+                    ht=ht_v, lb=lb_v, bk=bk_v,
+                    sl_m=sl_v, tp_overshoot=tp_v, slip=slip_pts,
+                    max_td=int(max_td), skip_o=int(skip_o), skip_c=int(skip_c),
+                    timeout_bars=int(to_v),
+                    capital=opt_apex_capital, max_dd=opt_apex_dd,
+                    daily_lim=opt_daily_lim, profit_target=opt_apex_target,
+                    fixed_contracts=nc,
+                )
+                if len(t_df) < 20:
+                    continue
+
+                pos_  = t_df[t_df["pnl"] > 0]["pnl"].sum()
+                neg_  = abs(t_df[t_df["pnl"] < 0]["pnl"].sum())
+                pf_   = pos_ / max(neg_, 0.01)
+                wr_   = float(t_df["win"].mean())
+                pnl_  = t_df["pnl"].sum()
+
+                eq_   = np.concatenate([[opt_apex_capital],
+                                        np.cumsum(t_df["pnl"].values) + opt_apex_capital])
+                pk_   = np.maximum.accumulate(eq_)
+                dd_   = float((pk_ - eq_).max())
+                dd_p  = dd_ / opt_apex_capital * 100
+
+                dl_   = t_df.groupby("date")["pnl"].sum()
+                sh_   = float(dl_.mean() / dl_.std() * np.sqrt(252)) if dl_.std() > 0 else 0.0
+                n_mo  = max(1, len(t_df["date"].unique()) / 21)
+                p_mo  = pnl_ / n_mo
+
+                phase1_rows.append(dict(
+                    H=ht_v, LB=lb_v, K=bk_v, SL=sl_v, TP=tp_v, TO=to_v, NC=nc,
+                    PF=pf_, WR=wr_, Sharpe=sh_,
+                    MaxDD=dd_, MaxDD_pct=dd_p,
+                    PnL_5ans=pnl_, PnL_mois=p_mo,
+                    Trades=len(t_df),
+                ))
+
+        prog1.empty(); status1.empty()
+
+        if not phase1_rows:
+            st.error("Aucun resultat en Phase 1."); st.stop()
+
+        p1 = pd.DataFrame(phase1_rows)
+
+        # ── Filtres viabilite ─────────────────────────────────────────
+        viable = p1[
+            (p1["MaxDD"]    <  opt_apex_dd) &
+            (p1["PF"]       >= 1.3) &
+            (p1["WR"]       >= 0.20) &
+            (p1["WR"]       <= 0.55) &
+            (p1["Trades"]   >= 700)
+        ].copy()
+
+        st.caption(f"Phase 1 : {len(p1)} configs testees | {len(viable)} viables (PF≥1.3, DD<{opt_apex_dd:,.0f}, WR 20-55%, Trades≥700)")
+
+        if len(viable) == 0:
+            st.error("Aucune config viable. Elargis les plages ou reduis les filtres.")
+            st.stop()
+
+        # ── Score preliminaire (sans MC) ──────────────────────────────
+        def prelim_score(r):
+            s = 0.0
+            # Trades cible 1200
+            t = r["Trades"]
+            if 1000 <= t <= 1400:   s += 2.0
+            elif 800 <= t <= 1600:  s += 1.0
+            # PF
+            s += min(4.0, max(0, (r["PF"] - 1.3) * 5))
+            # WR cible 30-42%
+            if 0.28 <= r["WR"] <= 0.42: s += 2.0
+            elif 0.22 <= r["WR"] <= 0.48: s += 1.0
+            # MaxDD (plus bas = mieux)
+            if r["MaxDD"] < 1400:   s += 3.0
+            elif r["MaxDD"] < 1700: s += 2.0
+            elif r["MaxDD"] < 1900: s += 1.0
+            # Sharpe
+            if r["Sharpe"] >= 3.0: s += 2.0
+            elif r["Sharpe"] >= 2.0: s += 1.0
+            # PnL/mois
+            s += min(4.0, max(0, r["PnL_mois"] / 750))
+            return s
+
+        viable["ScoreP1"] = viable.apply(prelim_score, axis=1)
+        top30 = viable.nlargest(30, "ScoreP1").reset_index(drop=True)
+
+        # ── Phase 2 : Monte Carlo sur top 30 ─────────────────────────
+        st.markdown("**Phase 2 — Monte Carlo top 30 configs**")
+        prog2   = st.progress(0)
+        status2 = st.empty()
+
+        mc_results = []
+        for idx_mc, row in top30.iterrows():
+            prog2.progress((idx_mc + 1) / len(top30))
+            status2.caption(f"MC {idx_mc+1}/{len(top30)} — H={row['H']} K={row['K']} SL={row['SL']} TP={row['TP']} C={int(row['NC'])}")
+
+            # Rerun pour obtenir les daily PnL (on reuse les donnees cached)
+            t_df2, _ = run_hurst_backtest(
+                day_cache,
+                ht=row["H"], lb=int(row["LB"]), bk=row["K"],
+                sl_m=row["SL"], tp_overshoot=row["TP"], slip=slip_pts,
+                max_td=int(max_td), skip_o=int(skip_o), skip_c=int(skip_c),
+                timeout_bars=int(row["TO"]),
+                capital=opt_apex_capital, max_dd=opt_apex_dd,
+                daily_lim=opt_daily_lim, profit_target=opt_apex_target,
+                fixed_contracts=int(row["NC"]),
+            )
+            if len(t_df2) < 10:
+                continue
+
+            daily_arr = t_df2.groupby("date")["pnl"].sum().values
+            passed_mc2 = 0; busted_mc2 = 0
+
+            for _ in range(int(opt_mc_sims)):
+                days_s = np.random.choice(daily_arr, size=int(opt_mc_days), replace=True)
+                eq_mc = opt_apex_capital; pk_mc = opt_apex_capital
+                bust_mc = done_mc = False
+                for p in days_s:
+                    eq_mc += p
+                    if eq_mc > pk_mc: pk_mc = eq_mc
+                    if (pk_mc - eq_mc) >= opt_apex_dd: bust_mc = True; break
+                    if (eq_mc - opt_apex_capital) >= opt_apex_target: done_mc = True; break
+                if bust_mc: busted_mc2 += 1
+                elif done_mc: passed_mc2 += 1
+
+            pr2 = passed_mc2 / int(opt_mc_sims) * 100
+            br2 = busted_mc2 / int(opt_mc_sims) * 100
+
+            mc_results.append({**row.to_dict(), "PassRate": pr2, "BustRate": br2})
+
+        prog2.empty(); status2.empty()
+
+        if not mc_results:
+            st.error("Aucun resultat MC."); st.stop()
+
+        mc_df = pd.DataFrame(mc_results)
+
+        # ── Score final (avec PassRate) ───────────────────────────────
+        def final_score(r):
+            s = prelim_score(r)
+            # PassRate — poids majeur
+            pr = r["PassRate"]
+            if pr >= 60:   s += 6.0
+            elif pr >= 50: s += 4.5
+            elif pr >= 45: s += 3.5
+            elif pr >= 40: s += 2.5
+            elif pr >= 35: s += 1.5
+            elif pr >= 25: s += 0.5
+            # Penalite bust rate eleve
+            if r["BustRate"] > 20: s -= 2.0
+            elif r["BustRate"] > 10: s -= 0.5
+            return s
+
+        mc_df["ScoreFinal"] = mc_df.apply(final_score, axis=1)
+        mc_df = mc_df.sort_values("ScoreFinal", ascending=False).reset_index(drop=True)
+
+        # ── Sauvegarde dans session_state ─────────────────────────────
+        st.session_state["opt_result"] = mc_df
+
+    # ── Affichage resultats ───────────────────────────────────────────
+    if "opt_result" in st.session_state:
+        mc_df = st.session_state["opt_result"]
+        best  = mc_df.iloc[0]
+
+        st.markdown("---")
+
+        # KPI meilleure config
+        kc = st.columns(7)
+        kc[0].metric("Contrats", f"{int(best['NC'])} MNQ")
+        kc[1].metric("Pass Rate", f"{best['PassRate']:.0f}%",
+                     delta="objectif 50%" if best["PassRate"] >= 50 else f"ecart {50-best['PassRate']:.0f}%",
+                     delta_color="normal" if best["PassRate"] >= 45 else "inverse")
+        kc[2].metric("P&L / mois", f"${best['PnL_mois']:+,.0f}",
+                     delta="ok" if best["PnL_mois"] >= 3000 else f"ecart ${3000-best['PnL_mois']:,.0f}",
+                     delta_color="normal" if best["PnL_mois"] >= 3000 else "inverse")
+        kc[3].metric("Max DD", f"${best['MaxDD']:,.0f}",
+                     delta=f"buffer ${opt_apex_dd - best['MaxDD']:,.0f}", delta_color="normal")
+        kc[4].metric("PF", f"{best['PF']:.2f}",
+                     delta="ok" if best["PF"] >= 1.5 else "sous 1.5", delta_color="normal" if best["PF"] >= 1.5 else "inverse")
+        kc[5].metric("Trades / 5ans", f"{int(best['Trades'])}")
+        kc[6].metric("Sharpe", f"{best['Sharpe']:.2f}")
+
+        # Verdict
+        pr_best = best["PassRate"]
+        if pr_best >= 55:
+            st.success(
+                f"Config optimale trouvee : **{int(best['NC'])} MNQ** · "
+                f"Pass Rate {pr_best:.0f}% · P&L/mois ${best['PnL_mois']:+,.0f} · "
+                f"H={best['H']} K={best['K']} SL={best['SL']} TP={best['TP']} TO={int(best['TO'])} LB={int(best['LB'])}"
+            )
+        elif pr_best >= 42:
+            st.warning(
+                f"Config acceptable : **{int(best['NC'])} MNQ** · "
+                f"Pass Rate {pr_best:.0f}% (objectif 50%) · "
+                f"P&L/mois ${best['PnL_mois']:+,.0f} · "
+                f"H={best['H']} K={best['K']} SL={best['SL']} TP={best['TP']} TO={int(best['TO'])} LB={int(best['LB'])}"
+            )
+        else:
+            st.error(
+                f"Pass Rate max : **{pr_best:.0f}%** — objectif 45% non atteint. "
+                f"Cause : avec max 6 MNQ Apex eval, le P&L mensuel attendu reste "
+                f"inferieur au profit target. "
+                f"Solution : relance avec Band K 2.0-2.5 (plus de trades) — voir analyse ci-dessous."
+            )
+
+        # Parametres optimaux a copier
+        st.markdown('<div class="section-lbl">Parametres optimaux — a reporter dans la sidebar</div>',
+                    unsafe_allow_html=True)
+        pc1, pc2, pc3 = st.columns(3)
+        with pc1:
+            st.code(f"""Hurst threshold : {best['H']}
+Hurst window   : {int(hurst_win)} (inchange)
+Lookback       : {int(best['LB'])} barres
+Band K         : {best['K']} sigma""")
+        with pc2:
+            st.code(f"""SL mult        : {best['SL']}
+TP overshoot   : {best['TP']} sigma
+Timeout        : {int(best['TO'])} barres
+Contrats       : {int(best['NC'])} MNQ""")
+        with pc3:
+            st.code(f"""Pass Rate MC   : {best['PassRate']:.0f}%
+Bust Rate MC   : {best['BustRate']:.0f}%
+PF             : {best['PF']:.2f}
+Sharpe         : {best['Sharpe']:.2f}""")
+
+        # ── Tableau top 10 ────────────────────────────────────────────
+        st.markdown('<div class="section-lbl">Top 10 configurations</div>', unsafe_allow_html=True)
+
+        disp = mc_df[[
+            "NC","H","LB","K","SL","TP","TO",
+            "PF","WR","Sharpe","MaxDD","PnL_mois","Trades","PassRate","BustRate","ScoreFinal"
+        ]].head(10).copy()
+        disp.columns = [
+            "C","H","LB","K","SL","TP","TO",
+            "PF","WR","Sharpe","MaxDD$","P&L/mo","Trades","Pass%","Bust%","Score"
+        ]
+
+        def _color_row(row):
+            if row["Pass%"] >= 50:   bg = "#0d2b1a"
+            elif row["Pass%"] >= 40: bg = "#1a1a08"
+            else:                    bg = "#1a0808"
+            return [f"background-color:{bg}"] * len(row)
+
+        st.dataframe(
+            disp.style
+                .apply(_color_row, axis=1)
+                .format({
+                    "PF":"{:.2f}","WR":"{:.1%}","Sharpe":"{:.2f}",
+                    "MaxDD$":"${:,.0f}","P&L/mo":"${:+,.0f}",
+                    "Pass%":"{:.0f}%","Bust%":"{:.0f}%","Score":"{:.1f}",
+                })
+                .background_gradient(subset=["Pass%"], cmap="RdYlGn")
+                .background_gradient(subset=["Bust%"], cmap="RdYlGn_r"),
+            use_container_width=True, hide_index=True,
+        )
+
+        # ── Graphe Pass Rate vs P&L/mois (scatter) ───────────────────
+        st.markdown('<div class="section-lbl">Pass Rate vs P&L mensuel — top 30 configs</div>',
+                    unsafe_allow_html=True)
+
+        n_top = min(30, len(mc_df))
+        top_plot = mc_df.head(n_top)
+
+        marker_colors = [
+            GREEN if r >= 50 else YELLOW if r >= 40 else RED
+            for r in top_plot["PassRate"]
+        ]
+        marker_sizes = [8 + (s - mc_df["ScoreFinal"].min()) / max(1, mc_df["ScoreFinal"].max() - mc_df["ScoreFinal"].min()) * 12
+                        for s in top_plot["ScoreFinal"]]
+
+        fig_sc = go.Figure()
+        fig_sc.add_trace(go.Scatter(
+            x=top_plot["PnL_mois"],
+            y=top_plot["PassRate"],
+            mode="markers+text",
+            text=[f"{int(r['NC'])}C" for _, r in top_plot.iterrows()],
+            textposition="top center",
+            textfont=dict(size=9, color="#94a3b8"),
+            marker=dict(
+                size=marker_sizes,
+                color=marker_colors,
+                line=dict(color="rgba(255,255,255,0.2)", width=1),
+            ),
+            customdata=np.column_stack([
+                top_plot["H"], top_plot["K"], top_plot["SL"],
+                top_plot["TP"], top_plot["TO"], top_plot["PF"],
+                top_plot["MaxDD"], top_plot["Trades"]
+            ]),
+            hovertemplate=(
+                "P&L/mois: $%{x:,.0f}<br>"
+                "Pass Rate: %{y:.0f}%<br>"
+                "H=%{customdata[0]} K=%{customdata[1]}<br>"
+                "SL=%{customdata[2]} TP=%{customdata[3]}<br>"
+                "TO=%{customdata[4]:.0f} PF=%{customdata[5]:.2f}<br>"
+                "MaxDD=$%{customdata[6]:,.0f} Trades=%{customdata[7]:.0f}"
+                "<extra></extra>"
+            ),
+        ))
+        fig_sc.add_hline(y=50, line=dict(color=GREEN, dash="dash", width=1),
+                         annotation_text="Pass 50%")
+        fig_sc.add_hline(y=45, line=dict(color=YELLOW, dash="dash", width=1),
+                         annotation_text="Pass 45%")
+        fig_sc.add_vline(x=3000, line=dict(color=TEAL, dash="dot", width=1),
+                         annotation_text="$3 000/mois")
+        fig_sc.update_layout(**DARK, height=420,
+                             xaxis=dict(title="P&L / mois ($)", tickformat="$,.0f"),
+                             yaxis=dict(title="Pass Rate (%)", range=[0, 100], ticksuffix="%"),
+                             title="Scatter Pass Rate vs P&L mensuel — taille = score, couleur = viabilite")
+        st.plotly_chart(fig_sc, use_container_width=True)
+
+        # ── Analyse par nombre de contrats ────────────────────────────
+        st.markdown('<div class="section-lbl">Synthese par nombre de contrats (top 30)</div>',
+                    unsafe_allow_html=True)
+
+        contract_grp = mc_df.head(n_top).groupby("NC").agg(
+            PassRate_max=("PassRate","max"),
+            PassRate_moy=("PassRate","mean"),
+            PnL_mois_max=("PnL_mois","max"),
+            MaxDD_min=("MaxDD","min"),
+            MaxDD_max=("MaxDD","max"),
+            PF_max=("PF","max"),
+            n_configs=("ScoreFinal","count"),
+        ).reset_index()
+
+        fig_nc = make_subplots(specs=[[{"secondary_y": True}]])
+        nc_colors = [GREEN if r >= 50 else YELLOW if r >= 40 else RED
+                     for r in contract_grp["PassRate_max"]]
+        fig_nc.add_trace(go.Bar(
+            x=contract_grp["NC"].astype(str) + " MNQ",
+            y=contract_grp["PassRate_max"],
+            name="Pass Rate max",
+            marker_color=nc_colors,
+            text=[f"{v:.0f}%" for v in contract_grp["PassRate_max"]],
+            textposition="outside",
+        ), secondary_y=False)
+        fig_nc.add_trace(go.Scatter(
+            x=contract_grp["NC"].astype(str) + " MNQ",
+            y=contract_grp["MaxDD_max"],
+            name="Max DD $ (max)",
+            mode="lines+markers",
+            line=dict(color=RED, width=2, dash="dot"),
+            marker=dict(size=8, color=RED),
+        ), secondary_y=True)
+        fig_nc.add_hline(y=45, line=dict(color=GREEN, dash="dash"),
+                         annotation_text="Pass 45%", secondary_y=False)
+        fig_nc.add_hline(y=opt_apex_dd,
+                         line=dict(color=RED, dash="dash"),
+                         annotation_text=f"DD max ${opt_apex_dd:,.0f}",
+                         secondary_y=True)
+        fig_nc.update_layout(**DARK, height=320,
+                             title="Pass Rate max et Max DD par nombre de contrats")
+        fig_nc.update_yaxes(title_text="Pass Rate max (%)", range=[0, 100],
+                            ticksuffix="%", secondary_y=False)
+        fig_nc.update_yaxes(title_text="Max DD ($)", tickformat="$,.0f", secondary_y=True)
+        st.plotly_chart(fig_nc, use_container_width=True)
+
+        # ── Export config optimale ────────────────────────────────────
+        st.markdown('<div class="section-lbl">Export</div>', unsafe_allow_html=True)
+        import json as _json
+        export_dict = {
+            "date": pd.Timestamp.now().isoformat(),
+            "hurst_threshold": float(best["H"]),
+            "hurst_win": int(hurst_win),
+            "lookback": int(best["LB"]),
+            "band_k": float(best["K"]),
+            "sl_mult": float(best["SL"]),
+            "tp_overshoot": float(best["TP"]),
+            "timeout_bars": int(best["TO"]),
+            "contracts": int(best["NC"]),
+            "slip_pts": float(slip_pts),
+            "n_trades": int(best["Trades"]),
+            "win_rate": round(float(best["WR"]), 4),
+            "profit_factor": round(float(best["PF"]), 4),
+            "sharpe": round(float(best["Sharpe"]), 4),
+            "max_dd_dollar": round(float(best["MaxDD"]), 2),
+            "pnl_5ans": round(float(best["PnL_5ans"]), 2),
+            "pnl_mois": round(float(best["PnL_mois"]), 2),
+            "pass_rate_mc": round(float(best["PassRate"]), 1),
+            "bust_rate_mc": round(float(best["BustRate"]), 1),
+            "mc_sims": int(opt_mc_sims),
+            "mc_days": int(opt_mc_days),
+            "apex_dd_limit": int(opt_apex_dd),
+            "apex_target": int(opt_apex_target),
+            "capital": int(opt_apex_capital),
+        }
+        ec1, ec2 = st.columns(2)
+        with ec1:
+            ts_ = pd.Timestamp.now().strftime("%Y%m%d_%H%M")
+            st.download_button(
+                "Telecharger config optimale (JSON)",
+                data=_json.dumps(export_dict, indent=2),
+                file_name=f"hurst_mr_optimal_{ts_}.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+        with ec2:
+            csv_top = mc_df.head(20).to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Telecharger top 20 configs (CSV)",
+                data=csv_top,
+                file_name=f"hurst_mr_top20_{ts_}.json",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+    else:
+        st.info("Configure les plages et clique **Lancer Optimisation Complete**.")

@@ -6,7 +6,6 @@ import os, json, time
 from pathlib import Path
 from datetime import datetime, timezone
 
-st.set_page_config(page_title="Démarrage", page_icon="🚀", layout="wide")
 from styles import inject as _inj; _inj()
 from streamlit_autorefresh import st_autorefresh
 from config import DXFEED_FILE

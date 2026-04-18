@@ -14,6 +14,7 @@ ROOT = Path(__file__).parent
 _TMP = Path("C:/tmp")
 DXFEED_FILE  = os.environ.get("DXFEED_FILE",  str(_TMP / "mnq_live.json"))
 JOURNAL_DB   = os.environ.get("JOURNAL_DB",   str(Path(tempfile.gettempdir()) / "mnq_journal.db"))
+SOL_JOURNAL_DB = os.environ.get("SOL_JOURNAL_DB", str(ROOT / "sol_journal.db"))
 
 # ── Données historiques (backtests) ───────────────────────────────────
 MNQ_CSV = os.environ.get(

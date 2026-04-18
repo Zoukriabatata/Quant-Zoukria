@@ -1,0 +1,29 @@
+name: SOL Signal Alert
+
+on:
+  schedule:
+    - cron: '0 22 * * *'   # 22h00 UTC = 00h00 Paris (clôture daily Binance)
+  workflow_dispatch:         # Déclenchement manuel depuis GitHub
+
+jobs:
+  check-signal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests pandas numpy statsmodels
+
+      - name: Run SOL signal check
+        env:
+          SOL_NTFY_TOPIC: ${{ secrets.SOL_NTFY_TOPIC }}
+          SOL_DISCORD_URL: ${{ secrets.SOL_DISCORD_URL }}
+        run: python alert_cron.py
