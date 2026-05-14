@@ -20,6 +20,8 @@
 # ou lancer JupyterLab depuis la racine du repo).
 
 # %%
+from __future__ import annotations
+
 import sys
 from functools import partial
 from pathlib import Path
@@ -28,6 +30,11 @@ import pandas as pd
 
 # Ce script s'exécute depuis la racine du repo. 01_research/ sur le path pour `import src...`.
 _RESEARCH_ROOT = Path('01_research').resolve()
+if not _RESEARCH_ROOT.is_dir():
+    raise RuntimeError(
+        f"01_research/ introuvable ({_RESEARCH_ROOT}). "
+        "Lancer ce script / JupyterLab depuis la racine du repo."
+    )
 if str(_RESEARCH_ROOT) not in sys.path:
     sys.path.insert(0, str(_RESEARCH_ROOT))
 
@@ -43,7 +50,7 @@ from src.backtest import (backtest_apex, compute_trade_metrics, simulate_apex_cy
                           exit_logic_time_stop, exit_logic_trailing_std,
                           exit_logic_hybrid_zscore_time)
 
-OUT_DIR = Path('01_research/outputs/sprint_exit')
+OUT_DIR = _RESEARCH_ROOT / 'outputs' / 'sprint_exit'
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Coût round-trip MNQ : commission 1.10 + slippage 1 tick (0.25 pt * 2.00 $ = 0.50)
@@ -62,14 +69,14 @@ MINIVAL4 = {
 }
 
 # %%
-def prepare_tf(rule: str) -> pd.DataFrame:
+def prepare_tf(rule: str, lookback: int = 20) -> pd.DataFrame:
     """Charge MNQ M1, resample au TF, ajoute colonnes temporelles, filtre session NY,
-    calcule mid/std/zscore. Pipeline identique à mini-val #4."""
+    calcule mid/std/zscore. Pipeline identique à mini-val #4 (lookback=20)."""
     df_m1 = load_continuous(INSTRUMENTS['MNQ']['path'], 'MNQ')
     df_tf = resample_ohlcv(df_m1, rule)
     df_tf = add_temporal_columns(df_tf)
     df_sess = filter_session_ny(df_tf)
-    df_feat = compute_signal_features(df_sess, lookback=20)
+    df_feat = compute_signal_features(df_sess, lookback=lookback)
     return df_feat
 
 
