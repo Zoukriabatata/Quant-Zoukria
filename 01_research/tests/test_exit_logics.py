@@ -49,3 +49,37 @@ def test_fixed_tp_std_no_hit():
         or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
         tp_std_mult=0.5)
     assert touched is False
+
+
+def test_time_stop_fires_at_cutoff():
+    # j=1 : close_min_ny = 15*60 + 50 + 5 = 955 >= 955 -> exit MTM au close
+    df = pd.DataFrame({'hour_ny': [15, 15], 'min_ny': [45, 50], 'close': [100.0, 101.0]})
+    touched, price, reason = exit_logic_time_stop(
+        df, i=0, j=1, direction=1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        exit_ny_min=955, bar_size_min=5)
+    assert touched is True
+    assert price == 101.0
+    assert reason == 'time_stop'
+
+
+def test_time_stop_silent_before_cutoff():
+    # j=1 : close_min_ny = 15*60 + 40 + 5 = 945 < 955 -> pas d'exit
+    df = pd.DataFrame({'hour_ny': [15, 15], 'min_ny': [30, 40], 'close': [100.0, 101.0]})
+    touched, price, reason = exit_logic_time_stop(
+        df, i=0, j=1, direction=1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        exit_ny_min=955, bar_size_min=5)
+    assert touched is False
+
+
+def test_time_stop_15min_cutoff_945():
+    # 15min : close_min_ny = 15*60 + 30 + 15 = 945 >= 945 -> exit
+    df = pd.DataFrame({'hour_ny': [15, 15], 'min_ny': [15, 30], 'close': [100.0, 102.0]})
+    touched, price, reason = exit_logic_time_stop(
+        df, i=0, j=1, direction=-1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        exit_ny_min=945, bar_size_min=15)
+    assert touched is True
+    assert price == 102.0
+    assert reason == 'time_stop'

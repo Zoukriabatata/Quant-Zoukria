@@ -248,27 +248,6 @@ def exit_logic_orb(df, i, j, direction, entry_price, std_i, mid_i,
     return False, 0.0, ''
 
 
-def exit_logic_time_stop(df, i, j, direction, entry_price, std_i, mid_i,
-                         or_high, or_low, or_range, sl_pts,
-                         **kwargs):
-    """Stub — Task 3. Not implemented yet."""
-    raise NotImplementedError("exit_logic_time_stop: Task 3 non encore implémentée")
-
-
-def exit_logic_trailing_std(df, i, j, direction, entry_price, std_i, mid_i,
-                            or_high, or_low, or_range, sl_pts,
-                            **kwargs):
-    """Stub — Task 4. Not implemented yet."""
-    raise NotImplementedError("exit_logic_trailing_std: Task 4 non encore implémentée")
-
-
-def exit_logic_hybrid_zscore_time(df, i, j, direction, entry_price, std_i, mid_i,
-                                  or_high, or_low, or_range, sl_pts,
-                                  **kwargs):
-    """Stub — Task 5. Not implemented yet."""
-    raise NotImplementedError("exit_logic_hybrid_zscore_time: Task 5 non encore implémentée")
-
-
 def exit_logic_fixed_tp_std(df, i, j, direction, entry_price, std_i, mid_i,
                             or_high, or_low, or_range, sl_pts,
                             tp_std_mult: float = 0.75):
@@ -284,3 +263,32 @@ def exit_logic_fixed_tp_std(df, i, j, direction, entry_price, std_i, mid_i,
     if tp_touched:
         return True, tp_price, 'TP_fixed_std'
     return False, 0.0, ''
+
+
+def exit_logic_time_stop(df, i, j, direction, entry_price, std_i, mid_i,
+                         or_high, or_low, or_range, sl_pts,
+                         exit_ny_min: int = 955, bar_size_min: int = 5):
+    """Exit temps fixe : flat MTM au close de la 1ère barre dont close >= exit_ny_min NY.
+
+    exit_ny_min est calibré une barre avant le force-flat Apex (959) :
+    5min -> 955 (barre 15:50->15:55), 15min -> 945 (barre 15:30->15:45).
+    Ignore le z-score : teste si le drift entrée->close paie seul. Config C5 du sprint.
+    """
+    close_min_ny = df.at[j, 'hour_ny'] * 60 + df.at[j, 'min_ny'] + bar_size_min
+    if close_min_ny >= exit_ny_min:
+        return True, df.at[j, 'close'], 'time_stop'
+    return False, 0.0, ''
+
+
+def exit_logic_trailing_std(df, i, j, direction, entry_price, std_i, mid_i,
+                            or_high, or_low, or_range, sl_pts,
+                            **kwargs):
+    """Stub — Task 4. Pas encore implémenté."""
+    raise NotImplementedError("exit_logic_trailing_std: Task 4 non encore implémentée")
+
+
+def exit_logic_hybrid_zscore_time(df, i, j, direction, entry_price, std_i, mid_i,
+                                  or_high, or_low, or_range, sl_pts,
+                                  **kwargs):
+    """Stub — Task 5. Pas encore implémenté."""
+    raise NotImplementedError("exit_logic_hybrid_zscore_time: Task 5 non encore implémentée")
