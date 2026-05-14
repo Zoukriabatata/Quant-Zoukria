@@ -84,3 +84,53 @@ def signal_orb(df: pd.DataFrame,
     out.loc[valid & (out['close'] > out['or_high']), 'signal'] = +1
     out.loc[valid & (out['close'] < out['or_low']), 'signal']  = -1
     return out
+
+
+def signal_opening_drive_failure(df: pd.DataFrame,
+                                 window_end_min: int = 630,
+                                 gap_threshold: float = 0.5,
+                                 spike_min: float = 15.0,
+                                 rejet_seuil: float = 0.66,
+                                 relvol_seuil: float = 1.0) -> pd.DataFrame:
+    """Signal Opening Drive Failure Fade : fade le faux spike d'open (cf. spec 2026-05-15).
+
+    Down-spike -> LONG, up-spike -> SHORT, déclenché quand 5 conditions s'alignent :
+    gap overnight significatif, spike notable, rejet de bougie (exhaustion), régime de
+    volatilité élevé, confirmation volume. Comparaisons avec NaN -> False -> signal 0.
+
+    Nécessite les colonnes (via compute_features_opening_drive) : gap_z,
+    spike_magnitude, rejection_body, vol_regime, relvol_open, hour_ny, min_ny.
+
+    Args:
+        window_end_min: fin de la fenêtre en minutes NY locales (600 = 10:00, 630 = 10:30).
+        gap_threshold: |gap_z| minimum (en σ) pour un setup valide.
+        spike_min: déplacement minimum (points) du close vs open_ref.
+        rejet_seuil: rejection_body minimum pour un rejet de down-spike (LONG).
+        relvol_seuil: relvol_open minimum (confirmation volume).
+
+    Returns: copy de df + colonne 'signal' (+1 LONG, -1 SHORT, 0 none).
+    """
+    out = df.copy()
+    out['signal'] = 0
+    ny_min = out['hour_ny'] * 60 + out['min_ny']
+    in_window = (ny_min >= 9 * 60 + 30) & (ny_min < window_end_min)
+
+    long_cond = (
+        in_window
+        & (out['gap_z'] <= -gap_threshold)
+        & (out['spike_magnitude'] <= -spike_min)
+        & (out['rejection_body'] >= rejet_seuil)
+        & (out['vol_regime'])
+        & (out['relvol_open'] >= relvol_seuil)
+    )
+    short_cond = (
+        in_window
+        & (out['gap_z'] >= gap_threshold)
+        & (out['spike_magnitude'] >= spike_min)
+        & (out['rejection_body'] <= 1.0 - rejet_seuil)
+        & (out['vol_regime'])
+        & (out['relvol_open'] >= relvol_seuil)
+    )
+    out.loc[long_cond, 'signal'] = 1
+    out.loc[short_cond, 'signal'] = -1
+    return out
