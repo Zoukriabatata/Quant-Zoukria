@@ -106,3 +106,35 @@ def run_config(df_split: pd.DataFrame, exit_logic, bar_size_min: int, timeout_ba
                            bar_size_min=bar_size_min, timeout_bars=timeout_bars,
                            apex_constraints=True)
     return compute_trade_metrics(trades), trades
+
+
+# %% [markdown]
+# ## Contrôle C0 — fidélité du harness
+#
+# La config C0 (exit z-score ±0.5) doit reproduire les chiffres Apex-compliant de
+# mini-validation #4. Si l'assertion échoue, le harness `src/` a divergé du pipeline
+# inline de mini-val #4 — STOP, investiguer avant de faire confiance à C1-C7.
+
+# %%
+# Cache des DataFrames préparés par TF (réutilisés par la grille complète)
+_PREPARED = {tf: prepare_tf(TF_PARAMS[tf]['rule']) for tf in TF_PARAMS}
+
+
+def split_train(df):
+    return df.loc[(df.index >= TRAIN_START) & (df.index < TRAIN_END)].copy()
+
+
+def split_valid(df):
+    return df.loc[(df.index >= VALID_START) & (df.index < VALID_END)].copy()
+
+
+for tf, p in TF_PARAMS.items():
+    df_train = split_train(_PREPARED[tf])
+    configs = build_exit_configs(p['bar_size_min'], p['exit_ny_min'])
+    m, _ = run_config(df_train, configs['C0_zscore_0.5'], p['bar_size_min'], p['timeout_bars'])
+    ref = MINIVAL4[tf]
+    assert m['trades'] == ref['trades'], (
+        f"C0 {tf} : {m['trades']} trades vs mini-val #4 {ref['trades']} — HARNESS DIVERGÉ")
+    assert abs(m['pf'] - ref['pf']) / ref['pf'] < 0.02, (
+        f"C0 {tf} : PF {m['pf']:.4f} vs mini-val #4 {ref['pf']} — HARNESS DIVERGÉ")
+    print(f"C0 {tf} OK : {m['trades']} trades, PF {m['pf']:.4f} (réf {ref['pf']})")
