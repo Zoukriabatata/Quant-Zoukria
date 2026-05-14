@@ -28,6 +28,11 @@ from pathlib import Path
 
 import pandas as pd
 
+# Console Windows en cp1252 ne peut pas imprimer les emojis du rapport — forcer UTF-8.
+# hasattr : sys.stdout n'a pas toujours .reconfigure (ex: exécution via nbconvert).
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
 # Ce script s'exécute depuis la racine du repo. 01_research/ sur le path pour `import src...`.
 _RESEARCH_ROOT = Path('01_research').resolve()
 if not _RESEARCH_ROOT.is_dir():
@@ -272,6 +277,5 @@ lines.append('- Holdout 2025-05→2026-05 INTOUCHÉ.')
 
 report = '\n'.join(lines)
 (OUT_DIR / 'sprint_exit_report.md').write_text(report, encoding='utf-8')
-sys.stdout.buffer.write((report + '\n').encode('utf-8', errors='replace'))
-sys.stdout.buffer.flush()
+print(report)
 print(f"\nRapport écrit : {OUT_DIR / 'sprint_exit_report.md'}")
