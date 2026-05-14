@@ -147,3 +147,57 @@ for tf, p in TF_PARAMS.items():
     assert abs(m['pf'] - ref['pf']) / ref['pf'] < 0.02, (
         f"C0 {tf} : PF {m['pf']:.4f} vs mini-val #4 {ref['pf']} — HARNESS DIVERGÉ")
     print(f"C0 {tf} OK : {m['trades']} trades, PF {m['pf']:.4f} (réf {ref['pf']})")
+
+# %% [markdown]
+# ## Grille complète — 8 configs × 2 TF (16 trials)
+#
+# Chaque config backtestée sur Train. Gate de promotion : PF > 1.5 ET Sharpe > 1.0 ET
+# avg_trade > coût round-trip, sur Train Apex-compliant. Les configs qui passent le gate
+# Train sont re-backtestées sur Valid (walk-forward).
+
+# %%
+N_TRIALS = 0
+rows = []
+trades_by_key = {}
+
+for tf, p in TF_PARAMS.items():
+    df_train = split_train(_PREPARED[tf])
+    df_valid = split_valid(_PREPARED[tf])
+    configs = build_exit_configs(p['bar_size_min'], p['exit_ny_min'])
+    for name, exit_logic in configs.items():
+        N_TRIALS += 1
+        m_tr, tr_tr = run_config(df_train, exit_logic, p['bar_size_min'], p['timeout_bars'])
+        gate_train = (m_tr['pf'] > 1.5 and m_tr['sharpe'] > 1.0
+                      and m_tr['avg_trade'] > RT_COST)
+        row = {
+            'config': name, 'tf': tf,
+            'train_trades': m_tr['trades'], 'train_pf': m_tr['pf'],
+            'train_sharpe': m_tr['sharpe'], 'train_max_dd': m_tr['max_dd'],
+            'train_wr': m_tr['wr'], 'train_pnl': m_tr['pnl'],
+            'train_avg_trade': m_tr['avg_trade'], 'gate_train': gate_train,
+        }
+        trades_by_key[(name, tf, 'train')] = tr_tr
+        if gate_train:
+            m_va, tr_va = run_config(df_valid, exit_logic, p['bar_size_min'], p['timeout_bars'])
+            row.update({
+                'valid_trades': m_va['trades'], 'valid_pf': m_va['pf'],
+                'valid_sharpe': m_va['sharpe'], 'valid_max_dd': m_va['max_dd'],
+                'valid_wr': m_va['wr'], 'valid_pnl': m_va['pnl'],
+                'valid_avg_trade': m_va['avg_trade'],
+                'promoted': (m_va['pf'] >= 1.3 and m_va['sharpe'] > 0),
+            })
+            trades_by_key[(name, tf, 'valid')] = tr_va
+        else:
+            row.update({
+                'valid_trades': None, 'valid_pf': None, 'valid_sharpe': None,
+                'valid_max_dd': None, 'valid_wr': None, 'valid_pnl': None,
+                'valid_avg_trade': None, 'promoted': False,
+            })
+        rows.append(row)
+        print(f"{name:18} {tf:5} | Train PF {m_tr['pf']:.2f} Sharpe {m_tr['sharpe']:+.2f} "
+              f"avg ${m_tr['avg_trade']:+.2f} | gate={gate_train} promoted={row['promoted']}")
+
+ranking = pd.DataFrame(rows).sort_values(
+    ['promoted', 'train_pf'], ascending=[False, False]).reset_index(drop=True)
+ranking.to_csv(OUT_DIR / 'ranking.csv', index=False)
+print(f"\nn_trials = {N_TRIALS} | ranking.csv écrit ({len(ranking)} lignes)")
