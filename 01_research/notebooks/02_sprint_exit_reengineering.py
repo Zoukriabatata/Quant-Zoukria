@@ -158,7 +158,6 @@ for tf, p in TF_PARAMS.items():
 # %%
 N_TRIALS = 0
 rows = []
-trades_by_key = {}
 
 for tf, p in TF_PARAMS.items():
     df_train = split_train(_PREPARED[tf])
@@ -166,7 +165,7 @@ for tf, p in TF_PARAMS.items():
     configs = build_exit_configs(p['bar_size_min'], p['exit_ny_min'])
     for name, exit_logic in configs.items():
         N_TRIALS += 1
-        m_tr, tr_tr = run_config(df_train, exit_logic, p['bar_size_min'], p['timeout_bars'])
+        m_tr, _ = run_config(df_train, exit_logic, p['bar_size_min'], p['timeout_bars'])
         gate_train = (m_tr['pf'] > 1.5 and m_tr['sharpe'] > 1.0
                       and m_tr['avg_trade'] > RT_COST)
         row = {
@@ -176,9 +175,8 @@ for tf, p in TF_PARAMS.items():
             'train_wr': m_tr['wr'], 'train_pnl': m_tr['pnl'],
             'train_avg_trade': m_tr['avg_trade'], 'gate_train': gate_train,
         }
-        trades_by_key[(name, tf, 'train')] = tr_tr
         if gate_train:
-            m_va, tr_va = run_config(df_valid, exit_logic, p['bar_size_min'], p['timeout_bars'])
+            m_va, _ = run_config(df_valid, exit_logic, p['bar_size_min'], p['timeout_bars'])
             row.update({
                 'valid_trades': m_va['trades'], 'valid_pf': m_va['pf'],
                 'valid_sharpe': m_va['sharpe'], 'valid_max_dd': m_va['max_dd'],
@@ -186,7 +184,6 @@ for tf, p in TF_PARAMS.items():
                 'valid_avg_trade': m_va['avg_trade'],
                 'promoted': (m_va['pf'] >= 1.3 and m_va['sharpe'] > 0),
             })
-            trades_by_key[(name, tf, 'valid')] = tr_va
         else:
             row.update({
                 'valid_trades': None, 'valid_pf': None, 'valid_sharpe': None,
