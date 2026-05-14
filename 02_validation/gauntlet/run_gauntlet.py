@@ -11,16 +11,19 @@ Ce fichier est construit en 3 tasks : préparation (T3), helpers grille (T4), ru
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from src.config import TRAIN_START, VALID_END
 from src.instruments import INSTRUMENTS
 from src.data_loader import (load_continuous, resample_ohlcv,
                              add_temporal_columns, filter_session_ny)
+from src.backtest import compute_trade_metrics
 
 from gauntlet.pa_account import PaAccount
 from gauntlet.backtest import backtest_pa
 from gauntlet.splits import split_train, split_valid, split_holdout
+from gauntlet.deflated_sharpe import probability_backtest_overfitting
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -94,3 +97,78 @@ def make_run_variant(hypothesis):
         return trades, account
 
     return run_variant
+
+
+# ════════════════════════════════════════════════════════════════════
+# Helpers de grille
+# ════════════════════════════════════════════════════════════════════
+
+def _extract_embargo(hypothesis) -> int:
+    """Embargo (barres) = le plus grand timeout_bars de la grille.
+
+    Un trade dure au plus timeout_bars barres ; on purge donc cette durée entre les splits
+    pour qu'aucun trade ouvert en fin de fenêtre ne déborde sur la suivante.
+    """
+    timeouts = []
+    for params in hypothesis.param_grid:
+        _, _, bt_kwargs = hypothesis.build_variant(params)
+        timeouts.append(int(bt_kwargs.get("timeout_bars", 0)))
+    return max(timeouts) if timeouts else 0
+
+
+def _run_grid_on(df: pd.DataFrame, hypothesis, run_variant) -> list:
+    """Lance chaque variant de la grille sur df.
+
+    Returns:
+        list alignée sur param_grid : [{params, trades, account, metrics}, ...].
+    """
+    results = []
+    for params in hypothesis.param_grid:
+        trades, account = run_variant(df, params)
+        results.append({
+            "params": params, "trades": trades, "account": account,
+            "metrics": compute_trade_metrics(trades),
+        })
+    return results
+
+
+def _select_best_on_train(train_results: list) -> tuple:
+    """Sélectionne le meilleur variant par Sharpe sur Train.
+
+    Args:
+        train_results: sortie de _run_grid_on sur le split Train.
+
+    Returns:
+        (best_params, best_index, train_sharpes). train_sharpes alimente le sr_variance
+        du Deflated Sharpe. Un variant sans trade marque -inf (jamais sélectionné sauf si
+        tous vides — auquel cas le premier gagne).
+    """
+    sharpes = [r["metrics"]["sharpe"] if r["metrics"]["trades"] > 0 else float("-inf")
+               for r in train_results]
+    best_index = int(np.argmax(sharpes))
+    return train_results[best_index]["params"], best_index, sharpes
+
+
+def _compute_pbo(fulltv_results: list, n_splits: int = 10):
+    """PBO sur la matrice (jours × variants) des PnL journaliers des variants sur full_tv.
+
+    Args:
+        fulltv_results: sortie de _run_grid_on sur full_tv.
+        n_splits: nombre de blocs temporels du PBO combinatoire.
+
+    Returns:
+        float PBO, ou None si < 2 variants (PBO indéfini) ou matrice plus courte que n_splits.
+    """
+    if len(fulltv_results) < 2:
+        return None
+    daily_panel = {}
+    for i, r in enumerate(fulltv_results):
+        tr = r["trades"]
+        if len(tr) == 0:
+            daily_panel[i] = pd.Series(dtype=float)
+        else:
+            daily_panel[i] = tr.groupby("date")["pnl_usd"].sum()
+    pnl_matrix_df = pd.DataFrame(daily_panel).fillna(0.0)
+    if len(pnl_matrix_df) < n_splits:
+        return None
+    return float(probability_backtest_overfitting(pnl_matrix_df.to_numpy(), n_splits=n_splits))
