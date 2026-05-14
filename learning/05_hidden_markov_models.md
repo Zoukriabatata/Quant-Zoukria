@@ -1,7 +1,7 @@
-# 05 — Hidden Markov Models (HMM)
-# "Detecter le regime de marche"
+# 05 — HMM : Detecter le regime de marche cache
+# "Pourquoi le marche change d'humeur sans prevenir"
 
-> **Video :** [Hidden Markov Models for Quant Finance — Roman Paolucci](https://youtu.be/Bru4Mkr601Q)
+> **Source :** [Quant Guild #51 — Hidden Markov Models](https://youtu.be/Bru4Mkr601Q)
 
 ---
 
@@ -9,277 +9,138 @@
 # APPRENTISSAGE — C'est quoi ? Pourquoi ?
 # ============================================
 
-## Le probleme
+## L'intuition en 30 secondes
 
-Le marche n'est pas toujours pareil. Certains jours c'est calme,
-d'autres c'est le chaos. Ton edge ne marche pas
-pareil dans les deux cas.
+Le marche a des **humeurs cachees** que tu ne peux pas voir directement :
+- **Bull regime** : prix qui monte regulierement, vol basse
+- **Bear regime** : prix qui baisse, vol elevee
+- **Sideways/Range** : prix qui oscille, vol moderee
+- **Crash** : chute violente, vol explosee
 
-```
-REGIME 1 (calme) :          REGIME 2 (volatile) :
-  ___---___---___            /\    /\
-                              \  /  \/\  /\
-                               \/       \/
+Ces humeurs sont **cachees** (hidden) — tu ne peux les observer que via leurs **consequences** (prix, vol).
 
-  Ton signal                  Ton signal
-  marche bien ici             peut se faire
-                              ecraser ici
-```
+**HMM (Hidden Markov Model)** = methode mathematique pour deviner l'humeur cachee actuelle a partir des observations.
 
-**Le probleme :** tu ne VOIS PAS directement le regime.
-Tu vois juste le prix. Le regime est CACHE (hidden).
+---
 
-## L'idee du HMM
+## Comment ca relie a ton edge
 
-Le marche a des "etats caches" qui influencent ce que tu observes.
+Ton edge HURST_MR fait deja une **detection de regime simplifiee** :
+- Hurst < 0.58 → regime "MR" (humeur favorable a ta strategie)
+- Hurst >= 0.58 → regime "non-MR" (humeur defavorable)
 
-**ETATS CACHES** (que tu ne vois pas) : Bull, Bear, Sideways
+C'est un HMM **a 2 etats** (MR/pas-MR) avec Hurst comme observation. **Simple mais efficace.**
 
-Ces etats determinent les REGLES du jeu :
-- En Bull : rendements positifs, vol moderee
-- En Bear : rendements negatifs, vol elevee
-- En Sideways : rendements $\sim 0$, vol faible
+Un HMM complet pourrait avoir 4-5 etats (Bull-MR, Bull-Trend, Bear-MR, Bear-Trend, Crash) avec des transitions probabilistes entre eux. **Plus complexe mais pas necessairement meilleur**.
 
-**OBSERVATIONS** (ce que tu vois) :
-$+0.5\%,\; -0.2\%,\; +0.8\%,\; -3.2\%,\; -1.5\%,\; +0.1\%, \ldots$
+---
 
-**LE DEFI :** A partir des observations (rendements), deviner dans quel etat cache on est.
+## La propriete de Markov (concept central)
 
-## Analogie : la meteo interieure
+> **L'avenir ne depend que du present, pas du passe.**
 
-```
-Tu es dans un bureau SANS FENETRE.
-Tu ne vois PAS le temps qu'il fait (= etat cache).
+En clair : pour predire l'humeur de demain, tu n'as besoin que de l'humeur d'aujourd'hui. Pas besoin de remonter a la semaine derniere.
 
-Mais tu observes les gens qui arrivent :
-  - Parapluie ? --> probablement qu'il pleut
-  - Lunettes de soleil ? --> probablement beau temps
-  - Veste ? --> probablement nuageux
+Cette propriete est **fausse en general** sur les marches (l'historique compte). Mais elle est **suffisamment vraie a court terme** (heure/jour) pour que HMM marche.
 
-L'HMM fait pareil :
-  Il observe les RENDEMENTS (= parapluies)
-  Et deduit le REGIME (= meteo) le plus probable.
-```
+---
+
+## Pourquoi c'est revolutionnaire
+
+Avant HMM, on supposait que les parametres du marche (vol, retours) etaient **constants**. Erreur fondamentale : le marche change de regime.
+
+HMM permet :
+1. **Detecter automatiquement** quand le regime change
+2. **Adapter la strategie** au regime detecte
+3. **Anticiper** la duree probable du regime actuel
 
 ---
 
 # ============================================
-# MODEL — Les maths
+# MODEL — Les maths derriere (simplifie)
 # ============================================
 
-## Etape 1 : Chaines de Markov (les fondations)
+## Les 3 elements d'un HMM
 
-**Propriete de Markov :**
-"L'etat de demain depend UNIQUEMENT de l'etat d'aujourd'hui"
-(pas d'hier, pas d'avant-hier)
+### 1. Les etats caches (S)
+Exemple a 3 etats : `S = {Bull, Bear, Range}`
 
-```
-Aujourd'hui = Bull
-
-  Demain ?
-  +---> Bull (85% de chance)     <-- le regime persiste souvent
-  +---> Bear (10% de chance)     <-- changement rare
-  +---> Sideways (5% de chance)  <-- changement rare
-```
-
-On ecrit ca dans une **matrice de transition** $A$ :
-
-|  | $\to$ Bull | $\to$ Bear | $\to$ Side |
-|---|-----------|-----------|-----------|
-| **Bull** | 0.85 | 0.10 | 0.05 |
-| **Bear** | 0.10 | 0.80 | 0.10 |
-| **Side** | 0.15 | 0.10 | 0.75 |
-
-Lecture : "Si on est en Bull, on a 85% de chance de rester en Bull demain."
-
-**REMARQUE IMPORTANTE :**
-Les diagonales sont GRANDES (0.75–0.85)
-$\to$ les regimes PERSISTENT (ils ne changent pas tout le temps).
-C'est realiste : un marche bullish ne devient pas bearish en 1 jour.
-
-## Etape 2 : Les distributions conditionnelles
-
-Chaque etat a sa propre distribution de rendements :
-
-| Etat | Distribution | Interpretation |
-|------|-------------|----------------|
-| Bull | $\mathcal{N}(+0.1\%,\; 1.5\%)$ | Centree sur +0.1% (positif), vol petite (calme) |
-| Bear | $\mathcal{N}(-0.5\%,\; 3.0\%)$ | Centree sur -0.5% (negatif), vol GRANDE (volatile) |
-| Sideways | $\mathcal{N}(0\%,\; 1.0\%)$ | Centree sur 0% (pas de direction), vol tres petite |
+### 2. La matrice de transition (A)
+Probabilites de passer d'un etat a un autre :
 
 ```
-ETAT BULL :
-      ___
-     / | \
-    /  |  \       <-- centree sur +0.1% (positif)
-   /   |   \          ecart-type petit (calme)
-  /____|____\
-  -3%  0  +3%
-
-ETAT BEAR :
-    ___
-   / | \
-  /  |  \         <-- centree sur -0.5% (negatif)
- /   |   \            ecart-type GRAND (volatile)
-/____|________\
--8% -3%  0  +3%
-
-ETAT SIDEWAYS :
-       _
-      /|\
-     / | \        <-- centree sur 0% (pas de direction)
-    /  |  \           ecart-type tres petit (calme)
-   /___|___\
-   -2% 0  +2%
+        Bull   Bear   Range
+Bull  [ 0.85   0.05   0.10 ]    ← Si on est en Bull, 85% on reste Bull
+Bear  [ 0.05   0.85   0.10 ]    ← Si on est en Bear, 85% on reste Bear
+Range [ 0.15   0.15   0.70 ]    ← Range moins "collant"
 ```
 
-## Etape 3 : Le HMM complet
+**Lecture** : un regime tend a **persister** (diagonale dominante). C'est le pendant du "volatility clustering" pour les regimes.
 
-Le HMM a 3 composantes :
+### 3. Les emissions (B)
+Pour chaque etat, distribution des observations (returns, vol, volume).
 
-1. $\boldsymbol{\pi}$ = probabilites initiales : $[0.33,\; 0.33,\; 0.33]$ (on ne sait pas ou on commence)
+Exemple :
+- Bull : returns moyens +0.05%/h, vol 8 pts
+- Bear : returns moyens -0.05%/h, vol 15 pts (vol plus forte en bear)
+- Range : returns 0, vol 4 pts
 
-2. $A$ = matrice de transition (comment les etats changent) :
+---
 
-$$A = \begin{pmatrix} 0.85 & 0.10 & 0.05 \\ 0.10 & 0.80 & 0.10 \\ 0.15 & 0.10 & 0.75 \end{pmatrix}$$
+## L'algorithme de Viterbi (en intuition)
 
-3. $B$ = distributions d'emission (quoi observer dans chaque etat) :
+Pour deviner la sequence d'etats caches la plus probable etant donne tes observations :
 
-| Etat | $\mu$ | $\sigma$ |
-|------|-------|----------|
-| Bull | +0.1% | 1.5% |
-| Bear | -0.5% | 3.0% |
-| Sideways | 0.0% | 1.0% |
+```
+1. Initialisation : on suppose chaque etat possible au depart, avec une proba
+2. Pour chaque nouvelle observation (chaque barre M1) :
+   - On calcule la proba de chaque etat etant donne l'observation
+   - On met a jour : nouvelle_proba = ancienne × P(observation|etat) × P(transition)
+3. A la fin : on prend la sequence d'etats avec la proba maximum
+```
 
-## Etape 4 : L'algorithme de Baum-Welch
+C'est **dynamic programming** avec une complexite O(N × T) ou N = nb etats, T = nb barres.
 
-**C'est l'algorithme qui APPREND les parametres ($\pi$, $A$, $B$) a partir des donnees.**
+---
 
-Il fonctionne en 2 etapes repetees (comme EM = Expectation-Maximization) :
+## Pourquoi tu n'utilises pas HMM explicite
 
-**ETAPE E (Expectation) : "Deviner les etats"**
-Avec les parametres actuels, calcule la probabilite d'etre dans chaque etat a chaque instant.
+Ton edge utilise **Hurst** comme proxy. C'est mathematiquement equivalent a un HMM a 2 etats mais :
+- ✅ Plus rapide a calculer (10ms vs 100ms)
+- ✅ Plus stable (moins d'overfitting)
+- ✅ Plus interpretable (1 chiffre vs matrice 3x3)
+- ❌ Moins precis pour distinguer Bull-MR vs Bear-MR
 
-| temps | $P(\text{Bull})$ | $P(\text{Bear})$ | $P(\text{Side})$ |
-|-------|-----------------|-----------------|-----------------|
-| $t_1$ | 0.8 | 0.1 | 0.1 |
-| $t_2$ | 0.7 | 0.2 | 0.1 |
-| $t_3$ | 0.3 | 0.6 | 0.1 |
-| $t_4$ | 0.1 | 0.8 | 0.1 |
-
-**ETAPE M (Maximization) : "Mettre a jour les parametres"**
-Avec les etats devines, recalcule $A$, les $\mu$ et $\sigma$ de chaque etat, et $\pi$.
-
-REPETER jusqu'a convergence (les parametres ne bougent plus).
-
-### Forward Algorithm (calcul vers l'avant)
-
-$$\alpha(t, j) = P(O_1 \ldots O_t \text{ ET etat } j \text{ a } t)$$
-
-Initialisation :
-
-$$\alpha(1, j) = \pi(j) \cdot P(O_1 \mid \text{etat } j)$$
-
-Recursion :
-
-$$\boxed{\alpha(t+1, j) = P(O_{t+1} \mid \text{etat } j) \cdot \sum_i \alpha(t, i) \cdot A(i, j)}$$
-
-En francais : "La proba d'etre en $j$ a $t+1$" =
-"proba d'observer $O_{t+1}$ si on est en $j$"
-$\times$ "somme sur tous les etats possibles a $t$ de (proba d'y etre $\times$ proba de transiter vers $j$)"
-
-### Backward Algorithm (calcul vers l'arriere)
-
-$$\beta(t, i) = P(O_{t+1} \ldots O_T \mid \text{etat } i \text{ a } t)$$
-
-Initialisation : $\beta(T, i) = 1$
-
-Recursion :
-
-$$\boxed{\beta(t, i) = \sum_j A(i, j) \cdot P(O_{t+1} \mid \text{etat } j) \cdot \beta(t+1, j)}$$
-
-### Combinaison : probabilite d'etre dans chaque etat
-
-$$\boxed{\gamma(t, i) = P(\text{etat} = i \text{ a } t \mid \text{toutes les observations}) = \frac{\alpha(t, i) \cdot \beta(t, i)}{P(O)}}$$
-
-C'est la REPONSE FINALE : $\gamma(t, \text{Bull}) = 0.8$ $\to$ "80% de chance qu'on soit en Bull"
+**Pour ton timeframe M1, ce trade-off est correct.** Si tu tradais le daily, HMM apporterait plus.
 
 ---
 
 # ============================================
-# LECON — Exercices pratiques
+# LECON — Exercice (court)
 # ============================================
 
-## Exercice 1 : Matrice de transition a la main
+## Cas pratique : Pourquoi le marche change brusquement ?
 
-Donnes : 20 jours de regime (tu les connais) :
-L L L L H H H L L L M M M M L L L L H H
+Tu observes : sur 30 min de session, le marche etait tres MR (Hurst ~0.4). Puis brusquement, en 10 minutes, le marche se met a trender fort (Hurst monte a 0.62).
 
-(L = Low vol, M = Medium vol, H = High vol)
+**Question** : c'est un bug ou un phenomene reel ?
 
-Compte les transitions :
+<details>
+<summary>Reponse</summary>
 
-| Transition | Compte |
-|-----------|--------|
-| L $\to$ L | 8 |
-| L $\to$ H | 2 |
-| L $\to$ M | 1 |
-| H $\to$ H | 2 |
-| H $\to$ L | 2 |
-| H $\to$ M | 0 |
-| M $\to$ M | 2 |
-| M $\to$ L | 1 |
-| M $\to$ H | 0 |
+**Phenomene reel** completement modelise par HMM.
 
-Total depuis L : 11 transitions. Total depuis H : 4. Total depuis M : 3.
+**Hypothese HMM** : le marche est passe de l'etat **"Range MR"** a l'etat **"Trend"**. La matrice de transition modelise exactement ces sauts probabilistes.
 
-Matrice :
+Causes possibles cote macro :
+- Annonce news (CPI, Fed)
+- Gros ordre institutionnel
+- Cassure technique d'un niveau cle
 
-|  | $\to$ L | $\to$ H | $\to$ M |
-|---|---------|---------|---------|
-| **L** | $8/11 = 0.73$ | $2/11 = 0.18$ | $1/11 = 0.09$ |
-| **H** | $2/4 = 0.50$ | $2/4 = 0.50$ | $0/4 = 0.00$ |
-| **M** | $1/3 = 0.33$ | $0/3 = 0.00$ | $2/3 = 0.67$ |
+Reponse de ton edge : ton **Trail MR/Trend** s'active automatiquement (H_intra > 0.51 → bascule en mode trail). C'est exactement la logique HMM appliquee : **detecter le changement d'etat et adapter l'execution**.
 
-Interpretation :
-- Low vol est PERSISTANT (73% de rester)
-- High vol retourne souvent en Low (50%)
-- Medium vol est aussi persistant (67%)
-
-## Exercice 2 : Dans quel regime suis-je ?
-
-Tu observes les rendements suivants : $+0.2\%,\; +0.1\%,\; -0.1\%,\; +0.3\%,\; +0.2\%$
-
-Tu connais les distributions :
-- Bull : $\mathcal{N}(+0.15\%,\; 0.5\%)$
-- Bear : $\mathcal{N}(-0.3\%,\; 1.5\%)$
-
-Pour le premier rendement ($+0.2\%$) :
-- $P(+0.2\% \mid \text{Bull})$ = eleve (proche de la moyenne Bull)
-- $P(+0.2\% \mid \text{Bear})$ = faible (loin de la moyenne Bear)
-
-Pour une serie de 5 rendements tous proches de $+0.15\%$ :
-$\to$ presque certainement en regime BULL
-
-Si soudain : $-2.5\%,\; -1.8\%,\; -3.1\%$
-$\to$ probablement bascule en regime BEAR
-
-## Exercice 3 : Application a ton trading
-
-Question : Comment utiliser le HMM pour ton trading ?
-
-1. Calibre un HMM 3-etats sur les rendements MNQ
-   $\to$ tu obtiens : Low-vol, Medium-vol, High-vol
-
-2. Chaque matin, calcule $\gamma(\text{aujourd'hui})$ :
-   $P(\text{Low})=0.7$, $P(\text{Med})=0.2$, $P(\text{High})=0.1$
-
-3. Adapte ta strategie :
-   - Low vol : signal fiable, taille normale
-   - Med vol : signal ok, reduis un peu
-   - High vol : signal moins fiable, petite taille ou pas de trade
-
-C'est ton FILTRE DE REGIME.
+C'est pour ca que le Trail v9 marche : c'est un mini-HMM en temps reel.
+</details>
 
 ---
 
@@ -287,60 +148,26 @@ C'est ton FILTRE DE REGIME.
 # RESUME — Fiche de revision
 # ============================================
 
-**HMM** = Hidden Markov Model — "Deviner l'etat cache a partir de ce qu'on observe"
+## Ce que tu dois retenir
 
-**3 COMPOSANTES :**
+| Concept | Definition simple |
+|---|---|
+| **Etat cache** | L'humeur invisible du marche (Bull/Bear/Range/MR/Trend) |
+| **Observation** | Ce que tu vois (prix, vol, returns, Hurst) |
+| **Matrice transition** | Probabilites de changer d'etat |
+| **Emission** | Distribution des observations par etat |
+| **Viterbi** | Algorithme pour deviner les etats passes |
 
-| Composante | Symbole | Role |
-|-----------|---------|------|
-| Probabilites initiales | $\pi$ | Ou on commence |
-| Matrice de transition | $A$ | Comment les etats changent |
-| Distributions d'emission | $B$ | Ce qu'on observe dans chaque etat |
+---
 
-**PROPRIETE DE MARKOV :** Le futur depend UNIQUEMENT du present (pas du passe).
+## Lien direct avec ton edge
 
-**BAUM-WELCH (apprentissage) :**
-- Etape E : deviner les etats (forward + backward)
-- Etape M : mettre a jour les parametres
-- Repeter jusqu'a convergence
+- **Ton Hurst** = HMM simplifie a 2 etats
+- **Ton Trail** = detection en live du changement d'etat MR→Trend
+- **Pas besoin d'implementer HMM complet** : Hurst suffit pour le timeframe M1
 
-**RESULTATS TYPIQUES (3 etats) :**
+---
 
-| Etat | $\mu$ | $\sigma$ | Interpretation |
-|------|-------|----------|---------------|
-| 1 | +0.2% | 1.5% | Calme, haussier |
-| 2 | -0.7% | 4.5% | Volatile, baissier |
-| 3 | +0.1% | 2.5% | Intermediaire |
+## La phrase a retenir
 
-**MATRICE DE TRANSITION :** les diagonales sont grandes $\to$ les regimes PERSISTENT.
-
-**ATTENTION :**
-- On peut OVERFITTER (trop d'etats = bruit)
-- 2–3 etats suffisent generalement
-- Toujours valider OUT OF SAMPLE
-- Les etats ne sont pas forcement interpretables
-
-**LETTRES ET SYMBOLES :**
-
-| Lettre | Nom | Signification |
-|--------|-----|---------------|
-| $\pi$ | Pi (initiales) | Probabilites de depart — dans quel etat on commence |
-| $A$ | Matrice A (transition) | Probabilite de passer d'un etat a un autre |
-| $B$ | Matrice B (emission) | Ce qu'on observe dans chaque etat (returns typiques) |
-| $\mu$ | Mu | Rendement moyen dans un etat (ex: Bull = +0.2%) |
-| $\sigma$ | Sigma | Volatilite dans un etat (ex: Bear = 4.5%) |
-| $\alpha(t,j)$ | Alpha t j | Probabilite d'etre en etat j au temps t (Forward) |
-| $\beta(t,i)$ | Beta t i | Probabilite des observations futures si on est en i (Backward) |
-| $\gamma(t,i)$ | Gamma t i | Probabilite finale d'etre en etat i au temps t |
-| $\mathcal{N}(\mu, \sigma)$ | Loi normale | Distribution des returns dans chaque etat |
-
-**POUR TON TRADING :**
-
-HMM = FILTRE DE REGIME : "Dans quel type de marche suis-je aujourd'hui ?"
-
-Pipeline : Donnees $\to$ HMM $\to$ regime $\to$ adapte ta taille/strategie
-
-| Regime | Action |
-|--------|--------|
-| Low vol | Signal fiable = taille normale |
-| High vol | Signal risque = petite taille / no trade |
+> **Le marche a des humeurs cachees. Hurst en detecte UNE (MR vs pas-MR). Pour ton edge, c'est suffisant. HMM complet = overkill pour le M1.**

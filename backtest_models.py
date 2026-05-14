@@ -19,7 +19,6 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="Multi-Model Backtest", page_icon="🔬", layout="wide")
 from styles import inject as _inj; _inj()
 
 # ── Theme ──────────────────────────────────────────────────────────────────
@@ -44,52 +43,41 @@ MODEL_COLORS = {
     "Heston_Vol":  "#10b981",
     "ARIMA_MR":    CYAN,
     "Hurst_MR":    BLUE,
+    "OU_MR":       "#e11d48",
+    "Kalman_MR":   "#7c3aed",
+    "VWAP_MR":     "#0891b2",
+    "ADF_MR":      "#16a34a",
+    "VR_MR":       "#ca8a04",
+    "HurstAC_MR":  "#dc2626",
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
 # INSTRUMENTS
 # ═══════════════════════════════════════════════════════════════════════════
 
+_CSV_5Y  = r"C:\Users\ryadb\Downloads\5 ANS DATA MNQ OHLCV M1\glbx-mdp3-20210405-20260404.ohlcv-1m.csv"
+_CSV_2Y  = r"C:\Users\ryadb\Downloads\data OHLCV M1\glbx-mdp3-20240330-20260329.ohlcv-1m.csv"
+
 INSTRUMENTS = {
     "MNQ": {
-        "csv":          r"C:\Users\ryadb\Downloads\GLBX-20260401-SHPXRNTFHK\glbx-mdp3-20250331-20260330.ohlcv-1m.csv",
+        "csv":           _CSV_5Y,
         "symbol_prefix": "MNQ",
-        "tick_size":    0.25,
+        "tick_size":     0.25,
         "dollar_per_pt": 2.0,
         "max_contracts": 60,
-        "sl_min_pts":   3.0,
-        "sl_max_pts":   20.0,   # cap SL → assure min 5 contrats avec $200 risk
-        "description":  "Micro E-mini Nasdaq · $2/pt · 60 contrats",
+        "sl_min_pts":    3.0,
+        "sl_max_pts":    20.0,
+        "description":   "Micro E-mini Nasdaq · $2/pt · 60 contrats · 5 ans",
     },
-    "ES": {
-        "csv":          r"C:\Users\ryadb\Downloads\GLBX-20260401-SHPXRNTFHK\glbx-mdp3-20250331-20260330.ohlcv-1m.csv",
-        "symbol_prefix": "ES",
-        "tick_size":    0.25,
-        "dollar_per_pt": 50.0,
-        "max_contracts": 5,
-        "sl_min_pts":   2.0,
-        "sl_max_pts":   4.0,    # $200 max loss / contrat ES
-        "description":  "E-mini S&P 500 · $50/pt · 5 contrats max $2K DD",
-    },
-    "MGC": {
-        "csv":          r"C:\Users\ryadb\Downloads\GLBX-20260401-BVC897RVV9\glbx-mdp3-20250331-20260330.ohlcv-1m.csv",
-        "symbol_prefix": "MGC",
-        "tick_size":    0.10,
-        "dollar_per_pt": 10.0,
-        "max_contracts": 30,
-        "sl_min_pts":   2.0,
-        "sl_max_pts":   8.0,    # max $80/contrat → force 2-3 contrats avec $200 risk
-        "description":  "Micro Gold · $10/pt · 30 contrats",
-    },
-    "MCL": {
-        "csv":          r"C:\Users\ryadb\Downloads\GLBX-20260401-VNWWAMEJ74 (1)\glbx-mdp3-20250331-20260330.ohlcv-1m.csv",
-        "symbol_prefix": "MCL",
-        "tick_size":    0.01,
-        "dollar_per_pt": 100.0,
-        "max_contracts": 3,
-        "sl_min_pts":   0.20,
-        "sl_max_pts":   0.60,   # max $60/contrat MCL
-        "description":  "Micro WTI Crude Oil · $100/pt · 3 contrats max",
+    "MNQ (2y)": {
+        "csv":           _CSV_2Y,
+        "symbol_prefix": "MNQ",
+        "tick_size":     0.25,
+        "dollar_per_pt": 2.0,
+        "max_contracts": 60,
+        "sl_min_pts":    3.0,
+        "sl_max_pts":    20.0,
+        "description":   "Micro E-mini Nasdaq · $2/pt · 2 ans (chargement rapide)",
     },
 }
 
@@ -200,6 +188,81 @@ MODEL_GRIDS = {
             for hf in [True, False]
         ],
     },
+    # ── Couche 1 + Couche 2 : Hurst gate + modèle de moyenne alternatif ──────
+    "OU_MR": {
+        "description": "Ornstein-Uhlenbeck + Half-Life — MR vers μ_OU (gate Hurst)",
+        "source":      "Leung, Li, Wang (arXiv 1601.04210) · Leung et al. (arXiv 1811.09312)",
+        "type":        "OU Mean Reversion",
+        "params": [
+            {"hurst_threshold": ht, "max_hl_bars": mhl, "entry_sigma": es, "ou_window": ow}
+            for ht  in [0.45, 0.50]
+            for mhl in [15, 30]
+            for es  in [1.5, 2.0]
+            for ow  in [30, 60]
+        ],
+    },
+    "Kalman_MR": {
+        "description": "Kalman Filter μ_kalman dynamique + H < 0.5 → entrée MR",
+        "source":      "Marton & Cakir (SSRN 4290787) · arXiv econophysique",
+        "type":        "Kalman + Hurst MR",
+        "params": [
+            {"hurst_threshold": ht, "Q": q, "R": r, "entry_sigma": es}
+            for ht in [0.45, 0.50]
+            for q  in [1e-5, 1e-4]
+            for r  in [1e-3, 5e-3]
+            for es in [1.5, 2.0]
+        ],
+    },
+    "VWAP_MR": {
+        "description": "VWAP Z-Score intraday + H < 0.5 — MR vers VWAP session",
+        "source":      "SSRN intraday microstructure · Journal of Empirical Finance",
+        "type":        "VWAP MR",
+        "params": [
+            {"hurst_threshold": ht, "z_entry": ze, "z_stop": zs, "z_window": zw}
+            for ht in [0.45, 0.50]
+            for ze in [1.5, 2.0, 2.5]
+            for zs in [3.0, 3.5]
+            for zw in [20, 30]
+        ],
+    },
+    # ── Couche 2 : filtres statistiques de confirmation MR ───────────────────
+    "ADF_MR": {
+        "description": "Hurst_MR + ADF Test stationnarité (p < seuil) — confirmation statistique",
+        "source":      "Engle & Granger · Chan (2013) · SSRN algorithmic trading",
+        "type":        "Hurst + ADF",
+        "params": [
+            {"hurst_threshold": ht, "adf_threshold": ap, "lookback": lb, "band_k": bk}
+            for ht in [0.45, 0.50]
+            for ap in [0.05, 0.10]
+            for lb in [30, 60]
+            for bk in [1.5, 2.0]
+        ],
+    },
+    "VR_MR": {
+        "description": "Hurst_MR + Variance Ratio Test Lo-MacKinlay (VR < 1 → anti-persistance)",
+        "source":      "Lo & MacKinlay (1988) · Review of Financial Studies",
+        "type":        "Hurst + VR Test",
+        "params": [
+            {"hurst_threshold": ht, "vr_q": vq, "lookback": lb, "band_k": bk}
+            for ht in [0.45, 0.50]
+            for vq in [4, 8]
+            for lb in [30, 60]
+            for bk in [1.5, 2.0, 2.5]
+        ],
+    },
+    "HurstAC_MR": {
+        "description": "Hurst + Autocorrélation lag-1 < 0 — double confirmation anti-persistance",
+        "source":      "Physica A · Journal of Financial Economics microstructure papers",
+        "type":        "Hurst + Autocorr MR",
+        "params": [
+            {"hurst_threshold": ht, "ac_threshold": act, "ac_window": acw, "lookback": lb, "band_k": bk}
+            for ht  in [0.45, 0.50]
+            for act in [-0.05, -0.10]
+            for acw in [20, 30]
+            for lb  in [30, 60]
+            for bk  in [1.5, 2.0]
+        ],
+    },
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -227,6 +290,124 @@ def hurst_exponent(prices):
     if len(log_lags) < 3:
         return 0.5
     return float(np.clip(np.polyfit(log_lags, log_tau, 1)[0], 0.05, 0.95))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HURST COMBO — Utility functions (OU, Kalman, VWAP, ADF, VR)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def ou_estimate(prices):
+    """
+    OLS-estimated Ornstein-Uhlenbeck parameters via discrete-time regression.
+    dX = θ(μ - X)dt + σdB  ⟹  ΔX = a + b·X(t-1) + ε,  θ = -b, μ = a/θ
+    Returns (theta, mu, sigma_ou, half_life). half_life = ln(2)/θ.
+    """
+    p = np.asarray(prices, dtype=float)
+    n = len(p)
+    if n < 10:
+        return 0.0, float(np.mean(p)), max(float(np.std(p)), 1e-9), float("inf")
+    dx    = np.diff(p)
+    X_lag = p[:-1]
+    X_mat = np.column_stack([np.ones(n - 1), X_lag])
+    try:
+        a, b = np.linalg.lstsq(X_mat, dx, rcond=None)[0]
+    except Exception:
+        return 0.0, float(np.mean(p)), max(float(np.std(p)), 1e-9), float("inf")
+    theta = max(-b, 1e-9)
+    mu    = float(a / theta)
+    resid = dx - (a + b * X_lag)
+    sigma = max(float(np.std(resid)), 1e-9)
+    hl    = float(np.log(2) / theta)
+    return float(theta), mu, sigma, hl
+
+
+def kalman_filter_1d(prices, Q=1e-5, R=1e-3):
+    """
+    1D Kalman filter (constant-level random-walk model).
+    Returns (x_est, uncertainty_std) of same length as prices.
+    Source: Marton & Cakir (SSRN 4290787).
+    """
+    n    = len(prices)
+    x    = np.empty(n)
+    p_k  = np.empty(n)
+    x[0] = prices[0]
+    p_k[0] = 1.0
+    for k in range(1, n):
+        p_pred = p_k[k - 1] + Q
+        K      = p_pred / (p_pred + R)
+        x[k]   = x[k - 1] + K * (prices[k] - x[k - 1])
+        p_k[k] = (1.0 - K) * p_pred
+    return x, np.sqrt(np.maximum(p_k, 1e-15))
+
+
+def compute_vwap_series(closes, volumes):
+    """Cumulative VWAP for a daily session (no intraday reset assumed)."""
+    n    = len(closes)
+    vwap = np.empty(n)
+    cpv  = 0.0
+    cv   = 0.0
+    for i in range(n):
+        v    = max(float(volumes[i]), 1.0)
+        cpv += closes[i] * v
+        cv  += v
+        vwap[i] = cpv / cv
+    return vwap
+
+
+def adf_pvalue_session(prices):
+    """
+    ADF test (augmented Dickey-Fuller) on full session price array.
+    p < 0.05 → stationary → MR regime confirmed.
+    Falls back to 1.0 (no trade) if statsmodels not available.
+    """
+    try:
+        from statsmodels.tsa.stattools import adfuller
+        return float(adfuller(prices, maxlag=None, autolag="AIC")[1])
+    except ImportError:
+        return 1.0
+    except Exception:
+        return 1.0
+
+
+def variance_ratio_test(returns, q=5):
+    """
+    Lo & MacKinlay (1988) Variance Ratio Test.
+    VR(q) = Var(q-period returns) / (q × Var(1-period returns)).
+    VR < 0.90 → strong anti-persistence → mean-reverting regime.
+    Returns (vr, is_mr_regime).
+    """
+    r = np.asarray(returns, dtype=float)
+    r = r[np.isfinite(r)]
+    if len(r) < max(q * 4, 20):
+        return 1.0, False
+    var1 = float(np.var(r, ddof=1))
+    if var1 < 1e-15:
+        return 1.0, False
+    rq   = np.array([r[i: i + q].sum() for i in range(0, len(r) - q + 1, q)])
+    if len(rq) < 4:
+        return 1.0, False
+    varq = float(np.var(rq, ddof=1))
+    vr   = varq / (q * var1)
+    return float(vr), bool(vr < 0.90)
+
+
+def edge_badge(r):
+    """
+    Badge d'edge automatique basé sur les 5 critères de performance.
+    Trades OK : 96–720/an (= 480–720 sur 5 ans ramené à 1 an de données).
+    """
+    conds = {
+        "PF ≥ 1.9":    r.get("profit_factor", 0) >= 1.9,
+        "Sharpe ≥ 1.9": r.get("sharpe", 0)        >= 1.9,
+        "WR ≥ 30%":    r.get("winrate", 0)        >= 30,
+        "DD < 5%":     r.get("max_dd_pct", 99)    <  5.0,
+        "Trades OK":   96 <= r.get("n_trades", 0) <= 720,
+    }
+    n = sum(conds.values())
+    if n == 5: return "🏆 EDGE PARFAIT"
+    if n >= 4: return "🌟 EDGE FORT"
+    if n >= 3: return "✅ EDGE PARTIEL"
+    return "❌ PAS D'EDGE"
 
 
 def garch_rolling(returns, omega=1e-7, alpha=0.05, beta=0.90):
@@ -530,6 +711,206 @@ def sigs_hurst_mr(cached, hurst_threshold, lookback, band_k, hmm_filter, skip_op
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# HURST COMBO SIGNAL GENERATORS — 6 nouveaux modèles (Priorités 1A/1B/1C/2A-2D)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def sigs_ou_mr(cached, hurst_threshold, max_hl_bars, entry_sigma, ou_window, skip_open, skip_close):
+    """
+    Ornstein-Uhlenbeck MR gated by Hurst (arXiv 1601.04210).
+    Couche 1: H < hurst_threshold (filtre régime).
+    Couche 2: μ_OU estimé par OLS sur fenêtre rolling.
+    Couche 3: |price - μ_OU| > entry_sigma × σ_OU.
+    Couche 4: half_life = ln(2)/θ ≤ max_hl_bars (vitesse de reversion).
+    EXIT: retour à μ_OU (fair value OU).
+    """
+    if cached["hurst"] >= hurst_threshold:
+        return []
+    bars    = cached["bars"]
+    closes  = cached["closes"]
+    n       = len(closes)
+    signals = []
+    for i in range(ou_window, n - skip_close):
+        if i < skip_open:
+            continue
+        theta, mu, sigma_ou, hl = ou_estimate(closes[i - ou_window: i])
+        if theta <= 0 or sigma_ou <= 0 or hl > max_hl_bars:
+            continue
+        price = closes[i]
+        z     = (price - mu) / sigma_ou
+        if abs(z) < entry_sigma:
+            continue
+        direction = "short" if z > 0 else "long"
+        signals.append(_make_sig(bars, i, i, price, mu, sigma_ou, direction))
+    return signals
+
+
+def sigs_kalman_mr(cached, hurst_threshold, Q, R, entry_sigma, skip_open, skip_close):
+    """
+    Kalman Filter dynamic mean estimation + Hurst gate (SSRN 4290787).
+    Couche 2: μ_kalman = filtre de Kalman 1D (Q=process noise, R=meas noise).
+    Band = rolling std des résidus (price - μ_kalman) sur 20 barres.
+    H_brut >= hurst_threshold → skip (gate strict sur Hurst brut).
+    """
+    if cached["hurst"] >= hurst_threshold:
+        return []
+    bars      = cached["bars"]
+    closes    = cached["closes"]
+    n         = len(closes)
+    k_mean, _ = kalman_filter_1d(closes, Q=Q, R=R)
+    residuals = closes - k_mean
+    win_band  = 20
+    signals   = []
+    for i in range(win_band, n - skip_close):
+        if i < skip_open:
+            continue
+        mu_k = float(k_mean[i])
+        band = float(np.std(residuals[max(0, i - win_band): i]))
+        if band <= 0:
+            continue
+        price = closes[i]
+        z     = (price - mu_k) / band
+        if abs(z) < entry_sigma:
+            continue
+        direction = "short" if z > 0 else "long"
+        signals.append(_make_sig(bars, i, i, price, mu_k, band, direction))
+    return signals
+
+
+def sigs_vwap_mr(cached, hurst_threshold, z_entry, z_stop, z_window, skip_open, skip_close):
+    """
+    VWAP Z-Score MR gated by Hurst (SSRN intraday microstructure).
+    Couche 2: VWAP session = référence institutionnelle intraday.
+    Couche 3: Z = (price - VWAP) / rolling_std. Entry si z_entry ≤ |Z| < z_stop.
+    EXIT: retour au VWAP (Z = 0). STOP si |Z| franchit z_stop.
+    """
+    if cached["hurst"] >= hurst_threshold:
+        return []
+    bars   = cached["bars"]
+    closes = cached["closes"]
+    vwap   = cached.get("vwap")
+    if vwap is None:
+        vwap = compute_vwap_series(closes, bars["volume"].values)
+    n       = len(closes)
+    signals = []
+    for i in range(z_window, n - skip_close):
+        if i < skip_open:
+            continue
+        vw  = float(vwap[i])
+        if not np.isfinite(vw) or vw <= 0:
+            continue
+        std = float(np.std(closes[max(0, i - z_window): i]))
+        if std <= 0:
+            continue
+        price = closes[i]
+        z     = (price - vw) / std
+        if abs(z) < z_entry or abs(z) >= z_stop:
+            continue
+        direction = "short" if z > 0 else "long"
+        signals.append(_make_sig(bars, i, i, price, vw, std, direction))
+    return signals
+
+
+def sigs_adf_mr(cached, hurst_threshold, adf_threshold, lookback, band_k, skip_open, skip_close):
+    """
+    Hurst_MR + ADF stationarity gate (Engle & Granger / Chan 2013).
+    Double confirmation : H < threshold ET p_ADF < adf_threshold.
+    ADF calculé une fois sur la session complète (test global du jour).
+    Nécessite statsmodels (pip install statsmodels). Désactivé si absent.
+    """
+    if cached["hurst"] >= hurst_threshold:
+        return []
+    if cached.get("adf_pvalue", 1.0) >= adf_threshold:
+        return []
+    bars    = cached["bars"]
+    closes  = cached["closes"]
+    n       = len(closes)
+    signals = []
+    for i in range(lookback, n - skip_close):
+        if i < skip_open:
+            continue
+        window = closes[i - lookback: i]
+        mid    = float(window.mean())
+        std    = float(window.std())
+        if std == 0:
+            continue
+        price = closes[i]
+        z     = (price - mid) / std
+        if abs(z) < band_k:
+            continue
+        direction = "short" if z > 0 else "long"
+        signals.append(_make_sig(bars, i, i, price, mid, std, direction))
+    return signals
+
+
+def sigs_vr_mr(cached, hurst_threshold, vr_q, lookback, band_k, skip_open, skip_close):
+    """
+    Hurst_MR + Lo & MacKinlay (1988) Variance Ratio Test.
+    VR(q) = Var(q-period returns) / (q × Var(1-period returns)).
+    VR < 0.90 → anti-persistance significative → trade autorisé.
+    """
+    if cached["hurst"] >= hurst_threshold:
+        return []
+    _, vr_ok = variance_ratio_test(cached["returns"], q=vr_q)
+    if not vr_ok:
+        return []
+    bars    = cached["bars"]
+    closes  = cached["closes"]
+    n       = len(closes)
+    signals = []
+    for i in range(lookback, n - skip_close):
+        if i < skip_open:
+            continue
+        window = closes[i - lookback: i]
+        mid    = float(window.mean())
+        std    = float(window.std())
+        if std == 0:
+            continue
+        price = closes[i]
+        z     = (price - mid) / std
+        if abs(z) < band_k:
+            continue
+        direction = "short" if z > 0 else "long"
+        signals.append(_make_sig(bars, i, i, price, mid, std, direction))
+    return signals
+
+
+def sigs_hurstac_mr(cached, hurst_threshold, ac_threshold, ac_window, lookback, band_k, skip_open, skip_close):
+    """
+    Hurst + Autocorrélation lag-1 < threshold (Physica A / JFE microstructure).
+    Double confirmation anti-persistance : H < threshold ET autocorr(r, lag=1) < ac_threshold.
+    autocorr < 0 → chaque hausse est suivie d'une baisse → MR fort.
+    """
+    if cached["hurst"] >= hurst_threshold:
+        return []
+    bars    = cached["bars"]
+    closes  = cached["closes"]
+    returns = cached["returns"]
+    n       = len(closes)
+    signals = []
+    for i in range(max(lookback, ac_window), n - skip_close):
+        if i < skip_open:
+            continue
+        ret_win = returns[max(0, i - ac_window): i]
+        if len(ret_win) < 8:
+            continue
+        ac = float(pd.Series(ret_win).autocorr(lag=1))
+        if np.isnan(ac) or ac >= ac_threshold:
+            continue
+        window = closes[i - lookback: i]
+        mid    = float(window.mean())
+        std    = float(window.std())
+        if std == 0:
+            continue
+        price = closes[i]
+        z     = (price - mid) / std
+        if abs(z) < band_k:
+            continue
+        direction = "short" if z > 0 else "long"
+        signals.append(_make_sig(bars, i, i, price, mid, std, direction))
+    return signals
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # DATA LOADING & SESSION FILTER
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -539,8 +920,8 @@ def filter_session(df, sh, sm, eh, em):
 
 
 @st.cache_data(show_spinner=False)
-def load_instrument_csv(csv_path, symbol_prefix):
-    """Charge 1 an de données M1 pour un instrument depuis CSV Databento."""
+def load_instrument_csv(csv_path, symbol_prefix, years_back=5):
+    """Charge N ans de données M1 pour un instrument depuis CSV Databento."""
     try:
         df = pd.read_csv(csv_path, usecols=["ts_event","open","high","low","close","volume","symbol"])
     except Exception as e:
@@ -557,7 +938,7 @@ def load_instrument_csv(csv_path, symbol_prefix):
     df.drop_duplicates(subset=["bar"], inplace=True)
     df.reset_index(drop=True, inplace=True)
     end_dt   = df["bar"].max()
-    start_dt = end_dt - pd.DateOffset(years=1)
+    start_dt = end_dt - pd.DateOffset(years=years_back)
     df = df[df["bar"] >= start_dt].reset_index(drop=True)
     df["date"] = df["bar"].dt.date
     df["tr"] = np.maximum(
@@ -640,6 +1021,11 @@ def build_daily_cache(full_df, sh, sm, eh, em):
         # Markov vol regime 3-state (Lec 72/74 — Markov Chain Bot)
         markov_states = compute_markov_states(closes, highs, lows, lookback=60)
 
+        # VWAP session (Hurst combo models)
+        vwap_series = compute_vwap_series(closes, vols)
+        # ADF test session (1 appel/jour — statsmodels requis pour ADF_MR)
+        adf_p = adf_pvalue_session(closes)
+
         cache[str(day_key)] = {
             "bars":          bars,
             "closes":        closes,
@@ -648,6 +1034,8 @@ def build_daily_cache(full_df, sh, sm, eh, em):
             "markov_states": markov_states,
             "returns":       returns,
             "hurst":         hurst_val,
+            "vwap":          vwap_series,
+            "adf_pvalue":    adf_p,
         }
     return cache
 
@@ -676,6 +1064,25 @@ def dispatch_signals(model_id, cached, params, skip_open, skip_close):
         return sigs_hurst_mr(cached, params["hurst_threshold"], params["lookback"],
                               params["band_k"], params.get("hmm_filter", False),
                               skip_open, skip_close)
+    if model_id == "OU_MR":
+        return sigs_ou_mr(cached, params["hurst_threshold"], params["max_hl_bars"],
+                           params["entry_sigma"], params["ou_window"], skip_open, skip_close)
+    if model_id == "Kalman_MR":
+        return sigs_kalman_mr(cached, params["hurst_threshold"], params["Q"], params["R"],
+                               params["entry_sigma"], skip_open, skip_close)
+    if model_id == "VWAP_MR":
+        return sigs_vwap_mr(cached, params["hurst_threshold"], params["z_entry"],
+                             params["z_stop"], params["z_window"], skip_open, skip_close)
+    if model_id == "ADF_MR":
+        return sigs_adf_mr(cached, params["hurst_threshold"], params["adf_threshold"],
+                            params["lookback"], params["band_k"], skip_open, skip_close)
+    if model_id == "VR_MR":
+        return sigs_vr_mr(cached, params["hurst_threshold"], params["vr_q"],
+                           params["lookback"], params["band_k"], skip_open, skip_close)
+    if model_id == "HurstAC_MR":
+        return sigs_hurstac_mr(cached, params["hurst_threshold"], params["ac_threshold"],
+                                params["ac_window"], params["lookback"], params["band_k"],
+                                skip_open, skip_close)
     return []
 
 
@@ -883,6 +1290,10 @@ st.markdown("""
 .page-title { font-size:1.8rem; font-weight:700; color:#fff; letter-spacing:-0.02em; margin:0.3rem 0 0; }
 .section-label { font-family:'JetBrains Mono',monospace; font-size:0.6rem; font-weight:700;
     letter-spacing:0.2em; color:#3CC4B7; text-transform:uppercase; margin:1.8rem 0 0.8rem; }
+.info-box { background:rgba(15,23,42,0.8); border:1px solid rgba(59,130,246,0.25);
+    border-radius:8px; padding:1rem 1.3rem; margin:.6rem 0;
+    font-family:'JetBrains Mono',monospace; font-size:.82rem; line-height:2; }
+.edge-badge { font-size:2rem; text-align:center; padding:.5rem; display:block; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -901,8 +1312,12 @@ st.sidebar.header("Instruments")
 selected_instruments = st.sidebar.multiselect(
     "Instruments à tester",
     options=list(INSTRUMENTS.keys()),
-    default=["MNQ", "MGC"],
-    help="MNQ recommandé pour débuter. Ajoute ES/MCL pour comparer.",
+    default=["MNQ"],
+    help="MNQ (5 ans) recommandé. MNQ (2y) pour un chargement plus rapide.",
+)
+years_back = st.sidebar.slider(
+    "Années de données à charger", min_value=1, max_value=5, value=5, step=1,
+    help="5 ans = 60 mois · plus fiable statistiquement. 1 an = rapide pour tester.",
 )
 
 st.sidebar.header("Modèles")
@@ -1011,8 +1426,8 @@ status_box     = st.empty()
 for instr_key in selected_instruments:
     instr_cfg = INSTRUMENTS[instr_key]
 
-    status_box.info(f"📦 Chargement {instr_key}…")
-    full_df, err = load_instrument_csv(instr_cfg["csv"], instr_cfg["symbol_prefix"])
+    status_box.info(f"📦 Chargement {instr_key} ({years_back} ans)…")
+    full_df, err = load_instrument_csv(instr_cfg["csv"], instr_cfg["symbol_prefix"], years_back)
     if err:
         st.warning(f"⚠ {instr_key} : {err}")
         combo_done += total_combos
@@ -1088,8 +1503,9 @@ best = all_results[0] if all_results else None
 all_results_sorted = sorted(all_results, key=lambda x: x["score"], reverse=True)
 best = all_results_sorted[0]
 
-tab_comp, tab_charts, tab_best, tab_firms = st.tabs(
-    ["📊 Comparaison", "📈 Equity Curves", "🏆 Meilleur Modèle", "🏢 Prop Firms"]
+tab_comp, tab_charts, tab_best, tab_firms, tab_model_comp, tab_explore = st.tabs(
+    ["📊 Comparaison", "📈 Equity Curves", "🏆 Meilleur Modèle", "🏢 Prop Firms",
+     "🔬 Model Comparison", "🧪 Explore"]
 )
 
 # ── TAB 1 : Comparaison ────────────────────────────────────────────────────
@@ -1211,6 +1627,10 @@ with tab_best:
                 delta_color="inverse" if b["max_dd_pct"] > 4.0 else "off")
     bc5b.metric("Tr/jour",      f"{b['trades_per_day']:.2f}")
 
+    st.markdown(
+        f"<span class='edge-badge'>{edge_badge(b)}</span>",
+        unsafe_allow_html=True,
+    )
     st.success(
         f"**{b['instrument']}·{b['model']}** — {MODEL_GRIDS[b['model']]['description']}\n\n"
         f"Source : *{b['source']}*\n\n"
@@ -1411,8 +1831,245 @@ with tab_firms:
             })
         st.dataframe(pd.DataFrame(top5_rows), use_container_width=True, hide_index=True)
 
+# ── TAB 5 : Model Comparison ──────────────────────────────────────────────
+with tab_model_comp:
+    st.markdown("<p class='section-label'>Tableau comparatif — tous modèles testés avec badge d'edge</p>",
+                unsafe_allow_html=True)
+
+    edge_rows = []
+    for r in all_results_sorted:
+        badge = edge_badge(r)
+        edge_rows.append({
+            "Instrument":  r["instrument"],
+            "Modèle":      r["model"],
+            "Type":        r["type"],
+            "Trades/an":   r["n_trades"],
+            "PF":          r["profit_factor"],
+            "Sharpe":      r["sharpe"],
+            "WR %":        r["winrate"],
+            "Max DD %":    r["max_dd_pct"],
+            "Pass %":      r["pass_rate"],
+            "P&L ($)":     r["total_pnl"],
+            "Edge Badge":  badge,
+            "Statut":      ("✅ Validé"   if badge in ("🏆 EDGE PARFAIT", "🌟 EDGE FORT")
+                            else ("⚠ À tester" if badge == "✅ EDGE PARTIEL"
+                            else "❌ Rejeté")),
+        })
+
+    ec_df = pd.DataFrame(edge_rows)
+
+    def _color_badge(val):
+        if "🏆" in str(val): return "color:#ffd700;font-weight:700"
+        if "🌟" in str(val): return "color:#00ff88;font-weight:700"
+        if "✅" in str(val):  return "color:#60a5fa"
+        return "color:#ef4444"
+
+    styled_ec = ec_df.style\
+        .applymap(_color_badge, subset=["Edge Badge"])\
+        .applymap(_color_pf,    subset=["PF"])\
+        .applymap(_color_dd,    subset=["Max DD %"])
+    st.dataframe(styled_ec, use_container_width=True, hide_index=True)
+
+    # Distribution des badges
+    st.markdown("<p class='section-label'>Distribution des badges d'edge</p>",
+                unsafe_allow_html=True)
+    badge_counts = ec_df["Edge Badge"].value_counts().reset_index()
+    badge_counts.columns = ["Badge", "Count"]
+    badge_colors_map = {
+        "🏆 EDGE PARFAIT": "#ffd700",
+        "🌟 EDGE FORT":    "#00ff88",
+        "✅ EDGE PARTIEL":  "#60a5fa",
+        "❌ PAS D'EDGE":   "#ef4444",
+    }
+    bar_colors = [badge_colors_map.get(b, TEAL) for b in badge_counts["Badge"]]
+    fig_badge = go.Figure(go.Bar(
+        x=badge_counts["Badge"], y=badge_counts["Count"],
+        marker_color=bar_colors, text=badge_counts["Count"], textposition="outside",
+    ))
+    fig_badge.update_layout(title="Distribution des badges d'edge — tous modèles",
+                            height=320, showlegend=False, **DARK)
+    st.plotly_chart(fig_badge, use_container_width=True)
+
+    # Tableau des critères
+    st.markdown("""
+<div class="info-box">
+<b>Critères d'évaluation :</b><br/>
+🏆 EDGE PARFAIT — 5/5 critères atteints<br/>
+🌟 EDGE FORT &nbsp; — 4/5 critères atteints<br/>
+✅ EDGE PARTIEL — 3/5 critères atteints<br/>
+❌ PAS D'EDGE &nbsp;— &lt; 3 critères atteints<br/>
+<br/>
+<b>5 critères :</b> PF ≥ 1.9 · Sharpe ≥ 1.9 · WR ≥ 30% · DD &lt; 5% · Trades 96–720/an
+</div>
+""", unsafe_allow_html=True)
+
+    # Top 3 avec métriques cibles
+    st.markdown("<p class='section-label'>Top 3 modèles — analyse détaillée</p>",
+                unsafe_allow_html=True)
+    for rank, r in enumerate(all_results_sorted[:3], 1):
+        b_txt = edge_badge(r)
+        with st.expander(f"#{rank} — {r['instrument']}·{r['model']} — {b_txt}"):
+            cc1, cc2, cc3, cc4, cc5 = st.columns(5)
+            cc1.metric("PF",     f"{r['profit_factor']:.2f}",
+                       delta="OK" if r["profit_factor"] >= 1.9 else "Faible",
+                       delta_color="normal" if r["profit_factor"] >= 1.9 else "inverse")
+            cc2.metric("Sharpe", f"{r['sharpe']:.2f}",
+                       delta="OK" if r["sharpe"] >= 1.9 else "Faible",
+                       delta_color="normal" if r["sharpe"] >= 1.9 else "inverse")
+            cc3.metric("WR %",   f"{r['winrate']:.1f}%",
+                       delta="OK" if r["winrate"] >= 30 else "Faible",
+                       delta_color="normal" if r["winrate"] >= 30 else "inverse")
+            cc4.metric("Max DD", f"{r['max_dd_pct']:.1f}%",
+                       delta="OK" if r["max_dd_pct"] < 5 else "DANGER",
+                       delta_color="inverse" if r["max_dd_pct"] >= 5 else "off")
+            cc5.metric("Trades", r["n_trades"],
+                       delta="OK" if 96 <= r["n_trades"] <= 720 else "Hors cible",
+                       delta_color="normal" if 96 <= r["n_trades"] <= 720 else "inverse")
+            st.caption(f"Source : {r['source']} | Params : {r['params_str']}")
+
+
+# ── TAB 6 : Explore Models ─────────────────────────────────────────────────
+with tab_explore:
+    st.markdown("<p class='section-label'>Bibliothèque quantitative — Hurst + confirmateurs</p>",
+                unsafe_allow_html=True)
+    st.info(
+        "Architecture obligatoire : **Couche 1 → Hurst** (filtre régime) · "
+        "**Couche 2 → Moyenne** (fair value) · "
+        "**Couche 3 → Signal** (étirement) · "
+        "**Couche 4 → Vitesse** (half-life)"
+    )
+
+    explore_data = [
+        {"Modèle": "OU + Half-Life",
+         "Rôle": "Couche 2+4",
+         "Pourquoi avec Hurst ?": "θ mesure la vitesse de reversion — confirme que le trade se résoudra dans la session",
+         "Source académique": "Leung, Li, Wang — arXiv:1601.04210",
+         "Complexité": "Facile",
+         "Statut": "✅ Implémenté (OU_MR)"},
+        {"Modèle": "Kalman Filter μ",
+         "Rôle": "Couche 2",
+         "Pourquoi avec Hurst ?": "Estimation dynamique temps-réel de la fair value — plus précis qu'un rolling mean fixe",
+         "Source académique": "Marton & Cakir — SSRN:4290787",
+         "Complexité": "Facile",
+         "Statut": "✅ Implémenté (Kalman_MR)"},
+        {"Modèle": "VWAP Z-Score",
+         "Rôle": "Couche 2+3",
+         "Pourquoi avec Hurst ?": "VWAP = référence institutionnelle intraday — retour VWAP = MR vers le prix 'juste' du jour",
+         "Source académique": "SSRN microstructure · Journal of Empirical Finance",
+         "Complexité": "Facile",
+         "Statut": "✅ Implémenté (VWAP_MR)"},
+        {"Modèle": "ADF Test",
+         "Rôle": "Couche 1 (renfort)",
+         "Pourquoi avec Hurst ?": "p < 0.05 = stationnarité prouvée statistiquement — double confirmation avec H < 0.5",
+         "Source académique": "Engle & Granger (1987) · Chan (2013) Algorithmic Trading",
+         "Complexité": "Facile",
+         "Statut": "✅ Implémenté (ADF_MR) — nécessite statsmodels"},
+        {"Modèle": "Variance Ratio (Lo-MacKinlay)",
+         "Rôle": "Couche 1 (renfort)",
+         "Pourquoi avec Hurst ?": "VR < 1 = test direct anti-persistance (alternative au H R/S classique, même logique)",
+         "Source académique": "Lo & MacKinlay (1988) — Review of Financial Studies",
+         "Complexité": "Facile",
+         "Statut": "✅ Implémenté (VR_MR)"},
+        {"Modèle": "Autocorrélation lag-1",
+         "Rôle": "Couche 1 (renfort)",
+         "Pourquoi avec Hurst ?": "AC(1) < 0 confirme l'anti-persistance barre-par-barre — signal MR très fort si AC < -0.1",
+         "Source académique": "Physica A · Journal of Financial Economics microstructure",
+         "Complexité": "Facile",
+         "Statut": "✅ Implémenté (HurstAC_MR)"},
+        {"Modèle": "DFA (Detrended Fluctuation Analysis)",
+         "Rôle": "Couche 1 (alternative)",
+         "Pourquoi avec Hurst ?": "Alternative plus robuste au H R/S pour HF — même interprétation, plus stable sur petites fenêtres",
+         "Source académique": "Barunik & Kristoufek — arXiv:1201.4786 · Physica A",
+         "Complexité": "Moyen",
+         "Statut": "🔄 À implémenter"},
+        {"Modèle": "KPSS Test",
+         "Rôle": "Couche 1 (renfort)",
+         "Pourquoi avec Hurst ?": "H0 = stationnarité (inverse de l'ADF) — KPSS + ADF ensemble = confirmation ultime",
+         "Source académique": "Kwiatkowski, Phillips, Schmidt & Shin (1992)",
+         "Complexité": "Facile",
+         "Statut": "🔄 À implémenter"},
+        {"Modèle": "AR(1) Half-Life",
+         "Rôle": "Couche 4",
+         "Pourquoi avec Hurst ?": "Alternative simplifiée à OU — régression AR(1) directe, estimation rapide de la vitesse MR",
+         "Source académique": "Chan (2013) Algorithmic Trading — Wiley",
+         "Complexité": "Facile",
+         "Statut": "🔄 À implémenter"},
+        {"Modèle": "RSI zones extrêmes (30/70)",
+         "Rôle": "Couche 3",
+         "Pourquoi avec Hurst ?": "RSI < 30 + H < 0.5 = survendu en régime MR prouvé → LONG haute probabilité",
+         "Source académique": "SSRN MR strategies · QuantConnect research",
+         "Complexité": "Facile",
+         "Statut": "🔄 À implémenter"},
+        {"Modèle": "Bollinger Bands % (BBP)",
+         "Rôle": "Couche 3",
+         "Pourquoi avec Hurst ?": "BBP < 0 (hors bande inf) + H < 0.5 → probabilité de reversion très élevée",
+         "Source académique": "SSRN mean-reversion strategies",
+         "Complexité": "Facile",
+         "Statut": "🔄 À implémenter"},
+        {"Modèle": "Parkinson Volatility",
+         "Rôle": "Couche 4 (filtre vol)",
+         "Pourquoi avec Hurst ?": "Vol Parkinson basse + H < 0.5 = double confirmation régime range — stop plus serré possible",
+         "Source académique": "Parkinson (1980) · MDPI Volatility",
+         "Complexité": "Facile",
+         "Statut": "🔄 À implémenter"},
+        {"Modèle": "Garman-Klass Volatility",
+         "Rôle": "Couche 4 (filtre vol)",
+         "Pourquoi avec Hurst ?": "Estimateur OHLC plus précis que close-to-close pour détecter l'explosion de vol",
+         "Source académique": "Garman & Klass (1980) — Journal of Business",
+         "Complexité": "Facile",
+         "Statut": "🔄 À implémenter"},
+        {"Modèle": "Volume Profile POC",
+         "Rôle": "Couche 2",
+         "Pourquoi avec Hurst ?": "POC = aimant de prix naturel en régime MR — cible de retour institutionnelle",
+         "Source académique": "SSRN market microstructure · VWAP literature",
+         "Complexité": "Moyen",
+         "Statut": "🔄 À implémenter"},
+        {"Modèle": "SVM Regime Classifier",
+         "Rôle": "Couche 1 (ML)",
+         "Pourquoi avec Hurst ?": "SVM apprend à distinguer MR vs Trend — peut améliorer la précision du filtre Hurst",
+         "Source académique": "arXiv q-fin · Swiss Finance Institute working papers",
+         "Complexité": "Difficile",
+         "Statut": "🔬 Recherche"},
+        {"Modèle": "Adaptive Moving Average (Kaufman AMA)",
+         "Rôle": "Couche 2",
+         "Pourquoi avec Hurst ?": "AMA se ralentit en régime range (même régime que H < 0.5) — synergique",
+         "Source académique": "Kaufman (1998) Trading Systems and Methods",
+         "Complexité": "Facile",
+         "Statut": "🔄 À implémenter"},
+    ]
+
+    explore_df = pd.DataFrame(explore_data)
+    st.dataframe(explore_df, use_container_width=True, hide_index=True)
+
+    # Métriques cibles
+    st.markdown("<p class='section-label'>Métriques cibles — 1 an de données</p>",
+                unsafe_allow_html=True)
+    metrics_target = pd.DataFrame([
+        {"Métrique": "Trades/an",     "Minimum": "96",    "Cible": "120–144",  "Excellent": "≥ 150"},
+        {"Métrique": "Profit Factor", "Minimum": "1.5",   "Cible": "1.9–2.5",  "Excellent": "≥ 3.0"},
+        {"Métrique": "Sharpe Ratio",  "Minimum": "1.2",   "Cible": "1.9–2.5",  "Excellent": "≥ 3.0"},
+        {"Métrique": "Win Rate",      "Minimum": "30%",   "Cible": "35–50%",   "Excellent": "≥ 55%"},
+        {"Métrique": "Max Drawdown",  "Minimum": "< 5%",  "Cible": "< 3%",     "Excellent": "< 2%"},
+        {"Métrique": "Pass rate",     "Minimum": "40%",   "Cible": "50–65%",   "Excellent": "≥ 70%"},
+    ])
+    st.dataframe(metrics_target, use_container_width=True, hide_index=True)
+
+    st.markdown("""
+<div class="info-box">
+<b>Sources académiques primaires (ordre de priorité) :</b><br/>
+1. SSRN — papers.ssrn.com/sol3/cfdev/AbsByAuth.cfm (recherche: "mean reversion Hurst intraday futures")<br/>
+2. arXiv q-fin — arxiv.org/list/q-fin.TR/recent (sections TR, ST)<br/>
+3. Physica A — sciencedirect.com/journal/physica-a-statistical-mechanics-and-its-applications<br/>
+4. Journal of Financial Economics — jfe.rochester.edu<br/>
+5. Review of Financial Studies — academic.oup.com/rfs<br/>
+6. Swiss Finance Institute — researchpaper.swissfinanceinstitute.ch<br/>
+7. MDPI Open Access — mdpi.com/journal/risks et /journal/jrfm<br/>
+</div>
+""", unsafe_allow_html=True)
+
+
 st.caption(
     f"Multi-Model Backtest — {len(all_results)} combos testés · {selected_firm} · "
     f"Source : github.com/romanmichaelpaolucci/Quant-Guild-Library "
-    f"(Lec 25 · 39 · 44 · 47 · 51 · 72/74)"
+    f"(Lec 25 · 39 · 44 · 47 · 51 · 72/74) + arXiv 1601.04210 · SSRN 4290787 · Lo-MacKinlay 1988"
 )

@@ -1,0 +1,20 @@
+[runner_v10] Loading & building day_cache from C:\Users\ryadb\Downloads\5 ANS DATA MNQ OHLCV M1\glbx-mdp3-20210405-20260404.ohlcv-1m.csv ...
+[runner_v10] 1259 jours dans le cache.
+[runner_v10] Running config: C0_baseline ...
+  -> C0_baseline: PnL=$323471 PF=2.24 Sharpe=4.93 DD_glob=$2586 DD_intramonth=$2094 Trades=3231 %M+=96.7% Bust=2 Pass=55
+[runner_v10] Running config: C1_jump_filter ...
+  -> C1_jump_filter: PnL=$317782 PF=2.27 Sharpe=5.06 DD_glob=$2196 DD_intramonth=$2064 Trades=3116 %M+=98.4% Bust=1 Pass=56
+[runner_v10] Running config: C_GZadapt_only ...
+  -> C_GZadapt_only: PnL=$298129 PF=2.28 Sharpe=4.42 DD_glob=$1780 DD_intramonth=$1549 Trades=3557 %M+=98.4% Bust=0 Pass=51
+[runner_v10] Running config: C_jump_GZadapt ...
+  -> C_jump_GZadapt: PnL=$291468 PF=2.27 Sharpe=4.50 DD_glob=$1616 DD_intramonth=$1449 Trades=3526 %M+=96.7% Bust=0 Pass=49
+
+Elapsed: 499.4s
+
+=== SPRINT 2.1 FULL 5Y - GZ adaptatif ===
+                          pnl  n_trades         wr        pf    sharpe  dd_max_dollars  dd_max_pct  dd_max_intramonth_dollars      calmar  n_months  pct_months_pos  n_busted_months  n_passed_months
+config                                                                                                                                                                                               
+C0_baseline     323470.679893      3231  40.885175  2.240058  4.928980     2585.977220    5.171954                2093.640473  125.086438        61       96.721311                2               55
+C1_jump_filter  317781.723223      3116  42.233633  2.266527  5.063197     2195.749256    4.391499                2063.749256  144.725871        61       98.360656                1               56
+C_GZadapt_only  298129.372407      3557  41.102052  2.284298  4.423728     1779.865922    3.559732                1548.511860  167.501028        61       98.360656                0               51
+C_jump_GZadapt  291468.237289      3526  41.945547  2.271504  4.501844     1615.608386    3.231217                1449.472219  180.407727        61       96.721311                0               49

@@ -271,61 +271,37 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 
 LEARNING_DIR = Path(__file__).parent.parent / "learning"
 
-# ── Module registry ──────────────────────────────────────────────────
+# ── Module registry — Parcours pedagogique 4 niveaux (refonte 2026-05-13) ──
+# Niveau 1 : Ton edge (incontournable)
+# Niveau 2 : Money management
+# Niveau 3 : Validation
+# Niveau 4 : Concepts avances (optionnel)
 MODULES = {
-    "00_ROADMAP.md":                  ("//",  "Roadmap",          "Plan de route",               0),
-    "00b_retail_vs_institutional.md": ("00b", "Retail vs Instit", "Comprendre le jeu",           0),
-    "00c_maths_notation.md":          ("00c", "Notation Maths",   "Symboles et lettres grecques", 0),
-    "01_time_series.md":              ("01",  "Time Series",      "Comprendre les donnees",       1),
-    "02_central_limit_theorem.md":    ("02",  "CLT",              "Pourquoi les stats marchent",  1),
-    "02b_asymptotics.md":             ("02b", "Asymptotics",      "Quand n devient grand",        1),
-    "03_ergodicity.md":               ("03",  "Ergodicity",       "Pourquoi les traders perdent", 1),
-    "03b_monte_carlo.md":             ("03b", "Monte Carlo",      "Comprendre la stabilite",      1),
-    "04_garch.md":                    ("04",  "GARCH",            "Filtre de volatilite",         2),
-    "04b_trading_metrics.md":         ("04b", "Metrics",          "Mesurer ton edge",             2),
-    "05_hidden_markov_models.md":     ("05",  "HMM",              "Regime de marche (theorie)",   2),
-    "05b_regime_switching.md":        ("05b", "Regime Switch",    "QUAND trader (live)",          2),
-    "05c_hawkes.md":                  ("05c", "Hawkes",           "Microstructure orderflow",     2),
-    "06_kalman_filter.md":            ("06",  "Kalman Filter",    "Signal propre",                3),
-    "06b_kalman_mean_reversion.md":   ("06b", "Kalman MR",        "Mean reversion trading",       3),
-    "06c_halflife_ou.md":             ("06c", "Demi-vie OU",      "Filtrer les signaux lents",    3),
-    "06d_confirmation_reversal.md":   ("06d", "Confirmation",     "Timing d'entree optimal",      3),
-    "25_hurst_mr.md":                 ("25",  "★ Hurst_MR",       "Ton edge live (Lec 25+51)",    5),
-    "07_pipeline_integration.md":     ("07",  "Pipeline",         "Tout connecter",               4),
-    "08_kelly_criterion.md":          ("08",  "Kelly Criterion",  "Combien risquer par trade",    4),
-    "09_backtesting_pitfalls.md":     ("09",  "Backtest Pitfalls","Pourquoi ton backtest ment",   4),
-    "09b_profitable_vs_tradable.md":  ("09b", "Live Tradable",    "Pourquoi ca meurt en live",    4),
+    "25_hurst_mr.md":             ("★",   "Hurst_MR + Trail",  "Ton edge live complet",       1),
+    "08_kelly_criterion.md":      ("§§",  "Kelly Criterion",   "Combien risquer par trade",   2),
+    "04b_trading_metrics.md":     ("∑",   "Trading Metrics",   "Sharpe, Sortino, DD, PF",     3),
+    "06c_halflife_ou.md":         ("τ",   "Half-Life OU",      "Vitesse du retour MR",        4),
+    "05_hidden_markov_models.md": ("Σ",   "HMM",               "Regimes caches (intuition)",  4),
+    "06_kalman_filter.md":        ("∇",   "Kalman Filter",     "Nettoyer le signal",          4),
+    "04_garch.md":                ("σ",   "GARCH",             "Clustering de volatilite",    4),
 }
 
 LEVEL_LABELS = {
-    0: "",
-    1: "CHAPITRE 1 · FONDATIONS",
-    2: "CHAPITRE 1 · OUTILS",
-    3: "CHAPITRE 1 · SIGNAL",
-    4: "CHAPITRE 1 · LIVE",
-    5: "★ CHAPITRE 2 — TON EDGE",
+    1: "★ NIVEAU 1 — TON EDGE",
+    2: "§§ NIVEAU 2 — MONEY MANAGEMENT",
+    3: "∑ NIVEAU 3 — VALIDER L'EDGE",
+    4: "∇ NIVEAU 4 — CONCEPTS AVANCES (OPTIONNEL)",
 }
-LEVEL_COLORS = {0: "#555", 1: "#00e5ff", 2: "#ff00e5", 3: "#ffd600", 4: "#ff3366", 5: "#3CC4B7"}
+LEVEL_COLORS = {1: "#3CC4B7", 2: "#00e5ff", 3: "#ffd600", 4: "#888"}
 
 VIDEO_LINKS = {
-    "00b_retail_vs_institutional.md": ("https://youtu.be/j1XAcdEHzbU",  "#40 Retail vs Institutional"),
-    "01_time_series.md":              ("https://youtu.be/JwqjuUnR8OY",  "#44 Time Series Analysis"),
-    "02_central_limit_theorem.md":    ("https://youtu.be/q2era-4pnic",  "#61 Central Limit Theorem"),
-    "03_ergodicity.md":               ("https://youtu.be/dryV1qJYUw8",  "#81 Ergodicity"),
-    "03b_monte_carlo.md":             ("https://youtu.be/-4sf43SLL3A",  "#33 Monte Carlo"),
-    "04_garch.md":                    ("https://youtu.be/iImtlBRcczA",  "#47 ARCH & GARCH"),
-    "04b_trading_metrics.md":         ("https://youtu.be/xziwmju7x2s",  "#48 Trading Metrics"),
-    "05_hidden_markov_models.md":     ("https://youtu.be/Bru4Mkr601Q",  "#51 Hidden Markov Models"),
-    "05b_regime_switching.md":        ("https://youtu.be/mais1dsB_1g",  "#72/74 Regime Switching Bot"),
-    "05c_hawkes.md":                  ("https://youtu.be/BotPHbWFRUA",  "#94 Hawkes Processes"),
-    "06_kalman_filter.md":            ("https://youtu.be/zVJY_oaVh-0",  "#92 Kalman Filter"),
-    "06b_kalman_mean_reversion.md":   ("https://youtu.be/BuPil7nXvMU",  "#95 Kalman Mean Reversion"),
-    "06c_halflife_ou.md":             ("https://youtu.be/BuPil7nXvMU",  "#95 Half-life OU"),
-    "06d_confirmation_reversal.md":   ("https://youtu.be/mais1dsB_1g",  "#72 Confirmation Timing"),
-    "25_hurst_mr.md":                 ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main", "Lec 25 (fBm) + Lec 51 (HMM)"),
-    "08_kelly_criterion.md":          ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/36.%20How%20to%20Trade%20with%20the%20Kelly%20Criterion", "#36 Kelly Criterion"),
-    "09_backtesting_pitfalls.md":     ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2026%20Video%20Lectures/97.%203%20Backtesting%20Pitfalls%20That%20Ruin%20Your%20Strategy", "#97 Backtesting Pitfalls"),
-    "09b_profitable_vs_tradable.md":  ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/77.%20Profitable%20vs%20Tradable%20-%20Why%20Most%20Strategies%20Fail%20Live", "#77 Profitable vs Tradable"),
+    "25_hurst_mr.md":             ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main", "Lec 25 (fBm) + Lec 51 (HMM) + Leung 2015"),
+    "08_kelly_criterion.md":      ("https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/36.%20How%20to%20Trade%20with%20the%20Kelly%20Criterion", "#36 Kelly Criterion"),
+    "04b_trading_metrics.md":     ("https://youtu.be/xziwmju7x2s",  "#48 Trading Metrics"),
+    "06c_halflife_ou.md":         ("https://youtu.be/BuPil7nXvMU",  "#95 Half-life OU"),
+    "05_hidden_markov_models.md": ("https://youtu.be/Bru4Mkr601Q",  "#51 Hidden Markov Models"),
+    "06_kalman_filter.md":        ("https://youtu.be/zVJY_oaVh-0",  "#92 Kalman Filter"),
+    "04_garch.md":                ("https://youtu.be/iImtlBRcczA",  "#47 ARCH & GARCH"),
 }
 
 # ══════════════════════════════════════════════════════════════════════
@@ -391,8 +367,9 @@ def get_inline_chart(chart_name: str):
 # ── State ────────────────────────────────────────────────────────────
 if "completed" not in st.session_state:
     st.session_state.completed = load_progress()
-if "selected" not in st.session_state:
-    st.session_state.selected = "00_ROADMAP.md"
+# Si la selection precedente est un module archive, on remet sur le coeur de l'edge
+if "selected" not in st.session_state or st.session_state.selected not in MODULES:
+    st.session_state.selected = "25_hurst_mr.md"
 
 # ══════════════════════════════════════════════════════════════════════
 # SIDEBAR
@@ -408,8 +385,9 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    n_done  = len(st.session_state.completed - {"00_ROADMAP.md"})
-    n_total = len(MODULES) - 1
+    # On compte seulement les modules existants (les archives ne comptent plus)
+    n_done  = len(st.session_state.completed & set(MODULES.keys()))
+    n_total = len(MODULES)
     pct     = n_done / max(n_total, 1)
 
     st.markdown(f"""
@@ -539,47 +517,71 @@ def render_quiz(selected: str):
     if "time_series" in selected:
         val = st.number_input("MA(3) de [100, 102, 101] = ?", min_value=0.0, step=0.1, key="quiz_ts")
         if val > 0:
-            st.success("Correct — (100+102+101)/3 = 101.0") if abs(val-101.0)<0.2 else st.error("Indice : (100+102+101)/3")
+            if abs(val-101.0) < 0.2:
+                st.success("Correct — (100+102+101)/3 = 101.0")
+            else:
+                st.error("Indice : (100+102+101)/3")
 
     elif "clt" in selected or "central" in selected:
         val = st.number_input("Erreur std si sigma=60, n=100 :", min_value=0.0, step=0.1, key="quiz_clt")
         if val > 0:
-            st.success("Correct — 60/sqrt(100) = 6.0") if abs(val-6.0)<0.3 else st.error("sigma/sqrt(n) = 60/10 = 6.0")
+            if abs(val-6.0) < 0.3:
+                st.success("Correct — 60/sqrt(100) = 6.0")
+            else:
+                st.error("sigma/sqrt(n) = 60/10 = 6.0")
 
     elif "ergodicity" in selected:
         val = st.number_input("g = E[r] - sigma²/2. E[r]=5%, sigma=20% → g = ? (%)",
                               min_value=-10.0, max_value=10.0, step=0.1, key="quiz_ergo")
         if val != 0:
-            st.success("Correct — 5% - (0.20)²/2 = 3%") if abs(val-3.0)<0.3 else st.error("g = 5% - 2% = 3%")
+            if abs(val-3.0) < 0.3:
+                st.success("Correct — 5% - (0.20)²/2 = 3%")
+            else:
+                st.error("g = 5% - 2% = 3%")
 
     elif "garch" in selected:
         val = st.number_input("alpha0=0.00001, alpha1=0.1, beta1=0.85 → sigma²_LT × 10⁴ = ?",
                               min_value=0.0, step=0.1, key="quiz_garch")
         if val > 0:
             exp = 0.00001 / (1-0.1-0.85) * 10000
-            st.success(f"Correct — {exp:.1f} × 10⁻⁴") if abs(val-exp)<0.3 else st.error(f"alpha0/(1-0.95) = {exp:.1f} × 10⁻⁴")
+            if abs(val-exp) < 0.3:
+                st.success(f"Correct — {exp:.1f} × 10⁻⁴")
+            else:
+                st.error(f"alpha0/(1-0.95) = {exp:.1f} × 10⁻⁴")
 
     elif "kalman" in selected:
         val = st.number_input("K = P/(P+R). P=2, R=4 → K = ?", min_value=0.0, max_value=1.0, step=0.01, key="quiz_kf")
         if val > 0:
-            st.success("Correct — 2/(2+4) = 0.333") if abs(val-0.333)<0.02 else st.error("K = P/(P+R) = 2/6 = 0.333")
+            if abs(val-0.333) < 0.02:
+                st.success("Correct — 2/(2+4) = 0.333")
+            else:
+                st.error("K = P/(P+R) = 2/6 = 0.333")
 
     elif "kelly" in selected:
         val = st.number_input("WR=60%, R:R=2:1 → f* = ? (%)", min_value=0.0, max_value=100.0, step=1.0, key="quiz_kelly")
         if val > 0:
             exp = (0.60*2-0.40)/2*100
-            st.success(f"Correct — {exp:.0f}%") if abs(val-exp)<2 else st.error(f"f* = (p×b-(1-p))/b = {exp:.0f}%")
+            if abs(val-exp) < 2:
+                st.success(f"Correct — {exp:.0f}%")
+            else:
+                st.error(f"f* = (p×b-(1-p))/b = {exp:.0f}%")
 
     elif "pitfall" in selected:
         val = st.number_input("6 params libres → N trades minimum ?", min_value=0, step=10, key="quiz_pitfalls")
         if val > 0:
-            st.success("Correct — 50×6 = 300") if abs(val-300)<50 else st.error("N > 50×k_params = 50×6 = 300")
+            if abs(val-300) < 50:
+                st.success("Correct — 50×6 = 300")
+            else:
+                st.error("N > 50×k_params = 50×6 = 300")
 
     elif "tradable" in selected or "profitable" in selected.lower():
         val = st.number_input("Sharpe IS=1.4, OOS=0.9 → ratio = ?", min_value=0.0, max_value=2.0, step=0.01, key="quiz_tradable")
         if val > 0:
             exp = round(0.9/1.4, 2)
-            st.success(f"Correct — {exp} (robuste > 0.7)") if abs(val-exp)<0.05 else st.error(f"0.9/1.4 = {exp}")
+            if abs(val-exp) < 0.05:
+                st.success(f"Correct — {exp} (robuste > 0.7)")
+            else:
+                st.error(f"0.9/1.4 = {exp}")
 
     elif "hurst" in selected:
         import math
@@ -749,11 +751,6 @@ with col_h2:
 
 st.markdown("<div style='border-bottom:1px solid #141414; margin:1rem 0 1.2rem;'></div>",
             unsafe_allow_html=True)
-
-# ── Roadmap ──────────────────────────────────────────────────────────
-if selected == "00_ROADMAP.md":
-    render_math_markdown(content)
-    st.stop()
 
 # ── 4 Tabs ───────────────────────────────────────────────────────────
 has_content = any(s.strip() for s in sections.values())

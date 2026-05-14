@@ -1,0 +1,50 @@
+======================================================================
+SPRINT 4.3 — VALIDATION FINALE
+======================================================================
+
+[1/4] Loading day_cache from C:\Users\ryadb\Downloads\5 ANS DATA MNQ OHLCV M1\glbx-mdp3-20210405-20260404.ohlcv-1m.csv ...
+      1259 jours chargés en 383.2s
+
+[2/4] Running 8 configs + capturing trades ...
+  - C0_baseline ... 3231 trades, PnL $323471, Sharpe 4.93  (3.2s)
+  - C1_jump_LM ... 3116 trades, PnL $317782, Sharpe 5.06  (5.0s)
+  - C_GZadapt ... 3557 trades, PnL $298129, Sharpe 4.42  (3.5s)
+  - C_MRJD ... 3321 trades, PnL $333885, Sharpe 5.00  (5.0s)
+  - C_MFDFA ... 3137 trades, PnL $233635, Sharpe 6.44  (54.3s)
+  - C_jump_GZadapt ... 3526 trades, PnL $291468, Sharpe 4.50  (5.4s)
+  - C_jump_MRJD ... 3107 trades, PnL $315515, Sharpe 4.97  (7.3s)
+  - C_S2_ALL ... Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\ryadb\OneDrive\QUANT MATHS\quant_v10\validation\run_final_validation.py", line 143, in <module>
+    res = run_final_validation(csv)
+  File "C:\Users\ryadb\OneDrive\QUANT MATHS\quant_v10\validation\run_final_validation.py", line 123, in run_final_validation
+    print(f"\n\U0001f3c6 CHAMPION v10 = {champion}")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ryadb\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f3c6' in position 2: character maps to <undefined>
+3264 trades, PnL $199658, Sharpe 5.78  (57.9s)
+
+[3/4] CPCV + PSR + DSR par config ...
+
+[4/4] PBO global sur matrice PnL daily ...
+      Matrix shape: (907, 8)
+      PBO global = 0.317 (OK)
+
+======================================================================
+VERDICT
+======================================================================
+                sharpe_full            pnl  n_busted  n_passed  cpcv_mean  cpcv_std  cpcv_n_paths  psr       dsr
+config                                                                                                          
+C_MFDFA            6.443333  233634.964027         1        47   6.610595  0.871100            45  1.0  1.000000
+C_S2_ALL           5.782920  199658.040765         0        39   6.125899  0.821290            45  1.0  1.000000
+C_MRJD             5.002302  333885.241251         2        56   5.982562  1.554923            45  1.0  1.000000
+C0_baseline        4.928980  323470.679893         2        55   5.899755  1.508766            45  1.0  1.000000
+C_jump_MRJD        4.973287  315515.093785         1        56   6.083519  1.519260            45  1.0  0.999999
+C_GZadapt          4.423728  298129.372407         0        51   5.561217  1.619191            45  1.0  0.999999
+C1_jump_LM         5.063197  317781.723223         1        56   6.294840  1.350825            45  1.0  0.999999
+C_jump_GZadapt     4.501844  291468.237289         0        49   5.592108  1.322834            45  1.0  0.999997
+
+PBO global = 0.317

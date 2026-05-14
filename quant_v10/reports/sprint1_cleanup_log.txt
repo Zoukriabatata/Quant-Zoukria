@@ -1,0 +1,29 @@
+[runner_v10] Loading & building day_cache from C:\Users\ryadb\Downloads\5 ANS DATA MNQ OHLCV M1\glbx-mdp3-20210405-20260404.ohlcv-1m.csv ...
+[runner_v10] 1259 jours dans le cache.
+[runner_v10] Running config: C0_baseline ...
+  -> C0_baseline: PnL=$323471 PF=2.24 Sharpe=4.93 DD_glob=$2586 DD_intramonth=$2094 Trades=3231 %M+=96.7% Bust=2 Pass=55
+[runner_v10] Running config: C1_jump_filter ...
+  -> C1_jump_filter: PnL=$317782 PF=2.27 Sharpe=5.06 DD_glob=$2196 DD_intramonth=$2064 Trades=3116 %M+=98.4% Bust=1 Pass=56
+[runner_v10] Running config: C2_har_sizing ...
+  -> C2_har_sizing: PnL=$282999 PF=2.19 Sharpe=4.20 DD_glob=$4282 DD_intramonth=$2228 Trades=2539 %M+=85.2% Bust=11 Pass=48
+[runner_v10] Running config: C3_gz_only ...
+  -> C3_gz_only: PnL=$303775 PF=2.28 Sharpe=4.01 DD_glob=$4282 DD_intramonth=$2228 Trades=2528 %M+=85.2% Bust=11 Pass=48
+[runner_v10] Running config: C6_jump_plus_har_gz ...
+  -> C6_jump_plus_har_gz: PnL=$306779 PF=2.24 Sharpe=4.44 DD_glob=$3473 DD_intramonth=$2219 Trades=2666 %M+=88.5% Bust=6 Pass=52
+[runner_v10] Running config: C7_jump_plus_gz ...
+  -> C7_jump_plus_gz: PnL=$324258 PF=2.33 Sharpe=4.16 DD_glob=$3473 DD_intramonth=$2219 Trades=2649 %M+=88.5% Bust=7 Pass=51
+[runner_v10] Running config: C_S1_full ...
+  -> C_S1_full: PnL=$306779 PF=2.24 Sharpe=4.44 DD_glob=$3473 DD_intramonth=$2219 Trades=2666 %M+=88.5% Bust=6 Pass=52
+
+Elapsed: 511.4s
+
+=== SPRINT 1 CLEANUP - METRICS CORRIGES ===
+                               pnl  n_trades         wr        pf    sharpe  dd_max_dollars  dd_max_pct  dd_max_intramonth_dollars      calmar  n_months  pct_months_pos  n_busted_months  n_passed_months
+config                                                                                                                                                                                                    
+C0_baseline          323470.679893      3231  40.885175  2.240058  4.928980     2585.977220    5.171954                2093.640473  125.086438        61       96.721311                2               55
+C1_jump_filter       317781.723223      3116  42.233633  2.266527  5.063197     2195.749256    4.391499                2063.749256  144.725871        61       98.360656                1               56
+C2_har_sizing        282998.526476      2539  40.606538  2.188157  4.200200     4282.134682    8.564269                2228.106762   66.088189        61       85.245902               11               48
+C3_gz_only           303775.375641      2528  40.743671  2.281789  4.014052     4282.134682    8.564269                2228.106762   70.940173        61       85.245902               11               48
+C6_jump_plus_har_gz  306779.022178      2666  41.972993  2.242379  4.442657     3473.202624    6.946405                2219.169322   88.327419        61       88.524590                6               52
+C7_jump_plus_gz      324258.061793      2649  42.091355  2.329349  4.160066     3473.202624    6.946405                2219.169322   93.359961        61       88.524590                7               51
+C_S1_full            306779.022178      2666  41.972993  2.242379  4.442657     3473.202624    6.946405                2219.169322   88.327419        61       88.524590                6               52

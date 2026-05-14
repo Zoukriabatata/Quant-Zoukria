@@ -1,8 +1,7 @@
-# 08 — Kelly Criterion & Half-Kelly
-# "Combien risquer par trade ?"
+# 08 — Kelly Criterion : Combien risquer par trade
+# "La formule mathematique de la taille optimale"
 
-> **Video :** [How to Trade with the Kelly Criterion — Roman Paolucci](https://www.youtube.com/watch?v=https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/36.%20How%20to%20Trade%20with%20the%20Kelly%20Criterion)
-> **Code :** [Quant Guild Library #36](https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/36.%20How%20to%20Trade%20with%20the%20Kelly%20Criterion)
+> **Source :** [Quant Guild #36 — How to Trade with the Kelly Criterion](https://github.com/romanmichaelpaolucci/Quant-Guild-Library/tree/main/2025%20Video%20Lectures/36.%20How%20to%20Trade%20with%20the%20Kelly%20Criterion)
 
 ---
 
@@ -10,191 +9,300 @@
 # APPRENTISSAGE — C'est quoi ? Pourquoi ?
 # ============================================
 
-## Le problème du sizing
+## L'intuition en 30 secondes
 
-Tu as un edge. Bonne nouvelle.
+Tu as un edge (PF 2.29, WR 42%). **Combien doit etre la taille de ton pari** ?
 
-Mais COMBIEN tu risques par trade ?
+- Trop petit → tu gagnes peu (sub-optimal)
+- Trop grand → un seul gros mauvais run te ruine (over-leverage)
+- **Juste bien** → tu maximises la croissance long-terme
 
-```
-Trop peu  → tu gagnes, mais très lentement
-Trop fort → un drawdown te détruit avant que l'edge paie
+**Le Kelly Criterion** est la formule mathematique qui te dit ce "juste bien".
 
-EXEMPLE :
-  - Edge : 55% WR, R:R 1:1
-  - Risquer 50% du capital par trade
-  - Série de 5 losses = -97% (fini)
+C'est un theoreme de John Kelly Jr. (1956) prouve par Edward Thorp (le createur du comptage de cartes au blackjack et du premier hedge fund quantitatif).
 
-  - Risquer 5% du capital par trade
-  - Série de 5 losses = -23% (tu survives)
-```
+---
 
-C'est exactement le problème que Kelly résout : **la fraction OPTIMALE à risquer pour maximiser la croissance à long terme.**
+## L'histoire vraie qui prouve que ca marche
 
-## L'intuition de Kelly
+Edward Thorp a fait ~$2 milliards de fortune en appliquant Kelly :
 
-Imagine un pari répété à l'infini :
-- Tu gagnes +100% si pile
-- Tu perds -100% si face
-- Probabilité de gagner : 60%
+1. D'abord au blackjack (1962) — il a transforme Las Vegas
+2. Puis a la bourse via Princeton Newport Partners — 28 ans de profits **consecutifs** sans une seule annee negative
+3. Sharpe live moyen tres eleve sur certains fonds
 
-Si tu mises 100% → une seule défaite te détruit (ruin)
-Si tu mises 0% → tu ne gagnes rien
-Si tu mises 20% → ça pousse la croissance géométrique au maximum
+Sa cle ? Il n'a JAMAIS pari trop gros, jamais trop petit. Toujours **fractional Kelly**.
 
-Kelly trouve ce 20% **mathématiquement**.
+---
 
-## Le lien avec l'ergodicity (module 03)
+## La logique simple
 
-Kelly et ergodicity parlent du même problème :
-- La **moyenne arithmétique** (E[gain]) est trompeuse
-- Ce qui compte c'est la **croissance géométrique** (taux composé)
-- Kelly maximise exactement la croissance géométrique
+### Si tu paris 100% de ton capital
+Un seul loser → bust definitif. Probabilite de bust = WR's complement.
 
-```
-Sans Kelly : tu optimises E[gain] → RUIN possible
-Avec Kelly : tu optimises log(richesse) → croissance stable
-```
+### Si tu paris 1% de ton capital
+Tu ne busts jamais, mais ta croissance est minuscule. Tu sous-exploites ton edge.
+
+### Si tu paris Kelly
+**Tu maximises la croissance long-terme** sans risque de ruine.
+
+**Pour ton edge v9 (WR 42.64%, R/R 4.27)** : le Kelly optimal mathematique est environ **29%**. Tu utilises **12%** = **fractional Kelly (plus prudent)**. Pourquoi ? Voir plus bas.
+
+---
+
+## Pourquoi Kelly = la verite mathematique
+
+Kelly maximise une chose unique : **l'esperance du log de la richesse finale**.
+
+Pourquoi le log ? Parce qu'en trading, ce qui compte n'est pas la moyenne arithmetique des P&L (qui peut etre tiree par 1 jackpot) mais la **moyenne geometrique** (la croissance reelle compose).
+
+**Exemple choc** :
+- Trader A : +100% un jour, -50% le lendemain → richesse finale = inchangee (×2 ×0.5 = ×1)
+- Trader B : +20% un jour, -10% le lendemain → richesse finale = +8% (×1.2 ×0.9 = ×1.08)
+
+Trader A a une **meilleure moyenne arithmetique** (+25%) que Trader B (+5%). Mais Trader B a une **meilleure moyenne geometrique** (+8%). Kelly t'oblige a optimiser pour Trader B.
 
 ---
 
 # ============================================
-# MODEL — Les maths
+# MODEL — Les maths derriere
 # ============================================
 
-## 1. La formule de Kelly (cas discret)
+## La formule de base
 
-Pour un pari binaire (gagner b:1 ou perdre 1) :
+Pour un pari binaire (win/lose simple), Kelly est :
 
-$$f^* = \frac{p \cdot b - (1-p)}{b}$$
-
-- $f^*$ = fraction optimale du capital à risquer
-- $p$ = probabilité de gagner
-- $b$ = ratio gain/perte (R:R)
-- $1-p$ = probabilité de perdre
-
-**Exemple :** WR = 55%, R:R = 2:1 (gagner 2, perdre 1)
-
-$$f^* = \frac{0.55 \times 2 - 0.45}{2} = \frac{1.10 - 0.45}{2} = \frac{0.65}{2} = 0.325$$
-
-Kelly dit : risquer **32.5%** du capital.
-
-## 2. Cas général (Kelly continu)
-
-Pour des rendements continus :
-
-$$f^* = \frac{\mu}{\sigma^2}$$
-
-- $\mu$ = rendement moyen espéré par trade
-- $\sigma^2$ = variance des rendements
-
-C'est le ratio de Sharpe au carré, normalisé.
-
-## 3. Overbet = destruction
-
-La croissance géométrique en fonction de $f$ :
-
-$$g(f) = p \cdot \ln(1 + f \cdot b) + (1-p) \cdot \ln(1 - f)$$
-
-| $f$ | Croissance | Commentaire |
-|-----|-----------|-------------|
-| 0 | 0% | Tu ne joues pas |
-| $f^*$ | **maximum** | Kelly optimal |
-| $2f^*$ | 0% | tu stagues en moyenne |
-| $> 2f^*$ | **négatif** | tu te ruines lentement |
-
-**OVERBET = PIRE que ne pas jouer.**
-
-## 4. Half-Kelly — pourquoi on l'utilise
-
-En pratique, $f^*$ est dangereux pour 2 raisons :
-1. **L'estimation de $p$ et $b$ est imprécise** → ton Kelly est biaisé
-2. **La variance du portefeuille est trop haute** → psychologiquement insoutenable
-
-**Half-Kelly = $f^* / 2$**
-
-| Indicateur | Full Kelly | Half-Kelly |
-|-----------|-----------|-----------|
-| Croissance | 100% du max | ~75% du max |
-| Volatilité portefeuille | haute | 2× moins haute |
-| Drawdown moyen | ~50% | ~25% |
-| Risque de ruin | faible | très faible |
-
-75% de la croissance pour 50% des drawdowns : **le deal est rentable.**
-
-## 5. Kelly en trading de futures (contrats)
-
-Adapter Kelly pour les contrats MNQ :
-
-$$\text{Contrats} = \frac{f^* \cdot \text{Capital}}{SL\_pts \times \$2/pt}$$
-
-Avec Half-Kelly :
-
-$$\text{Contrats} = \frac{f^*/2 \cdot \text{Capital}}{SL\_pts \times \$2/pt}$$
-
-**Exemple Apex 50K :**
-- Capital = $50,000
-- $f^* = 10\%$ (Half-Kelly estimé = 5%)
-- SL = 8 pts, $2/pt = $16/contrat
-
-$$\text{Contrats} = \frac{0.05 \times 50000}{8 \times 2} = \frac{2500}{16} = 156 \text{ (limité à 40 par Apex)}$$
-
-## 6. Kelly dynamique par phase (dans le backtest)
-
-Le backtest implémente un Kelly dynamique selon les phases :
-
-| Phase | Condition | Fraction risque | Commentaire |
-|-------|-----------|-----------------|-------------|
-| PRUDENTE | Capital < $47,000 | 4% | Protéger le compte |
-| STANDARD | $47,000 ≤ Capital ≤ $49,000 | 10% | Mode normal |
-| SECURITE | Capital > $49,000 | 4% | Protéger le profit target |
-
-```python
-PHASE_RISK = {"PRUDENTE": 0.04, "STANDARD": 0.10, "SECURITE": 0.04}
-RISK_MIN_DOLLARS = 200
-RISK_MAX_DOLLARS = 800
+```
+f* = (p × b − q) / b
 ```
 
-Le risque en dollars est clipé entre $200 et $800 par trade.
+Avec :
+- `f*` = fraction du capital a parier (le "Kelly")
+- `p` = probabilite de gagner (Win Rate)
+- `q` = 1 − p (probabilite de perdre)
+- `b` = ratio recompense/risque (Avg Win / Avg Loss)
+
+### Application a ton edge v9
+
+Tes stats : WR = 42.64%, R/R ratio ~4.27
+
+```
+p = 0.4264
+q = 0.5736
+b = 4.27
+
+f* = (0.4264 × 4.27 − 0.5736) / 4.27
+f* = (1.8208 − 0.5736) / 4.27
+f* = 1.2472 / 4.27
+f* = 0.292 = 29.2%
+```
+
+**Kelly mathematique pur** = 29.2% du capital par trade.
+
+Mais en pratique, personne ne joue le full Kelly. Pourquoi ?
+
+---
+
+## Pourquoi NE JAMAIS jouer le full Kelly
+
+### Raison 1 — Tes stats sont incertaines
+WR = 42.64% est une **estimation** basee sur 3030 trades passes. Le WR reel futur pourrait etre 38% ou 45%. Si tu paries pour 42.64% et que le vrai est 38%, tu over-leverages.
+
+### Raison 2 — Le DD intermediaire est brutal
+Meme avec Kelly, sur la trajectoire vers la richesse finale, tu peux passer par des DD de 40-50% intermediaires. Mathematiquement OK long-terme, mais **psychologiquement impossible** a tenir.
+
+### Raison 3 — Pour Apex c'est interdit
+Apex a un trailing DD strict ($2k sur $50k). Un DD intermediaire de 30% = bust direct.
+
+---
+
+## Le Fractional Kelly — la vraie solution
+
+La regle pratique adoptee par 99% des quants : **half-Kelly** ou **quarter-Kelly**.
+
+```
+f_fractional = f* / 2   (half-Kelly)
+ou
+f_fractional = f* / 4   (quarter-Kelly)
+```
+
+**Avantages** :
+- DD intermediaire divise par ~3
+- Robustesse aux erreurs d'estimation de p et b
+- Croissance long-terme = ~75% du Kelly full (acceptable)
+
+**Pour ton edge v9** :
+- Kelly pur = 29.2%
+- Half-Kelly = 14.6%
+- **Ta valeur = 12%** (entre quarter et half, plus proche de half)
+
+C'est exactement le bon equilibre.
+
+---
+
+## Comment Kelly est implemente dans ton code
+
+### Etape 1 : Calculer le risque par trade en $
+
+```
+DD_restant = ApexDdLimit - DD_deja_utilise
+            = $2,000 - DD_consomme
+
+risk_$ = max($50, min(KellyRiskPct × DD_restant, DailyLossLimit × 0.40))
+       = max($50, min(0.12 × DD_restant, $400))
+```
+
+**Decodage** :
+- `KellyRiskPct = 0.12` = ton 12% Kelly
+- `× DD_restant` = on adapte au DD encore disponible
+- `min(..., $400)` = on ne risque jamais plus de 40% du daily limit en un seul trade
+- `max($50, ...)` = on garantit au moins $50 minimum (sinon contracts = 0)
+
+### Etape 2 : Convertir le risque en nombre de contrats
+
+```
+loss_per_contract = SL_pts × $2/pt
+                  = (par exemple) 5 × $2 = $10/contrat
+
+contracts = risk_$ / loss_per_contract
+          = $240 / $10 = 24 contrats
+
+contracts = min(MaxContractsEval, contracts)
+          = min(12, 24) = 12 contrats
+```
+
+---
+
+## Le mecanisme DD-adaptatif
+
+C'est ca qui rend Kelly different d'un fixed sizing :
+
+| Etat du compte | DD utilise | DD restant | risk_$ a 12% | Contracts (SL 5pts) |
+|---|---|---|---|---|
+| Frais | $0 | $2,000 | $240 | **12** (plafond) |
+| Apres 1 loser | $120 | $1,880 | $226 | 12 (plafond) |
+| Apres 3 losers | $360 | $1,640 | $197 | **12** (plafond) |
+| Apres 5 losers | $600 | $1,400 | $168 | 12 (plafond) |
+| Apres 10 losers | $1,200 | $800 | $96 | **9 contrats** ↓ |
+| Apres 13 losers | $1,560 | $440 | $53 | **5 contrats** ↓↓ |
+| Apres 17 losers | $2,000 | $0 | $50 | **5 contrats min** |
+
+**Plus tu consomes le DD, plus le sizing se reduit AUTOMATIQUEMENT.** C'est ca le "DD-adaptatif" : Kelly pur applique a un compte funded.
+
+---
+
+## Pourquoi 12% et pas 9% ou 15% ?
+
+Tu as teste empiriquement :
+
+| Risk % | DD backtest | P&L 5 ans | Mois bustes | Verdict |
+|---|---|---|---|---|
+| 9% (v7) | 3.3% | $277k | 2/60 | Bon |
+| **12% (v9)** | **2.49%** | **$303k** | **2/60** | **Optimal** |
+| 19% (v8 rejete) | 3.2% | $306k | 7/60 | DD acceptable mais 7 mois bustes |
+
+**12% = sweet spot** car :
+- Maximise le P&L sans exploser le DD
+- 2/60 mois bustes (acceptable)
+- Sharpe maximal (4.82)
 
 ---
 
 # ============================================
-# LECON — Exercices pratiques
+# LECON — Exercice
 # ============================================
 
-## Exercice 1 : Kelly de base
+## Cas pratique #1 : Calculer Kelly pour un nouvel edge
 
-Ton edge sur MNQ :
-- WR = 50%, R:R = 2:1 (tu gagnes 2 fois ce que tu risques)
-- $b = 2$, $p = 0.50$
+Tu testes une nouvelle strategie qui donne :
+- WR = 55%
+- Avg Win = $80
+- Avg Loss = $60
 
-$$f^* = \frac{p \cdot b - (1-p)}{b} = \frac{0.50 \times 2 - 0.50}{2} = \frac{0.50}{2} = 0.25$$
+**Question** : quel est le Kelly mathematique ? Quelle fraction utiliser en pratique ?
 
-Kelly = 25% du capital. Half-Kelly = **12.5%**
+<details>
+<summary>Reponse</summary>
 
-## Exercice 2 : Calculer les contrats
+```
+p = 0.55
+q = 0.45
+b = 80 / 60 = 1.333
 
-Données :
-- Capital : $50,000
-- Half-Kelly : 5%
-- SL : 6 pts (= $12/contrat MNQ)
+f* = (0.55 × 1.333 − 0.45) / 1.333
+f* = (0.733 − 0.45) / 1.333
+f* = 0.283 / 1.333
+f* = 0.213 = 21.3%
+```
 
-$$\text{Contrats} = \frac{0.05 \times 50000}{6 \times 2} = \frac{2500}{12} \approx 208$$
+**Kelly pur** = 21.3% du capital par trade.
 
-Apex limite à 40 contrats PA → **40 contrats** (contrainte binding).
+**En pratique** : half-Kelly = 10.6% (recommande).
+**Ultra-prudent** : quarter-Kelly = 5.3%.
 
-## Exercice 3 : Danger du overbet
+Note : ce nouvel edge a un R/R seulement 1.33 (contre 4.27 pour ton Hurst_MR). Donc meme avec un meilleur WR (55% vs 42%), le Kelly est PLUS BAS (21% vs 29%). **Le R/R compte plus que le WR pour Kelly**.
+</details>
 
-Tu penses que ton edge est 60% WR, R:R 1:1.
-Kelly = $\frac{0.60 - 0.40}{1} = 20\%$
+---
 
-Mais ton vrai WR est 52% (tu surestimes ton edge).
-Vrai Kelly = $\frac{0.52 - 0.48}{1} = 4\%$
+## Cas pratique #2 : Sizing en cours de challenge
 
-Tu misais 5× Kelly → growth négatif → tu perds lentement.
+Tu es en plein challenge Apex. Etat actuel :
+- Capital initial : $50,000
+- Equity actuel : $51,200 (HWM = $51,500 il y a 1 heure)
+- DD utilise = $51,500 - $51,200 = $300
 
-**LECON :** Toujours sous-estimer ton edge. Half-Kelly te protège contre ce biais.
+**Question** : quel sizing pour le prochain trade (SL = 5pts) ?
+
+<details>
+<summary>Reponse</summary>
+
+```
+DD_restant = $2,000 - $300 = $1,700
+risk_$ = max($50, min(0.12 × $1,700, $400))
+       = max($50, min($204, $400))
+       = $204
+
+loss_per_contract = 5 × $2 = $10
+contracts = $204 / $10 = 20.4 contrats theoriques
+contracts = min(12, 20.4) = 12 contrats
+```
+
+**Tu prendrais 12 contrats** (plafond Apex). Le risque sur ce trade = 12 × $10 = $120.
+
+Si le trade perd → DD utilise passe a $420 → DD_restant = $1,580 → prochain trade risk_$ = $190 → encore 12 contrats max.
+</details>
+
+---
+
+## Cas pratique #3 : Quand reduire le risk %
+
+Tu observes ton edge live et tu vois apres 100 trades reels :
+- WR live = 28% (vs 42% backtest)
+- PF live = 1.3 (vs 2.29 backtest)
+
+**Question** : faut-il continuer a tradier a 12% Kelly ?
+
+<details>
+<summary>Reponse</summary>
+
+**NON.** Tu dois reduire IMMEDIATEMENT le Kelly.
+
+Pourquoi ? Si les stats live divergent de l'estimation, le 12% qui etait optimal pour WR=42% est trop agressif pour WR=28%.
+
+**Recalcul rapide** avec nouvelles stats live :
+```
+Si WR live = 28% et R/R live = 1.3 :
+p = 0.28, q = 0.72, b = 1.3
+f* = (0.28 × 1.3 - 0.72) / 1.3 = -0.277 = -27.7%
+
+Kelly negatif → arret de la strategie obligatoire !
+```
+
+**Action** : si stats live divergent significativement (Sharpe live < 2 ou WR < 25% sur 100+ trades), **arreter** et investiguer.
+
+C'est pourquoi le monitoring live vs backtest est non-negociable.
+</details>
 
 ---
 
@@ -202,41 +310,47 @@ Tu misais 5× Kelly → growth négatif → tu perds lentement.
 # RESUME — Fiche de revision
 # ============================================
 
-**KELLY CRITERION** = la fraction optimale du capital à risquer pour maximiser la croissance géométrique.
+## La formule a retenir
 
-**FORMULE :**
+```
+f* = (p × b − q) / b
 
-$$f^* = \frac{p \cdot b - (1-p)}{b} \qquad \text{(discret)}$$
+Avec :
+  p = Win Rate
+  q = 1 − p (Loss Rate)
+  b = Avg Win / Avg Loss (R/R ratio)
 
-$$f^* = \frac{\mu}{\sigma^2} \qquad \text{(continu)}$$
+f* = Kelly pur (jamais utiliser directement)
+f_pratique = f* / 2 ou f* / 4 (fractional Kelly)
+```
 
-**HALF-KELLY :** $f = f^*/2$ — 75% de la croissance, 2× moins de drawdown. Toujours utiliser en trading réel.
+---
 
-**CONTRATS MNQ :**
+## Pour ton edge v9
 
-$$\text{Contrats} = \frac{f \cdot \text{Capital}}{SL_{pts} \times \$2}$$
+| Variable | Valeur |
+|---|---|
+| Win Rate (p) | 0.4264 |
+| Loss Rate (q) | 0.5736 |
+| R/R (b) | ~4.27 |
+| **Kelly pur (f*)** | **29.2%** |
+| **Ton choix v9 (~half Kelly)** | **12%** |
 
-**PHASES (dans le backtest) :**
-| Phase | Fraction |
-|-------|---------|
-| PRUDENTE | 4% |
-| STANDARD | 10% |
-| SECURITE | 4% |
+---
 
-**LES 3 REGLES :**
-1. Surestimer son edge = overbet = ruin lente
-2. Half-Kelly suffit (75% du max pour 50% du risque)
-3. Apex te limite (40 contrats PA, 60 eval) → la contrainte prime sur Kelly
+## Les regles d'or de Kelly
 
-**LIEN AVEC L'ERGODICITY :** Kelly maximise la même chose que l'ergodicity — la croissance géométrique, pas la moyenne arithmétique.
+1. ✅ **Calcule TON Kelly base sur TES stats backtest** (jamais copier celui d'un autre)
+2. ✅ **Utilise toujours half-Kelly ou quarter-Kelly** (jamais le full)
+3. ✅ **Recalcule chaque trimestre** avec les vraies stats live
+4. ✅ **DD-adaptatif obligatoire** sur compte funded (Apex, FTMO, etc.)
+5. ❌ **Ne jamais augmenter le Kelly apres une perte** ("revenge sizing")
+6. ❌ **Ne jamais jouer Kelly full** meme si tu es sur de ton edge
 
-**LETTRES ET SYMBOLES :**
+---
 
-| Lettre | Nom | Signification |
-|--------|-----|---------------|
-| $f^*$ | f étoile | Fraction Kelly optimale du capital à risquer |
-| $p$ | p | Probabilité de gagner un trade (WR) |
-| $b$ | b | Ratio gain/perte (R:R) |
-| $g(f)$ | g de f | Croissance géométrique en fonction de la fraction risquée |
-| $\mu$ | Mu | Rendement moyen espéré |
-| $\sigma^2$ | Sigma carré | Variance des rendements |
+## La phrase a retenir
+
+> **Kelly te dit COMBIEN parier. Hurst te dit QUAND parier. Z-score te dit OU entrer. Leung te dit COMMENT sortir.**
+
+Les 4 ensemble = ton edge complet. Manque 1 → l'edge s'effondre.

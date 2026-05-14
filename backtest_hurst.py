@@ -218,7 +218,15 @@ def build_study_cache(csv_path, sh, sm, eh, em, hwin=60):
 def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
                        max_td, skip_o, skip_c,
                        capital=50_000, max_dd=2_000, daily_lim=1_000,
-                       profit_target=3_000, risk_pct=0.10):
+                       profit_target=3_000, risk_pct=0.10,
+                       fixed_contracts=None,
+                       use_trail=False, trail_h_thresh=0.50,
+                       sl_min_pts=3.0):
+    """
+    fixed_contracts : int ou None
+        None  → sizing dynamique Kelly (comportement original)
+        int   → contrats fixes pour chaque trade (mode Apex sizing)
+    """
     trades = []
     monthly = []
     running = capital; peak = capital
@@ -245,7 +253,7 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
 
         cached    = day_cache[day_key]
         closes    = cached["closes"]
-        hurst_arr = cached["hurst_arr"]   # rolling H sans look-ahead
+        hurst_arr = cached["hurst_arr"]
         bars      = cached["bars"]
         n         = len(closes)
 
@@ -254,7 +262,6 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
         for i in range(lb + skip_o, n - skip_c):
             if day_td >= max_td or daily_pnl <= -daily_lim: break
             if i <= last_exit: continue
-            # Filtre Hurst sans look-ahead : H calculé sur les 60 barres passées
             h_bar = hurst_arr[i] if i < len(hurst_arr) else np.nan
             if np.isnan(h_bar) or h_bar >= ht: continue
 
@@ -265,44 +272,110 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
             if abs(z) < bk: continue
 
             direction = "short" if z > 0 else "long"
-            sl_pts = max(3.0, sl_m * std)
+            # SL min parametrable depuis sidebar (default 3.0 pts — preserve l'edge MR)
+            sl_pts = max(sl_min_pts, sl_m * std)
             sl_pts = min(sl_pts, 20.0)
-            # TP = fair value + overshoot de l'autre côté
-            # Long (price < mid) : TP au-dessus de mid
-            # Short (price > mid): TP en-dessous de mid
             if direction == "long":
                 tp_price = mid + tp_overshoot * std
             else:
                 tp_price = mid - tp_overshoot * std
 
-            dd_rem = max(0., max_dd - dd_used)
-            risk   = max(50., min(risk_pct * dd_rem, daily_lim * 0.40))
-            lpc    = sl_pts * 2.0
-            if lpc <= 0: continue
-            contracts = min(60, int(risk / lpc))
-            # Plafonne au budget journalier restant — ne force jamais 1 contrat si budget épuisé
-            budget_rem = max(0., daily_lim + daily_pnl)
-            contracts  = min(contracts, int(budget_rem / lpc))
+            # ── Sizing : fixe ou dynamique ────────────────────
+            if fixed_contracts is not None:
+                contracts = int(fixed_contracts)
+            else:
+                dd_rem = max(0., max_dd - dd_used)
+                risk   = max(50., min(risk_pct * dd_rem, daily_lim * 0.40))
+                lpc    = sl_pts * 2.0
+                if lpc <= 0: continue
+                contracts = min(60, int(risk / lpc))
+                budget_rem = max(0., daily_lim + daily_pnl)
+                contracts  = min(contracts, int(budget_rem / lpc))
             if contracts <= 0: continue
 
-            # Simulate trade
+            # Simulation trade
             result_pts = 0.0; exit_bar = i; hit = False
+            trail_active = False; trail_stop = None
             for j in range(i+1, min(n, i+120)):
                 c = closes[j]
-                if direction == "long":
-                    if c <= price - sl_pts: result_pts = -sl_pts - slip; exit_bar = j; hit = True; break
-                    if c >= tp_price:       result_pts = (tp_price - price) - slip; exit_bar = j; hit = True; break
+                # Rolling FV et Hurst courant (pour le trail)
+                if use_trail and j >= lb:
+                    w_j   = closes[j - lb: j]
+                    mid_j = w_j.mean()
+                    std_j = w_j.std() if w_j.std() > 1e-9 else std
+                    h_j   = hurst_arr[j] if j < len(hurst_arr) else np.nan
                 else:
-                    if c >= price + sl_pts: result_pts = -sl_pts - slip; exit_bar = j; hit = True; break
-                    if c <= tp_price:       result_pts = (price - tp_price) - slip; exit_bar = j; hit = True; break
+                    mid_j = mid; std_j = std; h_j = np.nan
+
+                if not trail_active:
+                    # SL standard
+                    if direction == "long":
+                        if c <= price - sl_pts:
+                            result_pts = -sl_pts - slip; exit_bar = j; hit = True; break
+                    else:
+                        if c >= price + sl_pts:
+                            result_pts = -sl_pts - slip; exit_bar = j; hit = True; break
+
+                    if use_trail:
+                        # Activation trail : prix franchit FV ET Hurst bascule trending
+                        fv_crossed = (direction == "long" and c > mid_j) or \
+                                     (direction == "short" and c < mid_j)
+                        h_trend    = not np.isnan(h_j) and h_j > trail_h_thresh
+                        if fv_crossed and h_trend:
+                            trail_active = True
+                            trail_stop   = mid_j
+                        else:
+                            # TP standard si trail pas encore activé
+                            if direction == "long" and c >= tp_price:
+                                result_pts = (tp_price - price) - slip; exit_bar = j; hit = True; break
+                            elif direction == "short" and c <= tp_price:
+                                result_pts = (price - tp_price) - slip; exit_bar = j; hit = True; break
+                    else:
+                        if direction == "long" and c >= tp_price:
+                            result_pts = (tp_price - price) - slip; exit_bar = j; hit = True; break
+                        elif direction == "short" and c <= tp_price:
+                            result_pts = (price - tp_price) - slip; exit_bar = j; hit = True; break
+
+                else:  # trail actif
+                    z_j = (c - mid_j) / std_j if std_j > 0 else 0.0
+                    if direction == "long":
+                        # Trail stop ne peut que monter
+                        if mid_j > trail_stop: trail_stop = mid_j
+                        # Sortie A : prix repasse sous trail stop (FV)
+                        if c <= trail_stop:
+                            result_pts = (trail_stop - price) - slip; exit_bar = j; hit = True; break
+                        # Sortie B : Z opposé ≥ 3σ
+                        if z_j >= 3.0:
+                            result_pts = (c - price) - slip; exit_bar = j; hit = True; break
+                        # Sortie C : H>ht ET Z>2.5σ opposé
+                        if not np.isnan(h_j) and h_j > ht and z_j >= 2.5:
+                            result_pts = (c - price) - slip; exit_bar = j; hit = True; break
+                    else:  # short
+                        # Trail stop ne peut que descendre
+                        if mid_j < trail_stop: trail_stop = mid_j
+                        # Sortie A
+                        if c >= trail_stop:
+                            result_pts = (price - trail_stop) - slip; exit_bar = j; hit = True; break
+                        # Sortie B
+                        if z_j <= -3.0:
+                            result_pts = (price - c) - slip; exit_bar = j; hit = True; break
+                        # Sortie C
+                        if not np.isnan(h_j) and h_j > ht and z_j <= -2.5:
+                            result_pts = (price - c) - slip; exit_bar = j; hit = True; break
+
             if not hit:
-                # Timeout : mark-to-market au close de la barre de sortie
                 exit_bar = min(n - 1, i + 120)
                 c_exit = closes[exit_bar]
                 if direction == "long":
-                    result_pts = (c_exit - price) - slip
+                    if trail_active and trail_stop is not None:
+                        result_pts = (trail_stop - price) - slip
+                    else:
+                        result_pts = (c_exit - price) - slip
                 else:
-                    result_pts = (price - c_exit) - slip
+                    if trail_active and trail_stop is not None:
+                        result_pts = (price - trail_stop) - slip
+                    else:
+                        result_pts = (price - c_exit) - slip
 
             pnl = result_pts * 2.0 * contracts
             running += pnl; daily_pnl += pnl; day_td += 1
@@ -381,9 +454,10 @@ _bar_h_vals = np.concatenate([
 mr_bars_pct = float((_bar_h_vals < hurst_threshold).mean() * 100) if len(_bar_h_vals) > 0 else 0.0
 
 # ─── TABS ────────────────────────────────────────────────────────────
-t1,t2,t3,t4,t5,t6 = st.tabs([
+t1,t2,t3,t4,t5,t6,t7,t8 = st.tabs([
     "📊 Résultats","🔬 Analyse Hurst","⏱ Signal & Timing",
-    "🎲 Monte Carlo","🧪 Preuve d'Edge","🔧 Grid Search"
+    "🎲 Monte Carlo","🧪 Preuve d'Edge","🔧 Grid Search","🎯 Apex Sizing",
+    "🚀 Trail MR/Trend"
 ])
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1106,3 +1180,463 @@ with t6:
                 st.warning("Aucune combinaison viable — élargis les plages.")
     else:
         st.info("Configure les 4 dimensions et clique **🔍 Lancer Grid Search**.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 7 — APEX SIZING — Sweep contrats fixes 1 → 6 MNQ
+# ═══════════════════════════════════════════════════════════════════════
+with t7:
+    st.markdown('<div class="section-lbl">Apex Sizing — Quel nombre de contrats MNQ est optimal ?</div>',
+                unsafe_allow_html=True)
+    st.caption(
+        "Backtest identique (paramètres JSON validés) avec contrats **fixes** 1 → 6 MNQ. "
+        "Objectif : trouver le sizing qui maximise le P&L mensuel tout en restant "
+        f"sous le seuil DD Apex ${max_dd_ui:,.0f}."
+    )
+
+    # ── Paramètres du sweep ──────────────────────────────────────────────
+    sa1, sa2, sa3 = st.columns(3)
+    with sa1:
+        apex_dd_limit  = st.number_input("DD max Apex ($)", 500, 5000, int(max_dd_ui), 100,
+                                         help="Seuil trailing DD EOD Apex — $2,000 pour $50k")
+        apex_target    = st.number_input("Profit target ($)", 500, 10000, int(profit_target_ui), 250)
+    with sa2:
+        apex_capital   = st.number_input("Capital ($)", 10000, 200000, int(capital_ui), 5000)
+        apex_daily_lim = st.number_input("Daily loss limit ($)", 100, 2000, int(daily_lim_ui), 100)
+    with sa3:
+        apex_max_c     = st.number_input("Contrats max à tester", 1, 10, 6, 1)
+        apex_mc_sims   = st.select_slider("Simulations MC / contrat",
+                                          [200, 500, 1000, 2000], value=500)
+        apex_mc_days   = st.number_input("Jours / simulation MC", 15, 30, 22)
+
+    if st.button("▶ Lancer Apex Sizing Sweep", type="primary", use_container_width=True):
+
+        sweep_rows = []
+        prog_apex  = st.progress(0)
+
+        for nc in range(1, int(apex_max_c) + 1):
+
+            t_df, _ = run_hurst_backtest(
+                day_cache,
+                ht=hurst_threshold, lb=lookback, bk=band_k,
+                sl_m=sl_mult, tp_overshoot=tp_overshoot, slip=slip_pts,
+                max_td=max_td, skip_o=skip_o, skip_c=skip_c,
+                capital=apex_capital, max_dd=apex_dd_limit,
+                daily_lim=apex_daily_lim, profit_target=apex_target,
+                fixed_contracts=nc,
+            )
+
+            prog_apex.progress(nc / int(apex_max_c))
+
+            if len(t_df) < 5:
+                continue
+
+            # ── Métriques statiques ───────────────────────────────────────
+            pos_s  = t_df[t_df["pnl"] > 0]["pnl"].sum()
+            neg_s  = abs(t_df[t_df["pnl"] < 0]["pnl"].sum())
+            pf_s   = pos_s / max(neg_s, 0.01)
+            wr_s   = float(t_df["win"].mean())
+            pnl_s  = t_df["pnl"].sum()
+
+            eq_s   = np.concatenate([[apex_capital],
+                                     np.cumsum(t_df["pnl"].values) + apex_capital])
+            pk_s   = np.maximum.accumulate(eq_s)
+            dd_arr = (pk_s - eq_s)          # en $ absolus
+            max_dd_dollar = float(dd_arr.max())
+            max_dd_pct_s  = max_dd_dollar / apex_capital * 100
+
+            _daily_s = t_df.groupby("date")["pnl"].sum()
+            sharpe_s = float(_daily_s.mean() / _daily_s.std() * np.sqrt(252)) \
+                       if _daily_s.std() > 0 else 0.0
+            pnl_month = pnl_s / max(1, len(t_df["date"].unique()) / 21)  # ~21 jours/mois
+
+            apex_safe = max_dd_dollar < apex_dd_limit      # true = respecte le seuil Apex
+            apex_ok_str = "✅ SAFE" if apex_safe else "❌ BUST"
+
+            # ── Monte Carlo : pass rate sur N jours ───────────────────────
+            daily_pnls_arr = _daily_s.values
+            passed_mc_s = 0; busted_mc_s = 0
+
+            if len(daily_pnls_arr) >= 5:
+                for _ in range(int(apex_mc_sims)):
+                    days_s = np.random.choice(daily_pnls_arr,
+                                              size=int(apex_mc_days), replace=True)
+                    eq_mc = apex_capital; pk_mc = apex_capital
+                    bust_mc = False; done_mc = False
+                    for p in days_s:
+                        eq_mc += p
+                        if eq_mc > pk_mc: pk_mc = eq_mc
+                        if (pk_mc - eq_mc) >= apex_dd_limit:
+                            bust_mc = True; break
+                        if (eq_mc - apex_capital) >= apex_target:
+                            done_mc = True; break
+                    if bust_mc:  busted_mc_s += 1
+                    elif done_mc: passed_mc_s += 1
+
+            pass_rate_s = passed_mc_s / int(apex_mc_sims) * 100
+            bust_rate_s = busted_mc_s / int(apex_mc_sims) * 100
+
+            sweep_rows.append(dict(
+                Contrats    = nc,
+                PF          = pf_s,
+                WR          = wr_s,
+                Sharpe      = sharpe_s,
+                MaxDD_dollar= max_dd_dollar,
+                MaxDD_pct   = max_dd_pct_s,
+                PnL_5ans    = pnl_s,
+                PnL_mois    = pnl_month,
+                Trades      = len(t_df),
+                PassRate    = pass_rate_s,
+                BustRate    = bust_rate_s,
+                Apex        = apex_ok_str,
+            ))
+
+        prog_apex.empty()
+
+        if not sweep_rows:
+            st.warning("Aucun résultat — vérifie les paramètres."); st.stop()
+
+        sw = pd.DataFrame(sweep_rows)
+
+        # ── KPI du meilleur contrat safe ─────────────────────────────────
+        safe_sw = sw[sw["MaxDD_dollar"] < apex_dd_limit]
+
+        st.markdown("---")
+        if len(safe_sw):
+            # Optimal = safe + pass rate max
+            best = safe_sw.loc[safe_sw["PassRate"].idxmax()]
+            nc_opt = int(best["Contrats"])
+
+            bc1, bc2, bc3, bc4, bc5 = st.columns(5)
+            bc1.metric("Contrat optimal", f"{nc_opt} MNQ")
+            bc2.metric("Pass Rate MC", f"{best['PassRate']:.0f}%")
+            bc3.metric("P&L / mois estimé", f"${best['PnL_mois']:+,.0f}")
+            bc4.metric("Max DD $", f"${best['MaxDD_dollar']:,.0f}",
+                       delta=f"buffer ${apex_dd_limit - best['MaxDD_dollar']:,.0f}",
+                       delta_color="normal")
+            bc5.metric("Sharpe", f"{best['Sharpe']:.2f}")
+
+            st.success(
+                f"✅ **{nc_opt} MNQ** est le nombre de contrats optimal — "
+                f"Pass Rate {best['PassRate']:.0f}% · "
+                f"P&L mensuel estimé ${best['PnL_mois']:+,.0f} · "
+                f"Max DD ${best['MaxDD_dollar']:,.0f} (buffer ${apex_dd_limit - best['MaxDD_dollar']:,.0f})"
+            )
+        else:
+            st.error("❌ Aucun sizing ne respecte le seuil DD Apex avec ces paramètres.")
+
+        # ── Tableau complet ───────────────────────────────────────────────
+        st.markdown('<div class="section-lbl">Résultats complets par nombre de contrats</div>',
+                    unsafe_allow_html=True)
+
+        def _style_row(row):
+            color = "#0d2b1a" if row["MaxDD_dollar"] < apex_dd_limit else "#2b0d0d"
+            return [f"background-color:{color}"] * len(row)
+
+        st.dataframe(
+            sw.style
+              .apply(_style_row, axis=1)
+              .format({
+                  "PF":           "{:.2f}",
+                  "WR":           "{:.1%}",
+                  "Sharpe":       "{:.2f}",
+                  "MaxDD_dollar": "${:,.0f}",
+                  "MaxDD_pct":    "{:.2f}%",
+                  "PnL_5ans":     "${:+,.0f}",
+                  "PnL_mois":     "${:+,.0f}",
+                  "PassRate":     "{:.0f}%",
+                  "BustRate":     "{:.0f}%",
+              })
+              .background_gradient(subset=["PassRate"], cmap="RdYlGn")
+              .background_gradient(subset=["BustRate"], cmap="RdYlGn_r")
+              .background_gradient(subset=["MaxDD_dollar"], cmap="RdYlGn_r"),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        # ── Graphe P&L mensuel vs DD ──────────────────────────────────────
+        st.markdown('<div class="section-lbl">P&L mensuel vs Max DD — tradeoff par contrat</div>',
+                    unsafe_allow_html=True)
+
+        marker_colors = [GREEN if r < apex_dd_limit else RED for r in sw["MaxDD_dollar"]]
+
+        fig_sizing = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_sizing.add_trace(go.Bar(
+            x=sw["Contrats"].astype(str) + " MNQ",
+            y=sw["PnL_mois"],
+            name="P&L / mois estimé",
+            marker_color=marker_colors,
+            text=[f"${v:+,.0f}" for v in sw["PnL_mois"]],
+            textposition="outside",
+        ), secondary_y=False)
+        fig_sizing.add_trace(go.Scatter(
+            x=sw["Contrats"].astype(str) + " MNQ",
+            y=sw["MaxDD_dollar"],
+            name="Max DD $",
+            mode="lines+markers",
+            line=dict(color=RED, width=2, dash="dot"),
+            marker=dict(size=9, color=marker_colors),
+        ), secondary_y=True)
+        fig_sizing.add_hline(
+            y=apex_dd_limit, line=dict(color=RED, dash="dash", width=1.5),
+            annotation_text=f"Seuil Apex ${apex_dd_limit:,.0f}",
+            secondary_y=True,
+        )
+        fig_sizing.update_layout(
+            **DARK, height=360,
+            title=f"Apex $50k — P&L mensuel vs Max DD par sizing",
+            legend=dict(orientation="h", y=1.1),
+        )
+        fig_sizing.update_yaxes(title_text="P&L mensuel ($)", tickformat="$,.0f",
+                                secondary_y=False)
+        fig_sizing.update_yaxes(title_text="Max DD ($)", tickformat="$,.0f",
+                                secondary_y=True)
+        st.plotly_chart(fig_sizing, use_container_width=True)
+
+        # ── Pass Rate MC par contrat ──────────────────────────────────────
+        st.markdown(f'<div class="section-lbl">Monte Carlo Pass Rate par contrat '
+                    f'({int(apex_mc_sims)} sims × {int(apex_mc_days)} jours)</div>',
+                    unsafe_allow_html=True)
+
+        fig_pr = go.Figure()
+        fig_pr.add_trace(go.Bar(
+            x=sw["Contrats"].astype(str) + " MNQ",
+            y=sw["PassRate"],
+            name="Pass Rate",
+            marker_color=[GREEN if v >= 50 else YELLOW if v >= 30 else RED
+                          for v in sw["PassRate"]],
+            text=[f"{v:.0f}%" for v in sw["PassRate"]],
+            textposition="outside",
+        ))
+        fig_pr.add_trace(go.Scatter(
+            x=sw["Contrats"].astype(str) + " MNQ",
+            y=sw["BustRate"],
+            name="Bust Rate",
+            mode="lines+markers",
+            line=dict(color=RED, width=2, dash="dot"),
+            marker=dict(size=8, color=RED),
+        ))
+        fig_pr.add_hline(y=50, line=dict(color=GREEN, dash="dash"),
+                         annotation_text="Pass Rate cible 50%")
+        fig_pr.add_hline(y=10, line=dict(color=RED, dash="dash"),
+                         annotation_text="Bust Rate max toléré 10%")
+        fig_pr.update_layout(**DARK, height=320,
+                             yaxis=dict(range=[0, 105], ticksuffix="%"),
+                             title=f"Pass Rate & Bust Rate — {int(apex_mc_days)} jours simulés")
+        st.plotly_chart(fig_pr, use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 8 — TRAIL MR/TREND
+# ═══════════════════════════════════════════════════════════════════════
+with t8:
+    st.markdown('<div class="section-lbl">Trail MR/Trend — Comparaison Base vs Trail</div>',
+                unsafe_allow_html=True)
+    st.caption(
+        "Le trail s'active quand le prix franchit la Fair Value ET que Hurst bascule en régime trending. "
+        "Stop déplacé à FV. Sortie : Z opposé ≥ 3σ, ou H>seuil + Z>2.5σ, ou retour à FV (stop touché)."
+    )
+
+    tc1, tc2, tc3 = st.columns(3)
+    with tc1:
+        trail_h = st.slider("Seuil H activation trail", 0.45, 0.58, 0.50, 0.01,
+                            help="H > seuil → régime bascule trending → trail activé")
+    with tc2:
+        trail_tp_os = st.slider("TP overshoot base (σ)", 0.0, 1.0, 0.0, 0.25,
+                                help="TP du mode standard avant activation trail")
+    with tc3:
+        trail_sl = st.slider("SL mult trail", 0.5, 2.0, float(sl_mult), 0.25)
+
+    if st.button("▶ Comparer Base vs Trail", type="primary", use_container_width=True):
+
+        with st.spinner("Backtest Base…"):
+            base_df, _ = run_hurst_backtest(
+                day_cache, hurst_threshold, lookback, band_k,
+                trail_sl, trail_tp_os, slip_pts, max_td, skip_o, skip_c,
+                capital=capital_ui, max_dd=max_dd_ui, daily_lim=daily_lim_ui,
+                profit_target=profit_target_ui, risk_pct=mc_risk/100,
+                use_trail=False,
+            )
+        with st.spinner("Backtest Trail…"):
+            trail_df, _ = run_hurst_backtest(
+                day_cache, hurst_threshold, lookback, band_k,
+                trail_sl, trail_tp_os, slip_pts, max_td, skip_o, skip_c,
+                capital=capital_ui, max_dd=max_dd_ui, daily_lim=daily_lim_ui,
+                profit_target=profit_target_ui, risk_pct=mc_risk/100,
+                use_trail=True, trail_h_thresh=trail_h,
+            )
+
+        if len(base_df) < 5 or len(trail_df) < 5:
+            st.warning("Pas assez de trades."); st.stop()
+
+        def _metrics(df):
+            pos = df[df["pnl"] > 0]["pnl"].sum()
+            neg = abs(df[df["pnl"] < 0]["pnl"].sum())
+            pf  = pos / max(neg, 0.01)
+            wr  = float(df["win"].mean())
+            eq  = np.concatenate([[capital_ui], np.cumsum(df["pnl"].values) + capital_ui])
+            pk  = np.maximum.accumulate(eq)
+            dd  = float(((pk - eq) / capital_ui * 100).max())
+            _d  = df.groupby("date")["pnl"].sum()
+            sh  = float(_d.mean() / _d.std() * np.sqrt(252)) if _d.std() > 0 else 0
+            avg_w = df[df["pnl"] > 0]["pnl"].mean() if df["win"].sum() > 0 else 0
+            avg_l = df[~df["win"]]["pnl"].mean() if (~df["win"]).sum() > 0 else 0
+            rr    = abs(avg_w / avg_l) if avg_l != 0 else 0
+            return dict(pf=pf, wr=wr, dd=dd, sharpe=sh, total=df["pnl"].sum(),
+                        n=len(df), avg_w=avg_w, avg_l=avg_l, rr=rr, eq=eq)
+
+        bm = _metrics(base_df)
+        tm = _metrics(trail_df)
+
+        # ── KPI comparaison ───────────────────────────────────────────────
+        st.markdown("---")
+        kc1, kc2 = st.columns(2)
+
+        def _card(label, m, color):
+            return f"""<div class="info-box" style="border-color:{color}44">
+            <div style="color:{color};font-size:1rem;font-weight:700">{label}</div>
+            <div>Profit Factor : <b style="color:{color}">{m['pf']:.2f}</b></div>
+            <div>Win Rate : <b>{m['wr']*100:.1f}%</b></div>
+            <div>Sharpe : <b>{m['sharpe']:.2f}</b></div>
+            <div>Max DD : <b style="color:{'#ef4444' if m['dd']>5 else '#10b981'}">{m['dd']:.1f}%</b></div>
+            <div>Avg Winner : <b style="color:#10b981">${m['avg_w']:+,.0f}</b></div>
+            <div>Avg Loser : <b style="color:#ef4444">${m['avg_l']:+,.0f}</b></div>
+            <div>R:R ratio : <b>{m['rr']:.2f}</b></div>
+            <div>P&L total : <b>${m['total']:+,.0f}</b></div>
+            <div>Trades : {m['n']}</div>
+            </div>"""
+
+        with kc1:
+            st.markdown(_card("📊 Base (TP = Fair Value)", bm, TEAL), unsafe_allow_html=True)
+        with kc2:
+            trail_color = GREEN if tm["pf"] > bm["pf"] else RED
+            st.markdown(_card("🚀 Trail MR/Trend", tm, trail_color), unsafe_allow_html=True)
+
+        # ── Verdict ───────────────────────────────────────────────────────
+        delta_pf    = tm["pf"] - bm["pf"]
+        delta_sh    = tm["sharpe"] - bm["sharpe"]
+        delta_dd    = tm["dd"] - bm["dd"]
+        delta_pnl   = tm["total"] - bm["total"]
+
+        if tm["pf"] > bm["pf"] and tm["dd"] <= bm["dd"] * 1.2:
+            st.success(
+                f"✅ **Edge Trail confirmé** — PF {bm['pf']:.2f} → {tm['pf']:.2f} "
+                f"(+{delta_pf:.2f}) | Sharpe {bm['sharpe']:.2f} → {tm['sharpe']:.2f} "
+                f"| P&L supplémentaire ${delta_pnl:+,.0f}"
+            )
+        elif tm["pf"] > bm["pf"] and tm["dd"] > bm["dd"] * 1.2:
+            st.warning(
+                f"⚠️ **Trail améliore le PF** ({bm['pf']:.2f} → {tm['pf']:.2f}) "
+                f"mais augmente le DD ({bm['dd']:.1f}% → {tm['dd']:.1f}%) — "
+                f"ajuste le seuil H ou le SL."
+            )
+        else:
+            st.error(
+                f"❌ **Pas d'edge Trail** — PF {bm['pf']:.2f} → {tm['pf']:.2f} "
+                f"({delta_pf:+.2f}) | Le trail dégrade la stratégie avec ces paramètres."
+            )
+
+        # ── Equity curves overlay ─────────────────────────────────────────
+        st.markdown('<div class="section-lbl">Equity Curve — Base vs Trail</div>',
+                    unsafe_allow_html=True)
+        fig_cmp = go.Figure()
+        fig_cmp.add_trace(go.Scatter(
+            y=bm["eq"], mode="lines", name="Base",
+            line=dict(color=TEAL, width=2),
+        ))
+        fig_cmp.add_trace(go.Scatter(
+            y=tm["eq"], mode="lines", name="Trail",
+            line=dict(color=GREEN if tm["pf"] > bm["pf"] else RED, width=2, dash="dot"),
+        ))
+        fig_cmp.add_hline(y=capital_ui + profit_target_ui,
+                          line=dict(color="#10b981", dash="dash", width=1),
+                          annotation_text=f"Target +${profit_target_ui:,.0f}")
+        fig_cmp.add_hline(y=capital_ui - max_dd_ui,
+                          line=dict(color="#ef4444", dash="dash", width=1),
+                          annotation_text=f"Bust −${max_dd_ui:,.0f}")
+        fig_cmp.update_layout(**DARK, height=360, yaxis_tickformat="$,.0f",
+                              title="Base vs Trail — 5 ans MNQ M1")
+        st.plotly_chart(fig_cmp, use_container_width=True)
+
+        # ── Distribution des P&L par trade ───────────────────────────────
+        st.markdown('<div class="section-lbl">Distribution P&L par trade — Base vs Trail</div>',
+                    unsafe_allow_html=True)
+        fig_dist = go.Figure()
+        fig_dist.add_trace(go.Histogram(
+            x=base_df["pnl"], name="Base", nbinsx=60,
+            marker_color=TEAL, opacity=0.6,
+        ))
+        fig_dist.add_trace(go.Histogram(
+            x=trail_df["pnl"], name="Trail", nbinsx=60,
+            marker_color=GREEN, opacity=0.6,
+        ))
+        fig_dist.update_layout(**DARK, height=300, barmode="overlay",
+                               xaxis_tickformat="$,.0f",
+                               title="Distribution P&L par trade")
+        st.plotly_chart(fig_dist, use_container_width=True)
+
+        # ── Sweep seuil H trail ───────────────────────────────────────────
+        st.markdown('<div class="section-lbl">Sweep seuil H activation — quel seuil est optimal ?</div>',
+                    unsafe_allow_html=True)
+
+        if st.button("🔍 Lancer sweep H trail", type="secondary"):
+            h_sweep_res = []
+            h_vals_sweep = [0.45, 0.47, 0.50, 0.52, 0.53, 0.55, 0.58]
+            sp2 = st.progress(0)
+            for idx_h, h_val in enumerate(h_vals_sweep):
+                t_sw, _ = run_hurst_backtest(
+                    day_cache, hurst_threshold, lookback, band_k,
+                    trail_sl, trail_tp_os, slip_pts, max_td, skip_o, skip_c,
+                    capital=capital_ui, max_dd=max_dd_ui, daily_lim=daily_lim_ui,
+                    profit_target=profit_target_ui, risk_pct=mc_risk/100,
+                    use_trail=True, trail_h_thresh=h_val,
+                )
+                sp2.progress((idx_h + 1) / len(h_vals_sweep))
+                if len(t_sw) < 5: continue
+                pos_sw = t_sw[t_sw["pnl"] > 0]["pnl"].sum()
+                neg_sw = abs(t_sw[t_sw["pnl"] < 0]["pnl"].sum())
+                pf_sw  = pos_sw / max(neg_sw, 0.01)
+                eq_sw  = np.concatenate([[capital_ui], np.cumsum(t_sw["pnl"].values) + capital_ui])
+                pk_sw  = np.maximum.accumulate(eq_sw)
+                dd_sw  = float(((pk_sw - eq_sw) / capital_ui * 100).max())
+                _d_sw  = t_sw.groupby("date")["pnl"].sum()
+                sh_sw  = float(_d_sw.mean() / _d_sw.std() * np.sqrt(252)) if _d_sw.std() > 0 else 0
+                h_sweep_res.append(dict(H=h_val, PF=pf_sw, Sharpe=sh_sw,
+                                        MaxDD=dd_sw, PnL=t_sw["pnl"].sum(), Trades=len(t_sw)))
+
+            if h_sweep_res:
+                hs_df = pd.DataFrame(h_sweep_res)
+                fig_hs = make_subplots(specs=[[{"secondary_y": True}]])
+                fig_hs.add_trace(go.Scatter(
+                    x=hs_df["H"], y=hs_df["PF"], name="PF",
+                    mode="lines+markers",
+                    line=dict(color=TEAL, width=2.5),
+                    marker=dict(size=9, color=[GREEN if v > bm["pf"] else RED for v in hs_df["PF"]]),
+                ), secondary_y=False)
+                fig_hs.add_trace(go.Scatter(
+                    x=hs_df["H"], y=hs_df["MaxDD"], name="Max DD %",
+                    mode="lines+markers",
+                    line=dict(color=RED, width=2, dash="dot"),
+                    marker=dict(size=7),
+                ), secondary_y=True)
+                fig_hs.add_hline(y=bm["pf"], line=dict(color=TEAL, dash="dash"),
+                                 annotation_text=f"PF Base {bm['pf']:.2f}", secondary_y=False)
+                fig_hs.update_layout(**DARK, height=320,
+                                     title="PF et DD selon le seuil H d'activation du trail",
+                                     legend=dict(orientation="h", y=1.1))
+                fig_hs.update_yaxes(title_text="Profit Factor", secondary_y=False)
+                fig_hs.update_yaxes(title_text="Max DD %", secondary_y=True)
+                st.plotly_chart(fig_hs, use_container_width=True)
+
+                best_h = hs_df.loc[hs_df["PF"].idxmax()]
+                st.success(f"✅ Seuil H optimal : **{best_h['H']}** → PF {best_h['PF']:.2f} | "
+                           f"DD {best_h['MaxDD']:.1f}% | P&L ${best_h['PnL']:+,.0f}")
+                st.dataframe(
+                    hs_df.style
+                        .format({"PF":"{:.2f}","Sharpe":"{:.2f}","MaxDD":"{:.1f}%","PnL":"${:+,.0f}"})
+                        .background_gradient(subset=["PF"], cmap="RdYlGn")
+                        .background_gradient(subset=["MaxDD"], cmap="RdYlGn_r"),
+                    use_container_width=True, hide_index=True,
+                )
+    else:
+        st.info("Configure les paramètres trail et clique **▶ Comparer Base vs Trail**.")

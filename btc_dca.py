@@ -7,12 +7,6 @@ import yfinance as yf
 import requests
 from datetime import datetime
 
-# ── Page config ────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="BTC DCA · Quant Maths",
-    page_icon="₿",
-    layout="wide",
-)
 from styles import inject as _inj; _inj()
 
 # ── CSS page-specific ──────────────────────────────────────────────────────

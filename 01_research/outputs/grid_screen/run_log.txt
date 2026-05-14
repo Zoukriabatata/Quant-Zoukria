@@ -1,0 +1,214 @@
+======================================================================
+### CHARGEMENT MNQ ###
+======================================================================
+MNQ bars chargees : 1,722,456 en 16.7s
+
+  Resample -> 5min...
+  Bars MNQ 5min session NY : 96,336
+
+  >> MNQ | mr_zscore | 5min
+     signaux=11139 | Train trades=4000 PF=0.83 Sharpe=-1.04
+     Valid trades=1344 PF=0.76 Sharpe=-1.44
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 0.0% | NO_TARGET 100.0% | PnL/mois $-361
+     Duree : 1.3s
+
+  >> MNQ | rsi_ext | 5min
+     signaux=26602 | Train trades=6533 PF=0.86 Sharpe=-0.78
+     Valid trades=2265 PF=0.91 Sharpe=-0.45
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 2.0% | NO_TARGET 98.0% | PnL/mois $-394
+     Duree : 1.9s
+
+  >> MNQ | orb | 5min
+     signaux=55482 | Train trades=7539 PF=0.94 Sharpe=-0.33
+     Valid trades=3138 PF=0.84 Sharpe=-0.82
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 4.1% | NO_TARGET 95.9% | PnL/mois $-353
+     Duree : 2.3s
+
+  Resample -> 15min...
+  Bars MNQ 15min session NY : 32,112
+
+  >> MNQ | mr_zscore | 15min
+     signaux=4030 | Train trades=1504 PF=0.72 Sharpe=-1.61
+     Valid trades=498 PF=1.05 Sharpe=0.21
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 0.0% | NO_TARGET 100.0% | PnL/mois $-153
+     Duree : 0.5s
+
+  >> MNQ | rsi_ext | 15min
+     signaux=10204 | Train trades=2966 PF=0.84 Sharpe=-0.84
+     Valid trades=970 PF=0.89 Sharpe=-0.47
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 0.0% | NO_TARGET 100.0% | PnL/mois $-219
+     Duree : 0.7s
+
+  >> MNQ | orb | 15min
+     signaux=18102 | Train trades=4394 PF=0.90 Sharpe=-0.59
+     Valid trades=1643 PF=0.78 Sharpe=-1.22
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 0.0% | NO_TARGET 100.0% | PnL/mois $-303
+     Duree : 1.2s
+======================================================================
+### CHARGEMENT NQ ###
+======================================================================
+NQ bars chargees : 1,739,384 en 14.5s
+
+  Resample -> 5min...
+  Bars NQ 5min session NY : 97,350
+
+  >> NQ | mr_zscore | 5min
+     signaux=11246 | Train trades=4032 PF=0.87 Sharpe=-0.78
+     Valid trades=1352 PF=0.85 Sharpe=-0.83
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 98.0% | NO_TARGET 2.0% | PnL/mois $-646
+     Duree : 1.2s
+
+  >> NQ | rsi_ext | 5min
+     signaux=26908 | Train trades=6592 PF=0.89 Sharpe=-0.63
+     Valid trades=2267 PF=0.98 Sharpe=-0.09
+     Apex cycle (49 mois): PASSED 2.0% | BUSTED_DD 98.0% | NO_TARGET 0.0% | PnL/mois $-611
+     Duree : 2.0s
+
+  >> NQ | orb | 5min
+     signaux=55887 | Train trades=7584 PF=0.98 Sharpe=-0.12
+     Valid trades=3125 PF=0.86 Sharpe=-0.72
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 100.0% | NO_TARGET 0.0% | PnL/mois $-624
+     Duree : 2.7s
+
+  Resample -> 15min...
+  Bars NQ 15min session NY : 32,450
+
+  >> NQ | mr_zscore | 15min
+     signaux=4066 | Train trades=1525 PF=0.76 Sharpe=-1.31
+     Valid trades=497 PF=1.20 Sharpe=0.75
+     Apex cycle (49 mois): PASSED 10.2% | BUSTED_DD 85.7% | NO_TARGET 4.1% | PnL/mois $118
+     Duree : 0.5s
+
+  >> NQ | rsi_ext | 15min
+     signaux=10294 | Train trades=2990 PF=0.85 Sharpe=-0.76
+     Valid trades=966 PF=0.93 Sharpe=-0.27
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 100.0% | NO_TARGET 0.0% | PnL/mois $-243
+     Duree : 0.8s
+
+  >> NQ | orb | 15min
+     signaux=18252 | Train trades=4424 PF=0.93 Sharpe=-0.38
+     Valid trades=1639 PF=0.80 Sharpe=-1.06
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 100.0% | NO_TARGET 0.0% | PnL/mois $-381
+     Duree : 1.3s
+======================================================================
+### CHARGEMENT ES ###
+======================================================================
+ES bars chargees : 1,733,959 en 19.4s
+
+  Resample -> 5min...
+  Bars ES 5min session NY : 97,038
+
+  >> ES | mr_zscore | 5min
+     signaux=11079 | Train trades=4080 PF=0.69 Sharpe=-2.12
+     Valid trades=1347 PF=0.85 Sharpe=-0.76
+     Apex cycle (49 mois): PASSED 6.1% | BUSTED_DD 93.9% | NO_TARGET 0.0% | PnL/mois $-997
+     Duree : 1.3s
+
+  >> ES | rsi_ext | 5min
+     signaux=27143 | Train trades=6862 PF=0.66 Sharpe=-2.24
+     Valid trades=2418 PF=0.83 Sharpe=-0.85
+     Apex cycle (49 mois): PASSED 2.0% | BUSTED_DD 95.9% | NO_TARGET 2.0% | PnL/mois $-1228
+     Duree : 2.0s
+
+  >> ES | orb | 5min
+     signaux=58352 | Train trades=8824 PF=0.86 Sharpe=-0.81
+     Valid trades=3570 PF=0.79 Sharpe=-1.16
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 100.0% | NO_TARGET 0.0% | PnL/mois $-1007
+     Duree : 2.8s
+
+  Resample -> 15min...
+  Bars ES 15min session NY : 32,346
+
+  >> ES | mr_zscore | 15min
+     signaux=3944 | Train trades=1478 PF=0.59 Sharpe=-2.50
+     Valid trades=492 PF=0.71 Sharpe=-1.51
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 69.4% | NO_TARGET 30.6% | PnL/mois $-1103
+     Duree : 0.5s
+
+  >> ES | rsi_ext | 15min
+     signaux=10145 | Train trades=2986 PF=0.68 Sharpe=-1.90
+     Valid trades=971 PF=0.94 Sharpe=-0.28
+     Apex cycle (49 mois): PASSED 4.1% | BUSTED_DD 85.7% | NO_TARGET 10.2% | PnL/mois $-768
+     Duree : 0.9s
+
+  >> ES | orb | 15min
+     signaux=19077 | Train trades=4751 PF=0.87 Sharpe=-0.73
+     Valid trades=1802 PF=0.77 Sharpe=-1.24
+     Apex cycle (49 mois): PASSED 0.0% | BUSTED_DD 89.8% | NO_TARGET 10.2% | PnL/mois $-1071
+     Duree : 1.4s
+
+======================================================================
+### TABLEAU RECAPITULATIF FINAL — GRID SCREEN APEX ###
+======================================================================
+
+instrument    signal    tf  train_trades  train_pf  train_sharpe  valid_trades  valid_pf  valid_sharpe  apex_pass_rate  apex_avg_pnl_month
+        NQ mr_zscore 15min          1525    0.7636       -1.3089           497    1.2015        0.7455         10.2041            118.4734
+        ES mr_zscore  5min          4080    0.6851       -2.1223          1347    0.8533       -0.7616          6.1224           -996.8751
+        ES   rsi_ext 15min          2986    0.6760       -1.9026           971    0.9352       -0.2805          4.0816           -768.0408
+        NQ   rsi_ext  5min          6592    0.8853       -0.6346          2267    0.9804       -0.0930          2.0408           -610.8685
+        ES   rsi_ext  5min          6862    0.6555       -2.2428          2418    0.8350       -0.8500          2.0408          -1228.0109
+       MNQ mr_zscore 15min          1504    0.7176       -1.6099           498    1.0497        0.2065          0.0000           -152.9911
+        NQ   rsi_ext 15min          2990    0.8502       -0.7583           966    0.9349       -0.2705          0.0000           -242.5714
+       MNQ   rsi_ext  5min          6533    0.8613       -0.7838          2265    0.9103       -0.4510          0.0000           -393.6407
+       MNQ   rsi_ext 15min          2966    0.8354       -0.8389           970    0.8930       -0.4661          0.0000           -218.6449
+        NQ       orb  5min          7584    0.9764       -0.1247          3125    0.8583       -0.7246          0.0000           -624.3597
+       MNQ       orb  5min          7539    0.9396       -0.3301          3138    0.8409       -0.8230          0.0000           -352.6892
+        NQ mr_zscore  5min          4032    0.8690       -0.7785          1352    0.8483       -0.8263          0.0000           -645.6221
+        NQ       orb 15min          4424    0.9317       -0.3753          1639    0.8010       -1.0554          0.0000           -381.3673
+        ES       orb  5min          8824    0.8556       -0.8117          3570    0.7856       -1.1570          0.0000          -1006.8619
+       MNQ       orb 15min          4394    0.8954       -0.5930          1643    0.7774       -1.2157          0.0000           -303.3960
+        ES       orb 15min          4751    0.8711       -0.7300          1802    0.7733       -1.2356          0.0000          -1071.3265
+       MNQ mr_zscore  5min          4000    0.8287       -1.0399          1344    0.7607       -1.4438          0.0000           -360.7866
+        ES mr_zscore 15min          1478    0.5854       -2.5012           492    0.7117       -1.5062          0.0000          -1103.3878
+
+
+[!] Configs avec pass_rate > 0 : 5
+instrument    signal    tf  train_trades  train_pf  train_sharpe  valid_trades  valid_pf  valid_sharpe  apex_pass_rate  apex_avg_pnl_month
+        NQ mr_zscore 15min          1525    0.7636       -1.3089           497    1.2015        0.7455         10.2041            118.4734
+        ES mr_zscore  5min          4080    0.6851       -2.1223          1347    0.8533       -0.7616          6.1224           -996.8751
+        ES   rsi_ext 15min          2986    0.6760       -1.9026           971    0.9352       -0.2805          4.0816           -768.0408
+        NQ   rsi_ext  5min          6592    0.8853       -0.6346          2267    0.9804       -0.0930          2.0408           -610.8685
+        ES   rsi_ext  5min          6862    0.6555       -2.2428          2418    0.8350       -0.8500          2.0408          -1228.0109
+
+======================================================================
+### FIN GRID SCREEN ###
+======================================================================
+Fichiers dans 01_research\outputs\grid_screen/ :
+  - apex_cycle_ES_mr_zscore_15min.csv
+  - apex_cycle_ES_mr_zscore_5min.csv
+  - apex_cycle_ES_orb_15min.csv
+  - apex_cycle_ES_orb_5min.csv
+  - apex_cycle_ES_rsi_ext_15min.csv
+  - apex_cycle_ES_rsi_ext_5min.csv
+  - apex_cycle_MNQ_mr_zscore_15min.csv
+  - apex_cycle_MNQ_mr_zscore_5min.csv
+  - apex_cycle_MNQ_orb_15min.csv
+  - apex_cycle_MNQ_orb_5min.csv
+  - apex_cycle_MNQ_rsi_ext_15min.csv
+  - apex_cycle_MNQ_rsi_ext_5min.csv
+  - apex_cycle_NQ_mr_zscore_15min.csv
+  - apex_cycle_NQ_mr_zscore_5min.csv
+  - apex_cycle_NQ_orb_15min.csv
+  - apex_cycle_NQ_orb_5min.csv
+  - apex_cycle_NQ_rsi_ext_15min.csv
+  - apex_cycle_NQ_rsi_ext_5min.csv
+  - grid_results.csv
+  - run_log.txt
+  - trades_ES_mr_zscore_15min.csv
+  - trades_ES_mr_zscore_5min.csv
+  - trades_ES_orb_15min.csv
+  - trades_ES_orb_5min.csv
+  - trades_ES_rsi_ext_15min.csv
+  - trades_ES_rsi_ext_5min.csv
+  - trades_MNQ_mr_zscore_15min.csv
+  - trades_MNQ_mr_zscore_5min.csv
+  - trades_MNQ_orb_15min.csv
+  - trades_MNQ_orb_5min.csv
+  - trades_MNQ_rsi_ext_15min.csv
+  - trades_MNQ_rsi_ext_5min.csv
+  - trades_NQ_mr_zscore_15min.csv
+  - trades_NQ_mr_zscore_5min.csv
+  - trades_NQ_orb_15min.csv
+  - trades_NQ_orb_5min.csv
+  - trades_NQ_rsi_ext_15min.csv
+  - trades_NQ_rsi_ext_5min.csv

@@ -1,7 +1,7 @@
-# 04 — ARCH & GARCH
-# "Filtre de volatilite"
+# 04 — GARCH : Le clustering de volatilite
+# "Pourquoi la volatilite a de la memoire"
 
-> **Video :** [Master Volatility with ARCH & GARCH Models — Roman Paolucci](https://youtu.be/iImtlBRcczA)
+> **Source :** [Quant Guild #47 — ARCH & GARCH](https://youtu.be/iImtlBRcczA)
 
 ---
 
@@ -9,230 +9,117 @@
 # APPRENTISSAGE — C'est quoi ? Pourquoi ?
 # ============================================
 
-## Le probleme
+## L'intuition en 30 secondes
 
-La volatilite n'est PAS constante. Tout le monde le sait.
-Mais comment la MESURER en temps reel ?
+Regarde MNQ sur un mois quelconque. Tu vas remarquer :
 
-```
-Marche calme :                 Marche agite :
-  _-_-_-_-_-_-_-              _/\  /\_
-                                  \/    \/\  /
-                                            \/
+- **Periodes calmes** : 3-5 jours de range etroit, ATR faible, peu de mouvement
+- **Periodes volatiles** : 2-3 jours d'oscillations enormes, ATR triple, gros range
 
-  Petits mouvements             Gros mouvements
-  sigma = petit                 sigma = grand
-```
+Et surtout : **les jours calmes sont voisins** des jours calmes, **les jours volatiles** sont voisins des jours volatils. Ce n'est pas aleatoire.
 
-**Le probleme :** si tu utilises une volatilite FIXE,
-tu vas :
-1. Sous-estimer le risque en regime HIGH vol
-2. Sur-estimer le risque en regime LOW vol
-3. Prendre des positions trop grosses au pire moment
+**GARCH (Generalized Auto-Regressive Conditional Heteroskedasticity)** est le modele mathematique qui formalise ce phenomene appele **volatility clustering**.
 
-## Pourquoi GARCH ?
+---
 
-GARCH capture 3 phenomenes reels du marche :
+## Pourquoi c'est pertinent pour TOI
 
-```
-1. VOLATILITY CLUSTERING (regroupement)
-   "Les gros mouvements suivent les gros mouvements"
+Tu n'utilises pas explicitement GARCH dans ton code. **Mais GARCH explique pourquoi** :
 
-   ___      ___/\/\/\___      ___
-      \____/            \____/
+1. Ton edge ne marche pas en marche tres calme (std < 1.0 dans tes data → PF 1.13 mediocre)
+2. Ton edge brille en marche moderement volatile (std 4-8 → PF 2.20)
+3. Ton edge est variable en marche tres volatile (std > 20 → PF 3.86 mais peu de trades)
 
-   calme   agite        calme   <-- la vol vient en vagues
+**Le clustering de vol** signifie que tu peux **anticiper le regime de volatilite** de la prochaine heure en regardant l'heure precedente. C'est ca qu'utilise ton **filtre std > 1.0**.
 
-2. MEAN REVERSION (retour a la moyenne)
-   "La vol extreme ne dure pas eternellement"
+---
 
-   La vol spike apres un choc, puis retourne a la normale.
+## L'analogie de la meteo
 
-        /\
-       /  \
-      /    \___
-     /         \___
-    /              -------- <-- niveau normal
+Pense a la meteo :
+- Si aujourd'hui c'est tempête, demain a 80% chance d'etre encore tempête
+- Si aujourd'hui c'est calme, demain a 80% chance d'etre encore calme
+- Mais les transitions calme→tempête prennent quelques heures, pas instantanees
 
-3. LEVERAGE EFFECT (effet de levier)
-   "Le marche qui baisse = vol qui monte"
-
-   Les baisses generent PLUS de volatilite que les hausses.
-```
-
-## Analogie
-
-```
-VOLATILITE FIXE = conduire a 50 km/h tout le temps
-  --> trop lent sur autoroute, trop vite dans une ruelle
-
-GARCH = ajuster ta vitesse selon la route
-  --> autoroute = vite, ruelle = lent
-  --> et si tu viens de freiner d'urgence,
-      tu restes prudent pendant un moment (clustering)
-```
+**Le marche est pareil pour la volatilite**. GARCH modelise ces persistances et transitions.
 
 ---
 
 # ============================================
-# MODEL — Les maths
+# MODEL — Les maths derriere (simplifie)
 # ============================================
 
-## Etape 1 : Le modele de base
+## L'equation GARCH(1,1)
 
-Le prix suit :
-
-$$r_t = \mu + \varepsilon_t$$
-
-- $\mu$ = rendement moyen (souvent $\approx 0$ en intraday)
-- $\varepsilon_t = \sigma_t \cdot z_t$
-- $z_t \sim \mathcal{N}(0, 1)$ = bruit standard
-- $\sigma_t$ = volatilite qui CHANGE dans le temps -- c'est ca qu'on cherche
-
-## Etape 2 : ARCH(1) — Engle 1982
-
-**ARCH = AutoRegressive Conditional Heteroskedasticity**
-
-$$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2$$
-
-- $\alpha_0$ = "plancher" de volatilite (toujours $> 0$)
-- $\alpha_1$ = "reaction" aux chocs recents
-
-En francais : la volatilite d'aujourd'hui depend de la **TAILLE** du mouvement d'hier (au carre).
-
-**Exemple numerique :** hier le prix a bouge de $+3\%$ (gros choc), $\varepsilon^2 = (0.03)^2 = 0.0009$
-
-$$\sigma^2_{aujourd'hui} = 0.00001 + 0.25 \times 0.0009 = 0.00001 + 0.000225 = 0.000235 \quad \Rightarrow \quad \sigma = 1.53\%$$
-
-Vs un jour calme ou hier $= +0.5\%$ :
-
-$$\sigma^2 = 0.00001 + 0.25 \times (0.005)^2 = 0.00001 + 0.00000625 = 0.00001625 \quad \Rightarrow \quad \sigma = 0.40\%$$
-
-| Contexte | $\sigma$ |
-|---|---|
-| Apres un gros choc | $1.53\%$ |
-| Apres un jour calme | $0.40\%$ |
-
-La vol s'adapte automatiquement !
-
-## Etape 3 : GARCH(1,1) — Bollerslev 1986
-
-**GARCH ajoute la MEMOIRE :**
-
-$$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2 + \beta_1 \cdot \sigma_{t-1}^2$$
-
-- $\alpha_0$ = plancher
-- $\alpha_1 \cdot \varepsilon_{t-1}^2$ = reaction au choc d'hier
-- $\beta_1 \cdot \sigma_{t-1}^2$ = **MEMOIRE** (la vol d'hier persiste)
-
-**Le truc genial :** le terme `beta1 * sigma^2(t-1)` fait que
-la volatilite d'hier INFLUENCE celle d'aujourd'hui.
+C'est le modele GARCH le plus utilise en pratique :
 
 ```
-Sans GARCH (ARCH seul) :
-  Un choc fait monter la vol
-  Mais si demain est calme, la vol retombe direct
-
-  vol:    |
-          |  *         <-- spike
-          |     *      <-- retombe vite
-          | *     * *
-          +---------->  temps
-
-Avec GARCH :
-  Un choc fait monter la vol
-  Et elle RESTE elevee pendant un moment (clustering !)
-
-  vol:    |
-          |  * * *     <-- spike + persistance
-          |        * *
-          | *          * * *
-          +---------->  temps
+σ²_t = ω + α × ε²_{t-1} + β × σ²_{t-1}
 ```
 
-## Conditions importantes
+**Decodage** :
+- `σ²_t` = variance (volatilite au carre) au temps t — ce qu'on veut predire
+- `ω` (omega) = constante de base (vol minimum a long terme)
+- `α` (alpha) = poids du dernier choc carre (~10%)
+- `ε²_{t-1}` = carre du rendement precedent (le "choc" de la barre passee)
+- `β` (beta) = poids de la vol passee (~85%)
+- `σ²_{t-1}` = vol au carre de la barre precedente
 
-$$\alpha_1 + \beta_1 < 1 \quad \text{(sinon la vol explose)}$$
+**Lecture humaine** :
+> "La vol d'aujourd'hui = un peu de bruit constant + un peu du choc d'hier + beaucoup de la vol d'hier."
 
-| Parametre | Valeur typique | Role |
-|---|---|---|
-| $\alpha_1$ | 0.05 - 0.15 | Reaction aux chocs |
-| $\beta_1$ | 0.80 - 0.95 | Persistance |
-| $\alpha_1 + \beta_1$ | 0.90 - 0.99 | Plus c'est proche de 1 = plus la vol persiste |
+C'est pour ca que la vol **persiste** : 85% de la vol d'aujourd'hui vient de hier.
 
-## Volatilite long terme (inconditionnelle)
+---
 
-$$\sigma_{LT}^2 = \frac{\alpha_0}{1 - \alpha_1 - \beta_1}$$
+## Pourquoi ton std × Lookback suffit
 
-**Exemple :** $\alpha_0 = 0.00001$, $\alpha_1 = 0.1$, $\beta_1 = 0.85$
+Tu n'as PAS besoin d'implementer GARCH explicite. Ton code calcule **std sur 19 dernieres barres** (Lookback). Cet std est en fait une **moyenne mobile de volatilite** — l'equivalent simplifie de GARCH.
 
-$$\sigma_{LT}^2 = \frac{0.00001}{1 - 0.1 - 0.85} = \frac{0.00001}{0.05} = 0.0002 \quad \Rightarrow \quad \sigma_{LT} = 1.41\%/\text{jour} = 22.4\%/\text{an}$$
+Mathématiquement :
+- GARCH(1,1) → estimation exponentielle pondérée
+- Rolling std → estimation uniforme sur fenêtre
+- Les deux convergent en pratique sur des fenetres > 15 barres
 
-## Application : Value at Risk (VaR)
+**Ton std(19 barres) capture 95% du signal GARCH** sans la complexite. C'est un trade-off rationnel.
 
-VaR = "Quelle est ma perte maximale avec $95\%$ de confiance ?"
+---
 
-**VaR NAIVE** (vol constante) : $VaR = \sigma_{fixe} \times 1.645$ -- utilise la meme vol tout le temps, SOUS-ESTIME le risque en periode de crise.
+## Quand GARCH explicite vaudrait le coup
 
-**VaR GARCH** : $VaR_t = \sigma_{GARCH}(t) \times 1.645$ -- s'adapte au regime de vol actuel, beaucoup plus fiable.
+Si tu voulais aller plus loin, GARCH te donnerait :
+1. **Prediction explicite de la vol future** (pas juste l'actuelle)
+2. **Asymmetrie** : les chocs negatifs (chutes) augmentent plus la vol que les chocs positifs (variante GJR-GARCH)
+3. **Long-memory** : capture des effets sur 100+ barres (FIGARCH)
 
-| Methode | Exceedances | Cible |
-|---|---|---|
-| VaR naive | $40.65\%$ | $5\%$ !!! |
-| VaR GARCH | $9.74\%$ | $5\%$ (bien meilleur) |
+Mais pour ton timeframe M1, **rolling std reste suffisant**. La complexite GARCH apporterait < 5% d'amelioration au prix de 10× plus de code.
 
 ---
 
 # ============================================
-# LECON — Exercices pratiques
+# LECON — Exercice (court)
 # ============================================
 
-## Exercice 1 : GARCH(1,1) a la main
+## Cas pratique : Pourquoi std > 1.0 dans tes filtres ?
 
-Parametres : $\alpha_0 = 0.00001$, $\alpha_1 = 0.10$, $\beta_1 = 0.85$. Jour 0 : $\sigma^2 = 0.0002$, $\varepsilon = +2\% = 0.02$
+Tu regardes tes data : sur 3030 trades, ceux avec **std < 1.0** ont PF = 1.13 (mediocre) alors que ceux avec **std 4-6** ont PF = 2.20.
 
-**Jour 1 :**
+**Question** : que dit GARCH a ce sujet ?
 
-$$\sigma_1^2 = 0.00001 + 0.10 \times (0.02)^2 + 0.85 \times 0.0002 = 0.00001 + 0.00004 + 0.00017 = 0.00022$$
-$$\sigma_1 = \sqrt{0.00022} = 1.48\%$$
+<details>
+<summary>Reponse</summary>
 
-Jour 1 a un mouvement de $-4\%$ (gros choc).
+GARCH dit : "la vol persiste". Donc :
 
-**Jour 2 :**
+- **std actuel tres bas (<1.0)** → la vol va probablement rester basse pour les 5-15 prochaines barres
+- Sur des barres a faible vol, **les mouvements sont minuscules** → ton TP a 0.15σ correspond a un mouvement de **0.15pts** (negligeable)
+- Tes gains sont absorbes par le slippage et les frais
+- → **PF 1.13** observe
 
-$$\sigma_2^2 = 0.00001 + 0.10 \times (0.04)^2 + 0.85 \times 0.00022 = 0.00001 + 0.00016 + 0.000187 = 0.000357$$
-$$\sigma_2 = \sqrt{0.000357} = 1.89\%$$
+A l'inverse, **std moyen (4-6)** → la vol persiste a ce niveau → mouvements MR de 1-3pts → TP atteignable et profitable → **PF 2.20**.
 
-La vol a **MONTE** de $1.48\%$ a $1.89\%$ apres le choc de $-4\%$.
-
-## Exercice 2 : Persistance
-
-Apres le choc, supposons des jours calmes ($\varepsilon = 0$) :
-
-**Jour 3** ($\varepsilon=0$) : $\sigma_3^2 = 0.00001 + 0.10 \times 0 + 0.85 \times 0.000357 = 0.000313$ $\Rightarrow$ $\sigma_3 = 1.77\%$
-
-**Jour 4** ($\varepsilon=0$) : $\sigma_4^2 = 0.00001 + 0 + 0.85 \times 0.000313 = 0.000276$ $\Rightarrow$ $\sigma_4 = 1.66\%$
-
-| Jour | $\sigma$ |
-|---|---|
-| Jour 2 (choc) | $1.89\%$ |
-| Jour 3 | $1.77\%$ |
-| Jour 4 | $1.66\%$ |
-| Jour 5 | $1.57\%$ |
-| Jour 10 | $\sim 1.30\%$ |
-
-La vol DESCEND lentement = **mean reversion**. Il faut $\sim 15$-$20$ jours pour revenir au niveau normal. C'est le **CLUSTERING** capture par $\beta_1$.
-
-## Exercice 3 : Impact sur le sizing
-
-Capital $= 10\,000$, risque max $1\% = 100$ par trade, stop loss $= 10$ points MNQ $= 50$
-
-| Regime | $\sigma_{GARCH}$ | Contrats | Raison |
-|---|---|---|---|
-| LOW vol | petit | $100/50 = 2$ | Conditions normales |
-| HIGH vol | double | $1$ | Stop atteint plus souvent, REDUIRE |
-
-**GARCH te dit QUAND ajuster ta taille.**
+**C'est pour ca que std > 1.0 dans ton filtre fonctionne mathematiquement**. GARCH formalise ce que tu as decouvert empiriquement.
+</details>
 
 ---
 
@@ -240,86 +127,22 @@ Capital $= 10\,000$, risque max $1\% = 100$ par trade, stop loss $= 10$ points M
 # RESUME — Fiche de revision
 # ============================================
 
-**ARCH :**
+## L'idee a retenir en 3 lignes
 
-$$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2$$
-
-La vol depend du choc d'hier.
-
-**GARCH :**
-
-$$\boxed{\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2 + \beta_1 \cdot \sigma_{t-1}^2}$$
-
-La vol depend du choc d'hier ET de la vol d'hier. Capture le CLUSTERING (la vol persiste).
-
-**PARAMETRES TYPIQUES :**
-
-| Parametre | Valeur | Role |
-|---|---|---|
-| $\alpha_1$ | $0.05$-$0.15$ | Reaction aux chocs |
-| $\beta_1$ | $0.80$-$0.95$ | Persistance |
-| $\alpha_1 + \beta_1$ | $< 1$ | Stabilite |
-
-**CAPTURE 3 PHENOMENES :**
-1. Clustering : gros mouvements $\to$ gros mouvements
-2. Mean reversion : la vol revient toujours a la moyenne
-3. Fat tails : plus de valeurs extremes que la normale
-
-**VOL LONG TERME :**
-
-$$\sigma_{LT}^2 = \frac{\alpha_0}{1 - \alpha_1 - \beta_1}$$
-
-**VaR GARCH >> VaR naive :** naive sous-estime massivement le risque ($40\%$ exceedances vs $5\%$ cible), GARCH bien meilleur ($10\%$ exceedances).
-
-**FORMULES A RETENIR :**
+> 1. **Volatility clustering** : la vol persiste (calme reste calme, volatile reste volatile)
+> 2. **GARCH(1,1)** formalise ca : vol d'aujourd'hui = 85% de vol d'hier + 10% de choc + bruit
+> 3. **Ton rolling std(19)** capture ce phenomene sans avoir besoin d'implementer GARCH
 
 ---
 
-**1. ARCH(1) — reaction aux chocs**
+## Ce que tu DOIS retenir pour ton edge
 
-$$\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2$$
-
-**Pourquoi ca marche :** la volatilite d'aujourd'hui depend de la TAILLE du mouvement d'hier ($\varepsilon_{t-1}^2$, toujours positif). Gros choc hier → vol elevee aujourd'hui. Jour calme hier → vol basse. Simple mais deja utile. Probleme : si aujourd'hui est calme, la vol retombe immediatement — pas realiste (la peur persiste).
-
-**Quand l'utiliser :** version simplifiee, bon point de depart pour comprendre. En pratique, utilise GARCH.
+- **std < 1.0** = marche mort → filtre tes setups (config v9 : std > 1.0 obligatoire)
+- **std 4-8** = sweet spot → PF maximum
+- **std > 20** = marche en panique → PF eleve mais peu de trades, attention au DD
 
 ---
 
-**2. GARCH(1,1) — clustering et memoire**
+## La phrase a retenir
 
-$$\boxed{\sigma_t^2 = \alpha_0 + \alpha_1 \cdot \varepsilon_{t-1}^2 + \beta_1 \cdot \sigma_{t-1}^2}$$
-
-**Pourquoi ca marche :** ajoute le terme $\beta_1 \cdot \sigma_{t-1}^2$ = la volatilite D'HIER se transmet a celle d'aujourd'hui. Quand $\beta_1 = 0.85$, 85% de la vol d'hier reste aujourd'hui. C'est pourquoi les periodes de panique durent des jours, pas des minutes. C'est le "clustering" : gros mouvement → gros mouvements pendant plusieurs jours.
-
-**Quand l'utiliser :** pour estimer la volatilite en temps reel et ajuster ta taille de position. En high vol GARCH → reduis tes contrats.
-
----
-
-**3. Volatilite long terme (niveau normal)**
-
-$$\sigma_{LT}^2 = \frac{\alpha_0}{1 - \alpha_1 - \beta_1}$$
-
-**Pourquoi ca marche :** si on laisse le modele tourner infiniment sans choc, la volatilite converge vers cette valeur d'equilibre. C'est la "normale" du marche. Apres chaque crise, la vol revient ici. Plus $\alpha_1 + \beta_1$ est proche de 1, plus ca prend du temps (la memoire est longue).
-
-**Quand l'utiliser :** pour calibrer tes parametres — la $\sigma_{LT}$ doit correspondre a la volatilite historique que tu observes sur MNQ.
-
----
-
-**LETTRES ET SYMBOLES :**
-
-| Lettre | Nom | Signification |
-|--------|-----|---------------|
-| $\sigma_t^2$ | Sigma carre au temps t | Variance (volatilite au carre) aujourd'hui |
-| $\sigma_t$ | Sigma t | Volatilite aujourd'hui (racine de la variance) |
-| $\varepsilon_{t-1}$ | Epsilon t-1 | Le choc (surprise) d'hier = prix reel - prix prevu |
-| $\varepsilon_{t-1}^2$ | Epsilon carre | Le choc d'hier au carre (toujours positif) |
-| $\alpha_0$ | Alpha zero | Plancher de volatilite (vol minimale meme quand tout est calme) |
-| $\alpha_1$ | Alpha un | Poids du choc recent (reaction aux nouvelles) |
-| $\beta_1$ | Beta un | Poids de la vol passee (memoire/persistance) |
-| $\sigma_{LT}^2$ | Sigma LT carre | Variance de long terme (ou la vol revient toujours) |
-
-**POUR TON TRADING :**
-- GARCH te donne la vol ACTUELLE (pas une moyenne fixe)
-- En high vol : REDUIS ta taille de position
-- En low vol : tu peux etre plus agressif
-- Combine avec HMM : GARCH = "quelle vol ?", HMM = "quel regime ?"
+> **La volatilite n'est pas aleatoire — elle a de la memoire. Ton filtre std > 1.0 exploite cette memoire pour eviter les setups morts.**

@@ -1,0 +1,205 @@
+Traceback (most recent call last):
+  File "C:\Users\ryadb\OneDrive\QUANT MATHS\01_research\run_exploration_MR_MNQ_apex_compliant.py", line 424, in <module>
+    print('| TF       | Bench Train PF | Apex Train PF | \u0394 PF | Bench Valid PF | Apex Valid PF | \u0394 PF |')
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ryadb\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u0394' in position 46: character maps to <undefined>
+======================================================================
+### CHARGEMENT MNQ M1 ###
+======================================================================
+Bars M1 (rollovers exclus) : 1,722,456
+
+======================================================================
+### TF 5min @ 15h NY — APEX COMPLIANCE CHECK ###
+======================================================================
+Train : 57,726 bars | Valid : 19,227 bars
+
+--- 5min A) BASELINE (sans contraintes Apex) ---
+Signaux Train baseline : 1179
+Train baseline : {'trades': 737, 'pf': np.float64(2.0311987374784106), 'sharpe': np.float64(2.5656286717879495), 'max_dd': -607.1999999999957, 'wr': np.float64(0.2645861601085482), 'pnl': np.float64(11996.475636286099), 'avg_trade': np.float64(16.27744319713175)}
+Valid baseline : {'trades': 248, 'pf': np.float64(2.0215536863268206), 'sharpe': np.float64(2.7731463774046476), 'max_dd': -408.0000000000068, 'wr': np.float64(0.24193548387096775), 'pnl': np.float64(4135.6286629664555), 'avg_trade': np.float64(16.675922028090547)}
+
+--- 5min B) APEX-COMPLIANT (force-flat 15:59 + no entry après 15:55) ---
+Signaux Train apex-compliant : 1017 (vs baseline 1179, -162)
+Train apex : {'trades': 632, 'pf': np.float64(0.8008527632755821), 'sharpe': np.float64(-1.4121895752911435), 'max_dd': -2521.82891858459, 'wr': np.float64(0.24841772151898733), 'pnl': np.float64(-1992.534772432703), 'avg_trade': np.float64(-3.1527448930897197)}
+Train exit reasons : {'SL': 463, 'TP_zscore': 122, 'apex_force_flat': 47}
+Valid apex : {'trades': 210, 'pf': np.float64(1.113331497809345), 'sharpe': np.float64(0.5767376258639372), 'max_dd': -591.500000000001, 'wr': np.float64(0.2619047619047619), 'pnl': np.float64(375.9286629664568), 'avg_trade': np.float64(1.790136490316461)}
+Valid exit reasons : {'SL': 154, 'TP_zscore': 40, 'apex_force_flat': 16}
+
+--- 5min C) SIMULATION CYCLE APEX 1-MOIS (60 mois sur 5 ans) ---
+Trades total 5min apex-compliant (5 ans) : 1072
+Mois simulés : 61
+Status : {'NO_TARGET': 61}
+Pass rate : 0.0%
+Bust DD rate : 0.0%
+No target end month : 100.0%
+PnL moyen par mois (1 contrat) : $-34
+
+Détail mois (1 contrat MNQ fixe) :
+  month    status  final_pnl      hwm  max_dd_intra_month  trades_taken  trades_skipped_daily  trades_skipped_dd  n_days_busted
+2021-05 NO_TARGET   -16.4000   5.2000             21.6000             9                     0                  0              0
+2021-06 NO_TARGET   241.0000 242.1000              1.1000            20                     0                  0              0
+2021-07 NO_TARGET    43.7941  43.7941              0.0000            14                     0                  0              0
+2021-08 NO_TARGET     2.1200  89.3000             87.1800            18                     0                  0              0
+2021-09 NO_TARGET   -65.9144  29.0856             95.0000            17                     0                  0              0
+2021-10 NO_TARGET  -247.4000   0.0000            247.4000            19                     0                  0              0
+2021-11 NO_TARGET   -57.8269  28.5731             86.4000            14                     0                  0              0
+2021-12 NO_TARGET     7.2339 106.5000             99.2661            26                     0                  0              0
+2022-01 NO_TARGET  -286.2000  79.8000            366.0000            22                     0                  0              0
+2022-02 NO_TARGET   140.1000 248.1000            108.0000            19                     0                  0              0
+2022-03 NO_TARGET  -236.4000   0.0000            236.4000            24                     0                  0              0
+2022-04 NO_TARGET   126.4000 238.5000            112.1000            21                     0                  0              0
+2022-05 NO_TARGET  -386.6000   2.2000            388.8000            26                     0                  0              0
+2022-06 NO_TARGET    40.8000  94.4000             53.6000            17                     0                  0              0
+2022-07 NO_TARGET   -34.5000   8.7000             43.2000            15                     0                  0              0
+2022-08 NO_TARGET    25.2000 173.4000            148.2000            23                     0                  0              0
+2022-09 NO_TARGET  -101.9000 128.3000            230.2000            19                     0                  0              0
+2022-10 NO_TARGET   257.7000 279.3000             21.6000            13                     0                  0              0
+2022-11 NO_TARGET  -341.2000   0.0000            341.2000            17                     0                  0              0
+2022-12 NO_TARGET  -173.6000  51.9000            225.5000            21                     0                  0              0
+2023-01 NO_TARGET  -166.6000   7.3000            173.9000            21                     0                  0              0
+2023-02 NO_TARGET   -10.7000 110.7000            121.4000            17                     0                  0              0
+2023-03 NO_TARGET  -283.4000   0.0000            283.4000            19                     0                  0              0
+2023-04 NO_TARGET  -104.6441   0.0000            104.6441             9                     0                  0              0
+2023-05 NO_TARGET  -201.6000   0.0000            201.6000            16                     0                  0              0
+2023-06 NO_TARGET    50.7878  50.7878              0.0000            15                     0                  0              0
+2023-07 NO_TARGET    84.2000  84.2000              0.0000            18                     0                  0              0
+2023-08 NO_TARGET   -68.8000  84.2000            153.0000            18                     0                  0              0
+2023-09 NO_TARGET   -53.2000  54.8000            108.0000             7                     0                  0              0
+2023-10 NO_TARGET    25.0000  25.0000              0.0000            15                     0                  0              0
+2023-11 NO_TARGET     5.6000  85.1000             79.5000            19                     0                  0              0
+2023-12 NO_TARGET  -113.8070  19.3000            133.1070            15                     0                  0              0
+2024-01 NO_TARGET  -155.4000  47.4000            202.8000            14                     0                  0              0
+2024-02 NO_TARGET   108.8000 216.8000            108.0000            12                     0                  0              0
+2024-03 NO_TARGET   -68.7000  30.8000             99.5000            22                     0                  0              0
+2024-04 NO_TARGET    22.7218  96.8218             74.1000            19                     0                  0              0
+2024-05 NO_TARGET    17.9130 147.5130            129.6000            16                     0                  0              0
+2024-06 NO_TARGET   218.6000 218.6000              0.0000             9                     0                  0              0
+2024-07 NO_TARGET   -27.6734  58.7266             86.4000            14                     0                  0              0
+2024-08 NO_TARGET   -59.2570   0.0000             59.2570            18                     0                  0              0
+2024-09 NO_TARGET   151.4000 173.0000             21.6000            16                     0                  0              0
+2024-10 NO_TARGET  -113.1000   0.0000            113.1000            26                     0                  0              0
+2024-11 NO_TARGET    23.4000 181.4000            158.0000            16                     0                  0              0
+2024-12 NO_TARGET   248.4000 248.4000              0.0000            16                     0                  0              0
+2025-01 NO_TARGET   102.7000 145.9000             43.2000            18                     0                  0              0
+2025-02 NO_TARGET   154.7461 219.5461             64.8000            14                     0                  0              0
+2025-03 NO_TARGET   143.7000 251.1000            107.4000            18                     0                  0              0
+2025-04 NO_TARGET  -453.6000   0.0000            453.6000            21                     0                  0              0
+2025-05 NO_TARGET  -108.9000  83.2000            192.1000            24                     0                  0              0
+2025-06 NO_TARGET   242.3767 242.3767              0.0000            18                     0                  0              0
+2025-07 NO_TARGET  -157.1784   5.2000            162.3784            14                     0                  0              0
+2025-08 NO_TARGET   168.2384 168.2384              0.0000            21                     0                  0              0
+2025-09 NO_TARGET  -188.5000   0.0000            188.5000            20                     0                  0              0
+2025-10 NO_TARGET     1.5499   1.5499              0.0000            23                     0                  0              0
+2025-11 NO_TARGET   -60.4000   7.2000             67.6000            19                     0                  0              0
+2025-12 NO_TARGET   -80.9464  57.4000            138.3464             9                     0                  0              0
+2026-01 NO_TARGET  -168.7208  42.7792            211.5000            22                     0                  0              0
+2026-02 NO_TARGET    88.2053  88.2053              0.0000            21                     0                  0              0
+2026-03 NO_TARGET  -282.2000   0.0000            282.2000            27                     0                  0              0
+2026-04 NO_TARGET    93.4000  93.4000              0.0000            16                     0                  0              0
+2026-05 NO_TARGET   -30.1000  34.7000             64.8000             6                     0                  0              0
+
+======================================================================
+### TF 15min @ 15h NY — APEX COMPLIANCE CHECK ###
+======================================================================
+Train : 19,242 bars | Valid : 6,409 bars
+
+--- 15min A) BASELINE (sans contraintes Apex) ---
+Signaux Train baseline : 374
+Train baseline : {'trades': 269, 'pf': np.float64(2.684294035819858), 'sharpe': np.float64(3.792656286558632), 'max_dd': -367.19999999999845, 'wr': np.float64(0.20817843866171004), 'pnl': np.float64(7749.1), 'avg_trade': np.float64(28.807063197026025)}
+Valid baseline : {'trades': 62, 'pf': np.float64(3.6542894935752086), 'sharpe': np.float64(4.599800399903335), 'max_dd': -180.29999999999882, 'wr': np.float64(0.20967741935483872), 'pnl': np.float64(2809.3), 'avg_trade': np.float64(45.311290322580646)}
+
+--- 15min B) APEX-COMPLIANT (force-flat 15:59 + no entry après 15:55) ---
+Signaux Train apex-compliant : 248 (vs baseline 374, -126)
+Train apex : {'trades': 180, 'pf': np.float64(0.7663789534031916), 'sharpe': np.float64(-1.5034337028455516), 'max_dd': -1038.400000000002, 'wr': np.float64(0.18333333333333332), 'pnl': np.float64(-733.4999999999998), 'avg_trade': np.float64(-4.074999999999998)}
+Train exit reasons : {'SL': 145, 'apex_force_flat': 25, 'TP_zscore': 10}
+Valid apex : {'trades': 33, 'pf': np.float64(1.080932784636488), 'sharpe': np.float64(0.393710928527477), 'max_dd': -223.5, 'wr': np.float64(0.18181818181818182), 'pnl': np.float64(47.20000000000001), 'avg_trade': np.float64(1.4303030303030306)}
+Valid exit reasons : {'SL': 27, 'apex_force_flat': 4, 'TP_zscore': 2}
+
+--- 15min C) SIMULATION CYCLE APEX 1-MOIS (60 mois sur 5 ans) ---
+Trades total 15min apex-compliant (5 ans) : 247
+Mois simulés : 58
+Status : {'NO_TARGET': 58}
+Pass rate : 0.0%
+Bust DD rate : 0.0%
+No target end month : 100.0%
+PnL moyen par mois (1 contrat) : $-17
+
+Détail mois (1 contrat MNQ fixe) :
+  month    status  final_pnl      hwm  max_dd_intra_month  trades_taken  trades_skipped_daily  trades_skipped_dd  n_days_busted
+2021-06 NO_TARGET   -13.9000   0.0000             13.9000             4                     0                  0              0
+2021-07 NO_TARGET   -41.3000   0.0000             41.3000             3                     0                  0              0
+2021-08 NO_TARGET    34.6000  39.7000              5.1000             4                     0                  0              0
+2021-09 NO_TARGET    83.7000  83.7000              0.0000             3                     0                  0              0
+2021-10 NO_TARGET   -64.8000   0.0000             64.8000             3                     0                  0              0
+2021-11 NO_TARGET   -73.5000   0.0000             73.5000             5                     0                  0              0
+2021-12 NO_TARGET  -129.6000   0.0000            129.6000             6                     0                  0              0
+2022-01 NO_TARGET  -237.6000   0.0000            237.6000            11                     0                  0              0
+2022-02 NO_TARGET  -129.6000   0.0000            129.6000             6                     0                  0              0
+2022-03 NO_TARGET  -151.2000   0.0000            151.2000             7                     0                  0              0
+2022-04 NO_TARGET   138.2000 203.0000             64.8000             8                     0                  0              0
+2022-05 NO_TARGET    67.0000  88.6000             21.6000             5                     0                  0              0
+2022-06 NO_TARGET   -86.4000   0.0000             86.4000             4                     0                  0              0
+2022-07 NO_TARGET   262.4000 262.4000              0.0000             6                     0                  0              0
+2022-08 NO_TARGET    42.1000  85.3000             43.2000             4                     0                  0              0
+2022-09 NO_TARGET  -102.1000  49.1000            151.2000            11                     0                  0              0
+2022-10 NO_TARGET   -21.6000   0.0000             21.6000             1                     0                  0              0
+2022-11 NO_TARGET   -86.4000   0.0000             86.4000             4                     0                  0              0
+2022-12 NO_TARGET    31.7000  74.9000             43.2000             3                     0                  0              0
+2023-01 NO_TARGET   -86.4000   0.0000             86.4000             4                     0                  0              0
+2023-02 NO_TARGET   -80.3000   0.0000             80.3000             8                     0                  0              0
+2023-03 NO_TARGET   -71.1000   0.0000             71.1000             6                     0                  0              0
+2023-04 NO_TARGET  -108.0000   0.0000            108.0000             5                     0                  0              0
+2023-05 NO_TARGET  -108.0000   0.0000            108.0000             5                     0                  0              0
+2023-06 NO_TARGET   -43.2000   0.0000             43.2000             2                     0                  0              0
+2023-07 NO_TARGET   154.9000 154.9000              0.0000             6                     0                  0              0
+2023-08 NO_TARGET   -78.5000   0.0000             78.5000             5                     0                  0              0
+2023-09 NO_TARGET    65.9000  65.9000              0.0000             6                     0                  0              0
+2023-10 NO_TARGET   -64.8000   0.0000             64.8000             3                     0                  0              0
+2023-11 NO_TARGET    27.1000  27.1000              0.0000             4                     0                  0              0
+2023-12 NO_TARGET   -86.1000   0.0000             86.1000             6                     0                  0              0
+2024-01 NO_TARGET    79.4000 187.4000            108.0000             6                     0                  0              0
+2024-02 NO_TARGET   -43.2000   0.0000             43.2000             2                     0                  0              0
+2024-03 NO_TARGET   195.4000 281.8000             86.4000             6                     0                  0              0
+2024-04 NO_TARGET    13.3000  13.3000              0.0000             7                     0                  0              0
+2024-05 NO_TARGET   -64.8000   0.0000             64.8000             3                     0                  0              0
+2024-06 NO_TARGET   -43.2000   0.0000             43.2000             2                     0                  0              0
+2024-08 NO_TARGET    42.3000  63.9000             21.6000             2                     0                  0              0
+2024-09 NO_TARGET    43.3000  43.3000              0.0000             2                     0                  0              0
+2024-10 NO_TARGET    80.9000  80.9000              0.0000             6                     0                  0              0
+2024-11 NO_TARGET   -64.8000   0.0000             64.8000             3                     0                  0              0
+2024-12 NO_TARGET   -29.1000  57.3000             86.4000             6                     0                  0              0
+2025-01 NO_TARGET   -64.8000   0.0000             64.8000             3                     0                  0              0
+2025-02 NO_TARGET   -43.2000   0.0000             43.2000             2                     0                  0              0
+2025-03 NO_TARGET   212.2000 233.8000             21.6000             3                     0                  0              0
+2025-04 NO_TARGET   -21.6000   0.0000             21.6000             1                     0                  0              0
+2025-05 NO_TARGET   -43.2000   0.0000             43.2000             2                     0                  0              0
+2025-06 NO_TARGET   -36.9000   6.3000             43.2000             4                     0                  0              0
+2025-07 NO_TARGET   137.7000 137.7000              0.0000             3                     0                  0              0
+2025-08 NO_TARGET   -21.6000   0.0000             21.6000             1                     0                  0              0
+2025-09 NO_TARGET   -64.8000   0.0000             64.8000             3                     0                  0              0
+2025-10 NO_TARGET   -43.2000   0.0000             43.2000             2                     0                  0              0
+2025-12 NO_TARGET   -43.2000   0.0000             43.2000             2                     0                  0              0
+2026-01 NO_TARGET  -108.0000   0.0000            108.0000             5                     0                  0              0
+2026-02 NO_TARGET   -43.2000   0.0000             43.2000             2                     0                  0              0
+2026-03 NO_TARGET  -151.2000   0.0000            151.2000             7                     0                  0              0
+2026-04 NO_TARGET   113.8000 113.8000              0.0000             2                     0                  0              0
+2026-05 NO_TARGET   -43.2000   0.0000             43.2000             2                     0                  0              0
+
+======================================================================
+### TABLEAU COMPARATIF FINAL ###
+======================================================================
+
+[ERROR] UnicodeEncodeError: 'charmap' codec can't encode character '\u0394' in position 46: character maps to <undefined>
+
+======================================================================
+### FIN MINI-VAL #4 ###
+======================================================================
+Fichiers dans 01_research\outputs\apex_compliant/ :
+  - apex_cycle_15min.csv
+  - apex_cycle_5min.csv
+  - run_log.txt
+  - trades_apex_15min.csv
+  - trades_apex_5min.csv

@@ -4,6 +4,7 @@ Instrument : MNQ M1 Databento CSV
 """
 
 import os
+import json
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -64,21 +65,27 @@ with st.sidebar:
     csv_path = st.text_input("CSV MNQ M1", value=MNQ_CSV)
     st.markdown("---")
     st.header("Hurst_MR")
-    hurst_threshold = st.slider("Seuil Hurst H <", 0.35, 0.60, 0.53, 0.01,
-        help="H < seuil → session anti-persistante → MR valide")
-    hurst_win = st.select_slider("Hurst window (returns)", [20, 30, 40, 50, 60, 80, 100], value=60,
+    hurst_threshold = st.slider("Seuil Hurst H <", 0.35, 0.60, 0.58, 0.01,
+        help="H < seuil → session anti-persistante → MR valide · 0.58 = champion v9")
+    hurst_win = st.select_slider("Hurst window (returns)",
+        [20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90, 100, 120], value=50,
         help="Fenêtre rolling R/S — paramètre le plus sensible du signal")
-    lookback = st.select_slider("Lookback (barres)", [15, 20, 30, 45, 60, 90, 120], value=30)
-    band_k   = st.slider("Bande k (σ)", 1.5, 4.0, 3.00, 0.25)
+    lookback = st.slider("Lookback (barres)", 10, 120, 19, 1,
+        help="Fenêtre de calcul des bandes — pas fin de 1 barre · 19 = champion v9")
+    band_k   = st.slider("Bande k (σ)", 1.0, 4.5, 2.75, 0.05,
+        help="Largeur des bandes en σ — pas fin de 0.05")
     st.markdown("---")
     st.header("Exécution")
-    sl_mult      = st.slider("SL = k × σ", 0.5, 3.0, 0.75, 0.25)
+    sl_mult      = st.slider("SL = k × σ", 0.30, 3.0, 0.65, 0.05,
+        help="Multiplicateur du stop-loss — pas fin de 0.05 · 0.65 = champion v9 (théorème Leung)")
+    sl_min_pts_ui = st.slider("SL minimum (pts)", 3.0, 15.0, 5.0, 0.5,
+        help="Plancher du SL en points MNQ · 5.0 = champion v9 (TP raccourci compense via théorème Leung)")
     use_atr_sl   = st.toggle("SL adaptatif ATR(14)", value=False,
         help="ON : SL = sl_mult × max(std, ATR) — évite les whipsaws en période volatile")
-    tp_overshoot = st.slider("TP overshoot (σ au-delà FV)", 0.0, 2.0, 0.0, 0.25,
-        help="0 = fair value pure · 0.5 = FV + 0.5σ de l'autre côté · 1.5 = overshoot agressif")
+    tp_overshoot = st.slider("TP overshoot (σ au-delà FV)", 0.0, 2.0, 0.15, 0.05,
+        help="0 = fair value pure · 0.15 = champion v9 (TP raccourci compense SL élargi)")
     slip_pts  = st.number_input("Slippage (pts)", 0.0, 5.0, 0.5, 0.25)
-    max_td    = st.number_input("Max trades/jour", 1, 10, 5, 1)
+    max_td    = st.number_input("Max trades/jour", 1, 30, 20, 1)
     daily_lim_ui = st.slider("Limite perte/jour ($)", 300, 1500, 600, 100,
         help="Stop trading le jour si cette perte est atteinte — clé pour contrôler le DD")
     st.markdown("---")
@@ -101,10 +108,38 @@ with st.sidebar:
     profit_target_ui = st.number_input("Profit target ($)", 500, 20_000, 3_000, 250,
         help="Montant à atteindre pour passer le challenge")
     st.markdown("---")
+    st.header("Trail MR/Trend")
+    use_trail_ui = st.toggle("Activer Trail MR/Trend", value=True,
+        help="ON = stop ratchete a FV quand H_intra > seuil · v9 = ON par defaut")
+    trail_h_thresh_ui = st.slider("Seuil H activation trail", 0.40, 0.60, 0.51, 0.01,
+        help="H_intra > seuil → bascule en mode trail · 0.51 = champion v9")
+
+    st.markdown("---")
+    st.header("Filtres avancés (anti fake-stops)")
+    std_min_ui = st.slider("Std min (volatilité minimum)", 0.0, 10.0, 1.0, 0.5,
+        help="Refuse les setups si volatilité < seuil · 1.0 = champion v9")
+    skip_hour_14 = st.toggle("Skip 14h NY (afternoon hole)", value=True,
+        help="14h NY = WR 22.7% (vs ~30% autres heures) · v9 = ON par defaut")
+    st.caption("📊 Backtest v9 : PF 2.29 / WR 42.6% / Sharpe 4.82 / DD 2.49% / WF Sharpe 3.34 / 60/60 mois positifs")
+
+    st.markdown("---")
+    st.header("Sizing contrats")
+    sizing_mode = st.radio("Mode sizing", ["Auto Kelly (DD-adaptatif)", "Fixe N contrats"],
+        index=0, horizontal=False,
+        help="Auto Kelly = contracts varie selon DD restant (réplique NT live) · Fixe = N contrats à chaque trade")
+    if sizing_mode == "Fixe N contrats":
+        fixed_contracts_ui = st.slider("Nombre de contrats MNQ fixes", 1, 20, 6, 1,
+            help="6 = max Apex Eval · 4 = max Apex PA plein · 2 = max Apex PA début · 1 = ultra prudent")
+        max_contracts_ui = 60  # non utilisé en mode fixe
+    else:
+        fixed_contracts_ui = None
+        max_contracts_ui = st.slider("Plafond max Kelly (contrats)", 1, 40, 12, 1,
+            help="Plafond du sizing Kelly · 12 = champion v9 · 6 = ultra prudent · 40 = max Apex theorique")
+    st.markdown("---")
     st.header("Monte Carlo")
     mc_sims  = st.select_slider("Simulations", [500, 1000, 2000, 5000], value=1000)
     mc_days  = st.number_input("Jours / simulation", 20, 30, 22)
-    mc_risk  = st.slider("Risk % DD / trade", 5, 30, 10, 1)
+    mc_risk  = st.slider("Risk % DD / trade", 5, 30, 12, 1)
     st.markdown("---")
     run_btn = st.button("▶  Lancer l'étude", type="primary", use_container_width=True)
 
@@ -219,9 +254,11 @@ def build_study_cache(csv_path, sh, sm, eh, em, hwin=60):
         )
         tr = np.concatenate([[highs[0] - lows[0]], tr])
         atr_arr = pd.Series(tr).rolling(14).mean().values
+        hours_arr = bars["bar"].dt.hour.values   # heure de chaque barre (pour filtre time-of-day)
         days[str(day)] = dict(
             bars=bars, closes=closes, highs=highs, lows=lows,
             rets=rets, hurst=h_full, hurst_arr=hurst_arr, atr_arr=atr_arr,
+            hours_arr=hours_arr,
         )
     return days, None
 
@@ -234,7 +271,10 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
                        max_td, skip_o, skip_c, timeout_bars=120,
                        capital=50_000, max_dd=2_000, daily_lim=1_000,
                        profit_target=3_000, risk_pct=0.10, atr_sl=False,
-                       fixed_contracts=None):
+                       fixed_contracts=None,
+                       use_trail=False, trail_h_thresh=0.50,
+                       sl_min_pts=3.0, max_contracts=60,
+                       std_min=0.0, skip_hours=()):
     trades = []
     monthly = []
     running = capital; peak = capital
@@ -263,6 +303,7 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
         closes    = cached["closes"]
         hurst_arr = cached["hurst_arr"]   # rolling H sans look-ahead
         atr_arr   = cached.get("atr_arr")
+        hours_arr = cached.get("hours_arr")
         bars      = cached["bars"]
         n         = len(closes)
 
@@ -271,6 +312,9 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
         for i in range(lb + skip_o, n - skip_c):
             if day_td >= max_td or daily_pnl <= -daily_lim: break
             if i <= last_exit: continue
+            # Filtre time-of-day (heures NY a eviter)
+            if skip_hours and hours_arr is not None and i < len(hours_arr):
+                if int(hours_arr[i]) in skip_hours: continue
             # Filtre Hurst sans look-ahead : H calculé sur les 60 barres passées
             h_bar = hurst_arr[i] if i < len(hurst_arr) else np.nan
             if np.isnan(h_bar) or h_bar >= ht: continue
@@ -278,6 +322,8 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
             w   = closes[i - lb: i]
             mid = w.mean(); std = w.std()
             if std == 0: continue
+            # Filtre volatilite minimum
+            if std < std_min: continue
             price = closes[i]; z = (price - mid) / std
             if abs(z) < bk: continue
 
@@ -286,7 +332,8 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
                 vol_base = max(std, atr_arr[i])   # ATR protège contre les whipsaws intraday
             else:
                 vol_base = std
-            sl_pts = max(3.0, sl_m * vol_base)
+            # SL min parametrable depuis sidebar (default 5.0 pts)
+            sl_pts = max(sl_min_pts, sl_m * vol_base)
             sl_pts = min(sl_pts, 20.0)
             # TP = fair value + overshoot de l'autre côté
             # Long (price < mid) : TP au-dessus de mid
@@ -304,29 +351,70 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
                 risk   = max(50., min(risk_pct * dd_rem, daily_lim * 0.40))
                 lpc    = sl_pts * 2.0
                 if lpc <= 0: continue
-                contracts = min(60, int(risk / lpc))
+                contracts = min(max_contracts, int(risk / lpc))
                 budget_rem = max(0., daily_lim + daily_pnl)
                 contracts  = min(contracts, int(budget_rem / lpc))
             if contracts <= 0: continue
 
             # Simulate trade
             result_pts = 0.0; exit_bar = i; hit = False
+            trail_active = False; trail_stop = None
             for j in range(i+1, min(n, i+timeout_bars)):
                 c = closes[j]
-                if direction == "long":
-                    if c <= price - sl_pts: result_pts = -sl_pts - slip; exit_bar = j; hit = True; break
-                    if c >= tp_price:       result_pts = (tp_price - price) - slip; exit_bar = j; hit = True; break
+                if use_trail and j >= lb:
+                    w_j   = closes[j - lb: j]
+                    mid_j = w_j.mean()
+                    std_j = w_j.std() if w_j.std() > 1e-9 else std
+                    h_j   = hurst_arr[j] if j < len(hurst_arr) else np.nan
                 else:
-                    if c >= price + sl_pts: result_pts = -sl_pts - slip; exit_bar = j; hit = True; break
-                    if c <= tp_price:       result_pts = (price - tp_price) - slip; exit_bar = j; hit = True; break
+                    mid_j = mid; std_j = std; h_j = np.nan
+
+                if not trail_active:
+                    if direction == "long":
+                        if c <= price - sl_pts: result_pts = -sl_pts - slip; exit_bar = j; hit = True; break
+                    else:
+                        if c >= price + sl_pts: result_pts = -sl_pts - slip; exit_bar = j; hit = True; break
+                    if use_trail:
+                        fv_crossed = (direction == "long" and c > mid_j) or \
+                                     (direction == "short" and c < mid_j)
+                        h_trend    = not np.isnan(h_j) and h_j > trail_h_thresh
+                        if fv_crossed and h_trend:
+                            trail_active = True; trail_stop = mid_j
+                        else:
+                            if direction == "long" and c >= tp_price:
+                                result_pts = (tp_price - price) - slip; exit_bar = j; hit = True; break
+                            elif direction == "short" and c <= tp_price:
+                                result_pts = (price - tp_price) - slip; exit_bar = j; hit = True; break
+                    else:
+                        if direction == "long" and c >= tp_price:
+                            result_pts = (tp_price - price) - slip; exit_bar = j; hit = True; break
+                        elif direction == "short" and c <= tp_price:
+                            result_pts = (price - tp_price) - slip; exit_bar = j; hit = True; break
+                else:
+                    z_j = (c - mid_j) / std_j if std_j > 0 else 0.0
+                    if direction == "long":
+                        if mid_j > trail_stop: trail_stop = mid_j
+                        if c <= trail_stop:
+                            result_pts = (trail_stop - price) - slip; exit_bar = j; hit = True; break
+                        if z_j >= 3.0:
+                            result_pts = (c - price) - slip; exit_bar = j; hit = True; break
+                        if not np.isnan(h_j) and h_j > ht and z_j >= 2.5:
+                            result_pts = (c - price) - slip; exit_bar = j; hit = True; break
+                    else:
+                        if mid_j < trail_stop: trail_stop = mid_j
+                        if c >= trail_stop:
+                            result_pts = (price - trail_stop) - slip; exit_bar = j; hit = True; break
+                        if z_j <= -3.0:
+                            result_pts = (price - c) - slip; exit_bar = j; hit = True; break
+                        if not np.isnan(h_j) and h_j > ht and z_j <= -2.5:
+                            result_pts = (price - c) - slip; exit_bar = j; hit = True; break
             if not hit:
-                # Timeout : mark-to-market au close de la barre de sortie
                 exit_bar = min(n - 1, i + timeout_bars)
                 c_exit = closes[exit_bar]
                 if direction == "long":
-                    result_pts = (c_exit - price) - slip
+                    result_pts = ((trail_stop - price) if trail_active and trail_stop else (c_exit - price)) - slip
                 else:
-                    result_pts = (price - c_exit) - slip
+                    result_pts = ((price - trail_stop) if trail_active and trail_stop else (price - c_exit)) - slip
 
             pnl = result_pts * 2.0 * contracts
             running += pnl; daily_pnl += pnl; day_td += 1
@@ -346,6 +434,24 @@ def run_hurst_backtest(day_cache, ht, lb, bk, sl_m, tp_overshoot, slip,
             m_trades.append(dict(win=win, pnl=pnl))
 
     return pd.DataFrame(trades), pd.DataFrame(monthly)
+
+
+# ─── Wrapper cached pour eviter recalculs inutiles ─────────────────────
+# Streamlit re-execute le script a chaque interaction. Sans cache, le backtest
+# re-tourne entierement meme si l'utilisateur ne change qu'un parametre cosmetique.
+# Avec @st.cache_data : Streamlit retourne le resultat memoise si tous les params
+# sont identiques au precedent appel. Le _day_cache (prefixe underscore) n'est pas
+# hashe par Streamlit — il est passe par reference, performance preservee.
+@st.cache_data(show_spinner=False, max_entries=8)
+def _backtest_cached(_day_cache, ht, lb, bk, sl_m, tp, slip, max_td, sko, skc,
+                     tmout, cap, mdd, dly, ptg, rsk, atr, fxc, utr, trh,
+                     slmp, maxc, smin, shrs):
+    return run_hurst_backtest(_day_cache, ht, lb, bk, sl_m, tp, slip, max_td, sko, skc,
+                              timeout_bars=tmout, capital=cap, max_dd=mdd, daily_lim=dly,
+                              profit_target=ptg, risk_pct=rsk, atr_sl=atr,
+                              fixed_contracts=fxc, use_trail=utr, trail_h_thresh=trh,
+                              sl_min_pts=slmp, max_contracts=maxc,
+                              std_min=smin, skip_hours=shrs)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -368,13 +474,14 @@ if err: st.error(err); st.stop()
 if not day_cache: st.error("Aucune session valide."); st.stop()
 
 with st.spinner("Backtest en cours…"):
-    trades_df, monthly_df = run_hurst_backtest(
+    trades_df, monthly_df = _backtest_cached(
         day_cache, hurst_threshold, lookback, band_k,
         sl_mult, tp_overshoot, slip_pts, max_td, skip_o, skip_c,
-        timeout_bars=timeout_ui,
-        capital=capital_ui, max_dd=max_dd_ui, daily_lim=daily_lim_ui,
-        profit_target=profit_target_ui, risk_pct=mc_risk/100,
-        atr_sl=use_atr_sl,
+        timeout_ui, capital_ui, max_dd_ui, daily_lim_ui,
+        profit_target_ui, mc_risk/100, use_atr_sl,
+        fixed_contracts_ui, use_trail_ui, trail_h_thresh_ui,
+        sl_min_pts_ui, max_contracts_ui,
+        std_min_ui, (14,) if skip_hour_14 else (),
     )
 
 if len(trades_df) < 10:
@@ -407,9 +514,10 @@ _bar_h_vals = np.concatenate([
 mr_bars_pct = float((_bar_h_vals < hurst_threshold).mean() * 100) if len(_bar_h_vals) > 0 else 0.0
 
 # ─── TABS ────────────────────────────────────────────────────────────
-t1,t2,t3,t4,t5,t6,t7,t8,t9 = st.tabs([
+t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11 = st.tabs([
     "📊 Résultats","🔬 Analyse Hurst","⏱ Signal & Timing",
-    "🎲 Monte Carlo","🧪 Preuve d'Edge","🔧 Grid Search","🔄 Walk-Forward","🎯 Apex Sizing","⚙️ Optimisation"
+    "🎲 Monte Carlo","🧪 Preuve d'Edge","🔧 Grid Search","🔄 Walk-Forward","🎯 Apex Sizing","⚙️ Optimisation",
+    "🚀 Trail MR/Trend","🏆 Battre Baseline"
 ])
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -431,7 +539,7 @@ with t1:
         {kpi(f"{max_dd_pct:.1f}%", "Max DD", dd_col)}
         {kpi(n, "Trades", CYAN)}
         {kpi(f"${total:+,.0f}", "P&L Total", pnl_col)}
-        {kpi(f"{mr_bars_pct:.0f}%", "Barres H<seuil", TEAL)}
+        {kpi(f"{mr_bars_pct:.0f}%", "Barres H&lt;seuil", TEAL)}
     </div>""", unsafe_allow_html=True)
 
     c1, c2 = st.columns([2, 1])
@@ -1500,6 +1608,7 @@ with t7:
                     "_oos_pf":   oos_m["pf"],
                     "_oos_sh":   oos_m["sharpe"],
                     "_oos_pnl":  oos_m["pnl"],
+                    "_oos_dd":   oos_m["max_dd"],
                 })
 
             prog_bar.empty()
@@ -1531,8 +1640,8 @@ with t7:
             pfm_col  = GREEN if pf_mean >= 1.5 else YELLOW if pf_mean >= 1.2 else RED
             shm_col  = GREEN if sh_mean >= 2.0 else YELLOW if sh_mean >= 1.0 else RED
 
-            # Calmar OOS = Sharpe annualisé / MaxDD moyen
-            _dd_mean = wf_df["OOS MaxDD"].mean() if "OOS MaxDD" in wf_df.columns else 0.0
+            # Calmar OOS = Sharpe annualisé / MaxDD moyen (colonne numérique cachée)
+            _dd_mean = wf_df["_oos_dd"].mean() if "_oos_dd" in wf_df.columns else 0.0
             calmar_oos = sh_mean / max(_dd_mean / 100, 0.001)
             calm_col = GREEN if calmar_oos >= 2.0 else YELLOW if calmar_oos >= 1.0 else RED
 
@@ -2398,3 +2507,628 @@ Sharpe         : {best['Sharpe']:.2f}""")
 
     else:
         st.info("Configure les plages et clique **Lancer Optimisation Complete**.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 10 — TRAIL MR/TREND
+# ═══════════════════════════════════════════════════════════════════════
+with t10:
+    st.markdown('<div class="section-lbl">Trail MR/Trend — Comparaison Base vs Trail</div>',
+                unsafe_allow_html=True)
+    st.caption(
+        "Trail activé quand le prix franchit la Fair Value ET Hurst bascule trending. "
+        "Stop déplacé à FV. Sortie : Z opposé ≥ 3σ · H>seuil+Z>2.5σ · retour à FV."
+    )
+
+    tc1, tc2, tc3 = st.columns(3)
+    with tc1:
+        trail_h = st.slider("Seuil H activation trail", 0.40, 0.60, 0.47, 0.01,
+                            help="H > seuil → régime trending → trail activé · 0.47 = optimal Sharpe (4.39)")
+    with tc2:
+        trail_tp_os = st.slider("TP overshoot base (σ)", 0.0, 1.5, 0.50, 0.05,
+                                help="TP standard avant activation trail")
+    with tc3:
+        trail_sl = st.slider("SL mult trail", 0.30, 2.0, float(sl_mult), 0.05)
+
+    if st.button("▶ Comparer Base vs Trail", type="primary", use_container_width=True):
+        with st.spinner("Backtest Base…"):
+            _base_df, _ = run_hurst_backtest(
+                day_cache, hurst_threshold, lookback, band_k,
+                trail_sl, trail_tp_os, slip_pts, max_td, skip_o, skip_c,
+                capital=capital_ui, max_dd=max_dd_ui, daily_lim=daily_lim_ui,
+                profit_target=profit_target_ui, risk_pct=mc_risk/100,
+                use_trail=False,
+            )
+        with st.spinner("Backtest Trail…"):
+            _trail_df, _ = run_hurst_backtest(
+                day_cache, hurst_threshold, lookback, band_k,
+                trail_sl, trail_tp_os, slip_pts, max_td, skip_o, skip_c,
+                capital=capital_ui, max_dd=max_dd_ui, daily_lim=daily_lim_ui,
+                profit_target=profit_target_ui, risk_pct=mc_risk/100,
+                use_trail=True, trail_h_thresh=trail_h,
+            )
+        if len(_base_df) < 5 or len(_trail_df) < 5:
+            st.warning("Pas assez de trades.")
+        else:
+            st.session_state["t10_base_df"]  = _base_df
+            st.session_state["t10_trail_df"] = _trail_df
+            st.session_state["t10_capital"]  = capital_ui
+            st.session_state["t10_pt"]       = profit_target_ui
+            st.session_state["t10_dd"]       = max_dd_ui
+            st.session_state["t10_sweep"]    = None  # reset sweep results
+
+    if "t10_base_df" in st.session_state and "t10_trail_df" in st.session_state:
+        base_df  = st.session_state["t10_base_df"]
+        trail_df = st.session_state["t10_trail_df"]
+        _cap = st.session_state.get("t10_capital", capital_ui)
+        _pt  = st.session_state.get("t10_pt",      profit_target_ui)
+        _dd  = st.session_state.get("t10_dd",      max_dd_ui)
+
+        def _met(df):
+            pos = df[df["pnl"] > 0]["pnl"].sum()
+            neg = abs(df[df["pnl"] < 0]["pnl"].sum())
+            pf  = pos / max(neg, 0.01)
+            wr  = float(df["win"].mean())
+            eq  = np.concatenate([[_cap], np.cumsum(df["pnl"].values) + _cap])
+            pk  = np.maximum.accumulate(eq)
+            dd  = float(((pk - eq) / _cap * 100).max())
+            _d  = df.groupby("date")["pnl"].sum()
+            sh  = float(_d.mean() / _d.std() * np.sqrt(252)) if _d.std() > 0 else 0
+            aw  = df[df["pnl"] > 0]["pnl"].mean() if df["win"].sum() > 0 else 0
+            al  = df[~df["win"]]["pnl"].mean() if (~df["win"]).sum() > 0 else 0
+            rr  = abs(aw / al) if al != 0 else 0
+            return dict(pf=pf, wr=wr, dd=dd, sh=sh, total=df["pnl"].sum(),
+                        n=len(df), aw=aw, al=al, rr=rr, eq=eq)
+
+        bm = _met(base_df); tm = _met(trail_df)
+
+        kc1, kc2 = st.columns(2)
+        def _card(label, m, color):
+            return f"""<div class="info-box" style="border-color:{color}44">
+            <div style="color:{color};font-size:1rem;font-weight:700">{label}</div>
+            <div>Profit Factor : <b style="color:{color}">{m['pf']:.2f}</b></div>
+            <div>Win Rate : <b>{m['wr']*100:.1f}%</b></div>
+            <div>Sharpe : <b>{m['sh']:.2f}</b></div>
+            <div>Max DD : <b style="color:{'#ef4444' if m['dd']>5 else '#10b981'}">{m['dd']:.1f}%</b></div>
+            <div>Avg Winner : <b style="color:#10b981">${m['aw']:+,.0f}</b></div>
+            <div>Avg Loser : <b style="color:#ef4444">${m['al']:+,.0f}</b></div>
+            <div>R:R ratio : <b>{m['rr']:.2f}</b></div>
+            <div>P&L total : <b>${m['total']:+,.0f}</b></div>
+            <div>Trades : {m['n']}</div>
+            </div>"""
+
+        with kc1:
+            st.markdown(_card("📊 Base (TP = Fair Value)", bm, "#06b6d4"), unsafe_allow_html=True)
+        with kc2:
+            tc = "#10b981" if tm["pf"] > bm["pf"] else "#ef4444"
+            st.markdown(_card("🚀 Trail MR/Trend", tm, tc), unsafe_allow_html=True)
+
+        dpf = tm["pf"] - bm["pf"]; dpnl = tm["total"] - bm["total"]
+        if tm["pf"] > bm["pf"] and tm["dd"] <= bm["dd"] * 1.2:
+            st.success(f"✅ Edge Trail confirmé — PF {bm['pf']:.2f} → {tm['pf']:.2f} ({dpf:+.2f}) | "
+                       f"Sharpe {bm['sh']:.2f} → {tm['sh']:.2f} | P&L supplémentaire ${dpnl:+,.0f}")
+        elif tm["pf"] > bm["pf"]:
+            st.warning(f"⚠️ Trail améliore le PF ({bm['pf']:.2f}→{tm['pf']:.2f}) mais DD augmente "
+                       f"({bm['dd']:.1f}%→{tm['dd']:.1f}%) — ajuste le seuil H.")
+        else:
+            st.error(f"❌ Pas d'edge Trail — PF {bm['pf']:.2f}→{tm['pf']:.2f} ({dpf:+.2f})")
+
+        fig_cmp = go.Figure()
+        fig_cmp.add_trace(go.Scatter(y=bm["eq"], mode="lines", name="Base",
+                                     line=dict(color="#06b6d4", width=2)))
+        fig_cmp.add_trace(go.Scatter(y=tm["eq"], mode="lines", name="Trail",
+                                     line=dict(color=tc, width=2, dash="dot")))
+        fig_cmp.add_hline(y=_cap + _pt,
+                          line=dict(color="#10b981", dash="dash", width=1),
+                          annotation_text=f"Target +${_pt:,.0f}")
+        fig_cmp.add_hline(y=_cap - _dd,
+                          line=dict(color="#ef4444", dash="dash", width=1),
+                          annotation_text=f"Bust −${_dd:,.0f}")
+        fig_cmp.update_layout(**DARK, height=360, yaxis_tickformat="$,.0f",
+                              title="Equity Curve — Base vs Trail (5 ans MNQ M1)")
+        st.plotly_chart(fig_cmp, use_container_width=True)
+
+        fig_dist = go.Figure()
+        fig_dist.add_trace(go.Histogram(x=base_df["pnl"], name="Base",
+                                        nbinsx=60, marker_color="#06b6d4", opacity=0.6))
+        fig_dist.add_trace(go.Histogram(x=trail_df["pnl"], name="Trail",
+                                        nbinsx=60, marker_color="#10b981", opacity=0.6))
+        fig_dist.update_layout(**DARK, height=280, barmode="overlay",
+                               xaxis_tickformat="$,.0f",
+                               title="Distribution P&L par trade — Base vs Trail")
+        st.plotly_chart(fig_dist, use_container_width=True)
+
+        # ── Sweep H — découplé du bouton parent via session_state ────────
+        if st.button("🔍 Sweep seuil H trail (trouver l'optimal)", type="secondary"):
+            h_res = []; sp = st.progress(0)
+            h_vals_sw = [0.45, 0.47, 0.50, 0.52, 0.53, 0.55, 0.58]
+            for idx_h, hv in enumerate(h_vals_sw):
+                t_sw, _ = run_hurst_backtest(
+                    day_cache, hurst_threshold, lookback, band_k,
+                    trail_sl, trail_tp_os, slip_pts, max_td, skip_o, skip_c,
+                    capital=_cap, max_dd=_dd, daily_lim=daily_lim_ui,
+                    profit_target=_pt, risk_pct=mc_risk/100,
+                    use_trail=True, trail_h_thresh=hv,
+                )
+                sp.progress((idx_h + 1) / len(h_vals_sw))
+                if len(t_sw) < 5: continue
+                m = _met(t_sw)
+                h_res.append(dict(H=hv, PF=m["pf"], Sharpe=m["sh"],
+                                  MaxDD=m["dd"], PnL=m["total"], Trades=m["n"]))
+            st.session_state["t10_sweep"] = h_res if h_res else []
+
+        # Afficher résultats sweep s'ils existent
+        h_res = st.session_state.get("t10_sweep")
+        if h_res:
+            hs = pd.DataFrame(h_res)
+            fig_hs = make_subplots(specs=[[{"secondary_y": True}]])
+            fig_hs.add_trace(go.Scatter(
+                x=hs["H"], y=hs["PF"], name="PF Trail", mode="lines+markers",
+                line=dict(color="#06b6d4", width=2.5),
+                marker=dict(size=9, color=["#10b981" if v > bm["pf"] else "#ef4444" for v in hs["PF"]]),
+            ), secondary_y=False)
+            fig_hs.add_trace(go.Scatter(
+                x=hs["H"], y=hs["MaxDD"], name="Max DD %", mode="lines+markers",
+                line=dict(color="#ef4444", width=2, dash="dot"), marker=dict(size=7),
+            ), secondary_y=True)
+            fig_hs.add_hline(y=bm["pf"], line=dict(color="#06b6d4", dash="dash"),
+                             annotation_text=f"PF Base {bm['pf']:.2f}", secondary_y=False)
+            fig_hs.update_layout(**DARK, height=300,
+                                 title="PF Trail vs seuil H activation")
+            fig_hs.update_layout(legend=dict(orientation="h", y=1.1))
+            fig_hs.update_yaxes(title_text="Profit Factor", secondary_y=False)
+            fig_hs.update_yaxes(title_text="Max DD %", secondary_y=True)
+            st.plotly_chart(fig_hs, use_container_width=True)
+            best_h = hs.loc[hs["PF"].idxmax()]
+            st.success(f"✅ H optimal : **{best_h['H']}** → PF {best_h['PF']:.2f} | "
+                       f"DD {best_h['MaxDD']:.1f}% | P&L ${best_h['PnL']:+,.0f}")
+            st.dataframe(
+                hs.style.format({"PF":"{:.2f}","Sharpe":"{:.2f}",
+                                 "MaxDD":"{:.1f}%","PnL":"${:+,.0f}"})
+                    .background_gradient(subset=["PF"], cmap="RdYlGn")
+                    .background_gradient(subset=["MaxDD"], cmap="RdYlGn_r"),
+                use_container_width=True, hide_index=True,
+            )
+    else:
+        st.info("Configure les paramètres trail et clique **▶ Comparer Base vs Trail**.")
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 11 — BATTRE LA BASELINE (chasse automatique multi-phase)
+# ═══════════════════════════════════════════════════════════════════════
+with t11:
+    st.markdown('<div class="section-lbl">🏆 Battre la baseline — chasse automatique 3 phases</div>',
+                unsafe_allow_html=True)
+
+    # Baseline figée — Champion v9 2026-05-12 (JSON params_20260512_2324, WF validé)
+    # H<0.58 · HW=50 · LB=19 · K=2.75 · SL=0.65 · SL_min=5 · TP=0.15 · Trail H=0.51 · std>1 · skip 14h · Risk 12% · Plafond 12 · Max trades 20
+    BL_PF, BL_WR, BL_SH, BL_DD, BL_PNL = 2.2899, 0.4264, 4.8235, 2.486, 303_306.36
+
+    st.markdown(f"""<div class="info-box">
+    <b style="color:{TEAL}">Baseline à battre — config validée 2026-05-02</b><br>
+    <span style="font-size:.85rem">
+    PF &gt; <b>{BL_PF:.4f}</b> &nbsp;|&nbsp;
+    WR &gt; <b>{BL_WR*100:.2f}%</b> &nbsp;|&nbsp;
+    Sharpe &gt; <b>{BL_SH:.4f}</b> &nbsp;|&nbsp;
+    DD &lt; <b>{BL_DD:.4f}%</b> &nbsp;|&nbsp;
+    P&L &gt; <b>${BL_PNL:,.2f}</b>
+    </span><br>
+    <span style="font-size:.75rem;color:{ORANGE}">⚡ Pareto-strict — la config doit battre les 5 critères simultanément. Aucune dégradation tolérée.</span>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown(f"""<div class="info-box" style="font-size:.78rem;line-height:1.7">
+    <b style="color:{CYAN}">🔬 Comment ça marche</b><br>
+    <b>Phase 1 — Cartographie</b> : balayage large de l'espace (H, LB, K, SL, TP) pour identifier les zones prometteuses.<br>
+    <b>Phase 2 — Affinage</b> : zoom autour des top configs de phase 1 (pas moyen).<br>
+    <b>Phase 3 — Millimétrique</b> : zoom ultra-fin autour du champion (pas 0.01 sur H, 0.05 sur K/SL).<br>
+    <b>Validation OOS</b> : les survivants sont re-testés sur 30% de données out-of-sample.
+    </div>""", unsafe_allow_html=True)
+
+    # ── Réglages globaux ─────────────────────────────────────────────────
+    cint1, cint2, cint3 = st.columns([2, 1, 1])
+    with cint1:
+        bb_intensity = st.select_slider(
+            "Intensité de la chasse",
+            options=["Express", "Standard", "Exhaustive"],
+            value="Standard",
+            key="bb_intensity",
+            help="Express ≈ 4 min · Standard ≈ 14 min · Exhaustive ≈ 35 min",
+        )
+    with cint2:
+        bb_train_test = st.toggle("Validation OOS", value=True, key="bb_tt",
+            help="ON = grille sur 70% des données + validation sur 30% out-of-sample")
+    with cint3:
+        bb_sweep_hw = st.toggle("Sweep H window", value=False, key="bb_swhw",
+            help="ON = essaie aussi plusieurs fenêtres Hurst (rebuild cache, plus lent)")
+
+    # ── Configuration des phases selon intensité ─────────────────────────
+    INTENSITY_CONF = {
+        "Express": dict(
+            p1_ht=[0.50, 0.53, 0.55],
+            p1_lb=[20, 30, 45],
+            p1_bk=[2.5, 3.0, 3.5],
+            p1_sl=[0.6, 0.75, 1.0],
+            p1_tp=[0.0],
+            n_top_p2=0, n_top_p3=0,
+            est_min=4,
+        ),
+        "Standard": dict(
+            p1_ht=[0.45, 0.50, 0.52, 0.53, 0.55],
+            p1_lb=[20, 30, 45, 60],
+            p1_bk=[2.5, 3.0, 3.25, 3.5],
+            p1_sl=[0.6, 0.75, 1.0],
+            p1_tp=[0.0, 0.25],
+            n_top_p2=5, n_top_p3=0,
+            est_min=14,
+        ),
+        "Exhaustive": dict(
+            p1_ht=[0.42, 0.45, 0.48, 0.50, 0.52, 0.53, 0.55, 0.58],
+            p1_lb=[15, 20, 25, 30, 45, 60, 90],
+            p1_bk=[2.25, 2.5, 2.75, 3.0, 3.25, 3.5],
+            p1_sl=[0.5, 0.6, 0.75, 1.0, 1.25],
+            p1_tp=[0.0, 0.25, 0.5],
+            n_top_p2=8, n_top_p3=3,
+            est_min=35,
+        ),
+    }
+    conf = INTENSITY_CONF[bb_intensity]
+    n_p1 = len(conf["p1_ht"]) * len(conf["p1_lb"]) * len(conf["p1_bk"]) * len(conf["p1_sl"]) * len(conf["p1_tp"])
+    if bb_sweep_hw:
+        n_p1 *= 3  # 3 valeurs hwin par défaut [50, 60, 80]
+
+    st.caption(
+        f"→ Phase 1 ≈ **{n_p1} combos** · Phase 2 ≈ **{conf['n_top_p2']*60} combos** · "
+        f"Phase 3 ≈ **{conf['n_top_p3']*100} combos** · Estimation totale ~**{conf['est_min']} min**"
+    )
+
+    # ── Score Pareto ─────────────────────────────────────────────────────
+    def score_baseline(pf, wr, sh, dd, pnl):
+        if dd <= 0: return 0.0
+        return (pf/BL_PF) * (wr/BL_WR) * (sh/BL_SH) * (BL_DD/dd) * (pnl/BL_PNL)
+
+    def beats_baseline(pf, wr, sh, dd, pnl):
+        return (pf > BL_PF and wr > BL_WR and sh > BL_SH and dd < BL_DD and pnl > BL_PNL)
+
+    # ── Bouton unique ────────────────────────────────────────────────────
+    if st.button("🏆 LANCER LA CHASSE TOTALE", type="primary", key="bb_run", use_container_width=True):
+
+        # Caches hwin (pour éviter de rebuild à chaque appel)
+        hw_caches = {hurst_win: day_cache}
+
+        def get_cache(hw):
+            if hw in hw_caches:
+                return hw_caches[hw]
+            with st.spinner(f"Build cache Hurst window={hw}..."):
+                _dc, _err = build_study_cache(csv_path, s_h, s_m, e_h, e_m, hwin=hw)
+            if _err or _dc is None:
+                st.error(f"Erreur cache hwin={hw}: {_err}")
+                return None
+            hw_caches[hw] = _dc
+            return _dc
+
+        # Train/test split helpers
+        def split_cache(_dc):
+            keys = sorted(_dc.keys())
+            sp = int(len(keys) * 0.70)
+            train = {k: _dc[k] for k in keys[:sp]}
+            test  = {k: _dc[k] for k in keys[sp:]}
+            return (train, test) if bb_train_test else (_dc, None)
+
+        # Évaluation in-sample d'une config
+        def eval_config(_search, ht, lb, bk, sl, tp):
+            t_df, _ = run_hurst_backtest(
+                _search, ht, lb, bk, sl, tp,
+                slip_pts, max_td, skip_o, skip_c,
+                capital=capital_ui, max_dd=max_dd_ui,
+                daily_lim=daily_lim_ui, profit_target=profit_target_ui,
+                risk_pct=mc_risk/100,
+            )
+            if len(t_df) < 10:
+                return None
+            pos = t_df[t_df["pnl"] > 0]["pnl"].sum()
+            neg = abs(t_df[t_df["pnl"] < 0]["pnl"].sum())
+            pf = pos / max(neg, 0.01)
+            wr = float(t_df["win"].mean())
+            pnl = float(t_df["pnl"].sum())
+            n = len(t_df)
+            _d = t_df.groupby("date")["pnl"].sum()
+            sh = float(_d.mean()/_d.std()*np.sqrt(252)) if _d.std() > 0 else 0
+            eq = np.concatenate([[capital_ui], np.cumsum(t_df["pnl"].values) + capital_ui])
+            pk = np.maximum.accumulate(eq)
+            dd = float(((pk - eq) / np.maximum(pk, capital_ui) * 100).max())
+            return dict(
+                PF=pf, WR=wr, Sharpe=sh, MaxDD=dd, PnL=pnl, Trades=n,
+                Score=score_baseline(pf, wr, sh, dd, pnl),
+                Beats=beats_baseline(pf, wr, sh, dd, pnl),
+            )
+
+        # Container global de résultats
+        all_results = []
+        seen = set()  # dédup par (ht, hw, lb, bk, sl, tp)
+
+        def add_result(ht, hw, lb, bk, sl, tp, m, phase):
+            if m is None: return
+            key = (round(ht,4), hw, lb, round(bk,4), round(sl,4), round(tp,4))
+            if key in seen: return
+            seen.add(key)
+            all_results.append(dict(
+                Phase=phase, H=ht, HW=hw, LB=lb, K=bk, SL=sl, TP_os=tp,
+                **m,
+            ))
+
+        def make_grid(grid_combos):
+            """Filtre les combos déjà vues."""
+            out = []
+            for c in grid_combos:
+                key = (round(c[0],4), c[1], c[2], round(c[3],4), round(c[4],4), round(c[5],4))
+                if key not in seen:
+                    out.append(c)
+            return out
+
+        # ═══════════════════════════════════════════════════════════════
+        # PHASE 1 — CARTOGRAPHIE GLOBALE
+        # ═══════════════════════════════════════════════════════════════
+        st.markdown(f"#### Phase 1 — Cartographie globale")
+        hw_list = [50, 60, 80] if bb_sweep_hw else [hurst_win]
+        p1_grid = []
+        for hw in hw_list:
+            for ht in conf["p1_ht"]:
+                for lb in conf["p1_lb"]:
+                    for bk in conf["p1_bk"]:
+                        for sl in conf["p1_sl"]:
+                            for tp in conf["p1_tp"]:
+                                p1_grid.append((ht, hw, lb, bk, sl, tp))
+
+        prog1 = st.progress(0)
+        status1 = st.empty()
+        n_total_p1 = len(p1_grid)
+        for i, (ht, hw, lb, bk, sl, tp) in enumerate(p1_grid):
+            _dc = get_cache(hw)
+            if _dc is None: continue
+            _train, _ = split_cache(_dc)
+            m = eval_config(_train, ht, lb, bk, sl, tp)
+            add_result(ht, hw, lb, bk, sl, tp, m, "P1")
+            prog1.progress((i + 1) / n_total_p1)
+            if m and m["Beats"]:
+                status1.success(
+                    f"🎯 P1 : config qui bat la baseline ! H<{ht} HW={hw} LB={lb} K={bk} SL={sl} TP={tp} "
+                    f"→ PF {m['PF']:.3f} · Sharpe {m['Sharpe']:.3f} · DD {m['MaxDD']:.2f}% · P&L ${m['PnL']:+,.0f}"
+                )
+        prog1.empty()
+        status1.empty()
+
+        n_p1_done = len(all_results)
+        n_p1_beats = sum(1 for r in all_results if r["Beats"])
+        st.caption(f"Phase 1 terminée : {n_p1_done} configs testées · {n_p1_beats} battent baseline")
+
+        # ═══════════════════════════════════════════════════════════════
+        # PHASE 2 — AFFINAGE AUTOUR DES TOP P1
+        # ═══════════════════════════════════════════════════════════════
+        if conf["n_top_p2"] > 0 and all_results:
+            st.markdown(f"#### Phase 2 — Affinage autour des top {conf['n_top_p2']}")
+            top_p1 = sorted(all_results, key=lambda r: r["Score"], reverse=True)[:conf["n_top_p2"]]
+            p2_combos = []
+            for r in top_p1:
+                for dh in [-2, -1, 1, 2]:                      # ±0.02 par 0.01
+                    for dk in [-1, 1]:                          # ±0.25
+                        for dsl in [-1, 1]:                     # ±0.10
+                            for dtp in [-1, 0, 1]:              # ±0.15
+                                new_h  = round(r["H"] + dh*0.01, 3)
+                                new_k  = round(r["K"] + dk*0.25, 3)
+                                new_sl = round(r["SL"] + dsl*0.10, 3)
+                                new_tp = max(0.0, round(r["TP_os"] + dtp*0.15, 3))
+                                if not (0.30 <= new_h <= 0.65): continue
+                                if not (1.5 <= new_k <= 4.5):   continue
+                                if not (0.30 <= new_sl <= 2.5): continue
+                                if not (0.0 <= new_tp <= 1.5):  continue
+                                p2_combos.append((new_h, r["HW"], r["LB"], new_k, new_sl, new_tp))
+            p2_combos = make_grid(p2_combos)
+
+            if p2_combos:
+                prog2 = st.progress(0)
+                status2 = st.empty()
+                for i, (ht, hw, lb, bk, sl, tp) in enumerate(p2_combos):
+                    _dc = get_cache(hw)
+                    if _dc is None: continue
+                    _train, _ = split_cache(_dc)
+                    m = eval_config(_train, ht, lb, bk, sl, tp)
+                    add_result(ht, hw, lb, bk, sl, tp, m, "P2")
+                    prog2.progress((i + 1) / len(p2_combos))
+                    if m and m["Beats"]:
+                        status2.success(
+                            f"🎯 P2 : H<{ht} HW={hw} LB={lb} K={bk} SL={sl} TP={tp} "
+                            f"→ PF {m['PF']:.3f} · Sharpe {m['Sharpe']:.3f} · DD {m['MaxDD']:.2f}% · P&L ${m['PnL']:+,.0f}"
+                        )
+                prog2.empty()
+                status2.empty()
+
+                n_p2_total = len(all_results)
+                n_p2_beats = sum(1 for r in all_results if r["Beats"])
+                st.caption(f"Phase 2 terminée : {n_p2_total} configs cumulées · {n_p2_beats} battent baseline")
+
+        # ═══════════════════════════════════════════════════════════════
+        # PHASE 3 — MILLIMÉTRIQUE AUTOUR DU CHAMPION
+        # ═══════════════════════════════════════════════════════════════
+        if conf["n_top_p3"] > 0 and all_results:
+            st.markdown(f"#### Phase 3 — Zoom millimétrique autour des top {conf['n_top_p3']}")
+            top_p2 = sorted(all_results, key=lambda r: r["Score"], reverse=True)[:conf["n_top_p3"]]
+            p3_combos = []
+            for r in top_p2:
+                for dh in [-3, -2, -1, 1, 2, 3]:               # ±0.03 par 0.01
+                    for dk in [-2, -1, 1, 2]:                   # ±0.10 par 0.05
+                        for dsl in [-2, -1, 1, 2]:              # ±0.10 par 0.05
+                            for dlb in [-5, 0, 5]:              # ±5 barres
+                                new_h  = round(r["H"] + dh*0.01, 3)
+                                new_k  = round(r["K"] + dk*0.05, 3)
+                                new_sl = round(r["SL"] + dsl*0.05, 3)
+                                new_lb = max(10, int(r["LB"] + dlb))
+                                if not (0.30 <= new_h <= 0.65): continue
+                                if not (1.5 <= new_k <= 4.5):   continue
+                                if not (0.30 <= new_sl <= 2.5): continue
+                                p3_combos.append((new_h, r["HW"], new_lb, new_k, new_sl, r["TP_os"]))
+            p3_combos = make_grid(p3_combos)
+
+            if p3_combos:
+                prog3 = st.progress(0)
+                status3 = st.empty()
+                for i, (ht, hw, lb, bk, sl, tp) in enumerate(p3_combos):
+                    _dc = get_cache(hw)
+                    if _dc is None: continue
+                    _train, _ = split_cache(_dc)
+                    m = eval_config(_train, ht, lb, bk, sl, tp)
+                    add_result(ht, hw, lb, bk, sl, tp, m, "P3")
+                    prog3.progress((i + 1) / len(p3_combos))
+                    if m and m["Beats"]:
+                        status3.success(
+                            f"🎯 P3 : H<{ht} HW={hw} LB={lb} K={bk} SL={sl} TP={tp} "
+                            f"→ PF {m['PF']:.3f} · Sharpe {m['Sharpe']:.3f} · DD {m['MaxDD']:.2f}% · P&L ${m['PnL']:+,.0f}"
+                        )
+                prog3.empty()
+                status3.empty()
+
+        # ═══════════════════════════════════════════════════════════════
+        # VALIDATION OOS DES SURVIVANTS
+        # ═══════════════════════════════════════════════════════════════
+        if bb_train_test:
+            st.markdown(f"#### Validation Out-Of-Sample (30% test)")
+            survivors = [r for r in all_results if r["Beats"]]
+            survivors.sort(key=lambda r: r["Score"], reverse=True)
+            top_oos = survivors[:25]  # cap à 25 pour temps raisonnable
+
+            if top_oos:
+                prog_v = st.progress(0)
+                for i, r in enumerate(top_oos):
+                    _dc = get_cache(r["HW"])
+                    if _dc is None: continue
+                    _, _test = split_cache(_dc)
+                    if _test is None: continue
+                    m_t = eval_config(_test, r["H"], r["LB"], r["K"], r["SL"], r["TP_os"])
+                    if m_t:
+                        r["PF_test"]     = m_t["PF"]
+                        r["WR_test"]     = m_t["WR"]
+                        r["Sharpe_test"] = m_t["Sharpe"]
+                        r["DD_test"]     = m_t["MaxDD"]
+                        r["PnL_test"]    = m_t["PnL"]
+                    prog_v.progress((i + 1) / len(top_oos))
+                prog_v.empty()
+                st.caption(f"OOS validé sur {len(top_oos)} survivants")
+
+        # ═══════════════════════════════════════════════════════════════
+        # RÉSULTATS
+        # ═══════════════════════════════════════════════════════════════
+        if not all_results:
+            st.error("Aucune configuration n'a produit de trades valides.")
+        else:
+            full_df = pd.DataFrame(all_results).sort_values("Score", ascending=False)
+            full_df["Beats"] = full_df["Beats"].map({True: "🟢 OUI", False: "🔴 non"})
+            surv_df = full_df[full_df["Beats"] == "🟢 OUI"]
+
+            def kbb(v, l, c):
+                return f'<div class="stat-cell"><div class="stat-num" style="color:{c}">{v}</div><div class="stat-lbl">{l}</div></div>'
+            surv_color = GREEN if len(surv_df) > 0 else RED
+            survival_rate = f"{len(surv_df)/len(full_df)*100:.2f}%"
+            st.markdown(f"""<div class="stat-row">
+                {kbb(len(full_df), "Configs testées", CYAN)}
+                {kbb(len(surv_df), "Battent baseline", surv_color)}
+                {kbb(survival_rate, "Taux survie", YELLOW)}
+            </div>""", unsafe_allow_html=True)
+
+            if len(surv_df) == 0:
+                st.error("❌ Aucune config ne bat la baseline sur les 5 critères. La config validée 2026-05-02 reste la meilleure.")
+                st.markdown('<div class="section-lbl">Top 15 — meilleurs candidats (échouent sur ≥1 critère)</div>',
+                            unsafe_allow_html=True)
+                show_df = full_df.head(15)
+            else:
+                st.success(f"✅ **{len(surv_df)} configurations battent la baseline !** Tri par score décroissant.")
+                st.markdown('<div class="section-lbl">Configurations gagnantes (Pareto-strict)</div>',
+                            unsafe_allow_html=True)
+                show_df = surv_df.head(25)
+
+            fmt = {"PF":"{:.3f}", "WR":"{:.2%}", "Sharpe":"{:.3f}",
+                   "MaxDD":"{:.3f}%", "Score":"{:.4f}", "PnL":"${:+,.0f}"}
+            if "PF_test" in show_df.columns:
+                fmt.update({"PF_test":"{:.2f}", "WR_test":"{:.1%}",
+                            "Sharpe_test":"{:.2f}", "DD_test":"{:.2f}%",
+                            "PnL_test":"${:+,.0f}"})
+
+            styled = (show_df.style
+                .format(fmt, na_rep="—")
+                .background_gradient(subset=["Score"], cmap="RdYlGn")
+            )
+            st.dataframe(styled, use_container_width=True, hide_index=True)
+
+            # Champion
+            if len(surv_df) > 0:
+                champ = surv_df.iloc[0]
+                d_pf  = (champ["PF"]/BL_PF - 1) * 100
+                d_wr  = (champ["WR"]/BL_WR - 1) * 100
+                d_sh  = (champ["Sharpe"]/BL_SH - 1) * 100
+                d_dd  = (1 - champ["MaxDD"]/BL_DD) * 100
+                d_pnl = (champ["PnL"]/BL_PNL - 1) * 100
+
+                st.markdown(f"""<div class="info-box" style="border-color:{GREEN}88">
+                <span style="color:{GREEN};font-size:1.1rem;font-weight:700">🏆 CHAMPION — bat la baseline sur les 5 axes</span><br><br>
+                <b>Phase trouvée :</b> {champ["Phase"]}<br>
+                <b>Paramètres :</b> H&lt;{champ["H"]} · HW={int(champ["HW"])} · LB={int(champ["LB"])} · K={champ["K"]} · SL={champ["SL"]} · TP_os={champ["TP_os"]}<br><br>
+                <b>Métriques (Δ vs baseline) :</b><br>
+                PF <b style="color:{GREEN}">{champ["PF"]:.3f}</b> ({d_pf:+.2f}%) &nbsp;|&nbsp;
+                WR <b style="color:{GREEN}">{champ["WR"]*100:.2f}%</b> ({d_wr:+.2f}%) &nbsp;|&nbsp;
+                Sharpe <b style="color:{GREEN}">{champ["Sharpe"]:.3f}</b> ({d_sh:+.2f}%) &nbsp;|&nbsp;
+                DD <b style="color:{GREEN}">{champ["MaxDD"]:.3f}%</b> ({d_dd:+.2f}% mieux) &nbsp;|&nbsp;
+                P&L <b style="color:{GREEN}">${champ["PnL"]:+,.0f}</b> ({d_pnl:+.2f}%)<br>
+                Trades : <b>{int(champ["Trades"])}</b>
+                </div>""", unsafe_allow_html=True)
+
+                new_config = {
+                    "date": pd.Timestamp.now().isoformat(),
+                    "found_in_phase": str(champ["Phase"]),
+                    "intensity": bb_intensity,
+                    "hurst_threshold": float(champ["H"]),
+                    "hurst_win": int(champ["HW"]),
+                    "lookback": int(champ["LB"]),
+                    "band_k": float(champ["K"]),
+                    "sl_mult": float(champ["SL"]),
+                    "tp_overshoot": float(champ["TP_os"]),
+                    "slip_pts": float(slip_pts),
+                    "n_trades": int(champ["Trades"]),
+                    "win_rate": float(champ["WR"]),
+                    "profit_factor": float(champ["PF"]),
+                    "sharpe": float(champ["Sharpe"]),
+                    "max_dd_pct": float(champ["MaxDD"]),
+                    "total_pnl": float(champ["PnL"]),
+                    "beats_baseline": True,
+                    "baseline_ref": {
+                        "pf": BL_PF, "wr": BL_WR, "sharpe": BL_SH,
+                        "max_dd_pct": BL_DD, "total_pnl": BL_PNL,
+                    },
+                    "improvements_pct": {
+                        "pf": d_pf, "wr": d_wr, "sharpe": d_sh,
+                        "max_dd": d_dd, "pnl": d_pnl,
+                    },
+                }
+                if "PF_test" in champ.index and pd.notna(champ.get("PF_test")):
+                    new_config["oos_validation"] = {
+                        "pf_test":     float(champ["PF_test"]),
+                        "wr_test":     float(champ["WR_test"]),
+                        "sharpe_test": float(champ["Sharpe_test"]),
+                        "dd_test":     float(champ["DD_test"]),
+                        "pnl_test":    float(champ["PnL_test"]),
+                    }
+
+                st.download_button(
+                    "💾 Télécharger config champion (JSON)",
+                    data=json.dumps(new_config, indent=2),
+                    file_name=f"hurst_mr_champion_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.json",
+                    mime="application/json",
+                    key="bb_dl_champ",
+                )
+
+            st.download_button(
+                "📥 Télécharger toutes les configs testées (CSV)",
+                data=full_df.to_csv(index=False),
+                file_name=f"battre_baseline_resultats_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+                key="bb_dl_full",
+            )
+    else:
+        st.info("👆 Choisis l'intensité puis clique **🏆 LANCER LA CHASSE TOTALE**. "
+                "Le système orchestre 3 phases (cartographie → affinage → millimétrique) puis valide les survivants en out-of-sample.")

@@ -1,0 +1,20 @@
+C:\Users\ryadb\OneDrive\QUANT MATHS\quant_v10\utils\databento_loader.py:87: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  dom["roll"] = (dom["roll"] | dom["roll"].shift(-1).fillna(False)).astype(bool)
+C:\Users\ryadb\OneDrive\QUANT MATHS\quant_v10\utils\databento_loader.py:87: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  dom["roll"] = (dom["roll"] | dom["roll"].shift(-1).fillna(False)).astype(bool)
+C:\Users\ryadb\OneDrive\QUANT MATHS\quant_v10\orchestrator\runner_copula_pairs.py:94: FutureWarning: Series.fillna with 'method' is deprecated and will raise in a future version. Use obj.ffill() or obj.bfill() instead.
+  beta_series = beta_series.fillna(method="ffill").fillna(1.0)
+[copula] Loading ES & NQ continuous front-month ...
+[copula] ES 1,735,806 rows, NQ 1,736,684 rows
+[copula] Aligned 344,982 bars at 5min
+[copula] Computing copula signals (rolling) ...
+[copula] DONE — 16550 trades, PnL $65553, PF 1.72, Sharpe 2.38, DD $1856
+
+=== COPULA PAIRS BACKTEST RESULTS ===
+  n_trades: 16550
+  pnl: 65552.59305949332
+  pf: 1.7170396803915309
+  wr: 52.65861027190333
+  sharpe: 2.379794136966838
+  dd_max: 1856.3132145387208
+  calmar: 35.31332565328024

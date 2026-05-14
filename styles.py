@@ -443,15 +443,34 @@ _INPUTS = """
 # TABS — Premium pill tabs
 # ════════════════════════════════════════════════════════════════════════════
 _TABS = """
-/* Tab container */
+/* Tab container — horizontal scroll when overflow */
 .stTabs [data-baseweb="tab-list"] {
   background: var(--bg-surface) !important;
   border-radius: var(--r-lg) !important;
   padding: 4px !important;
   gap: 2px !important;
   border: 1px solid var(--border-subtle) !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  flex-wrap: nowrap !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
+  -webkit-overflow-scrolling: touch;
 }
-/* Individual tab */
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {
+  height: 6px;
+}
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 3px;
+}
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.30);
+}
+/* Individual tab — never shrink, never wrap */
 .stTabs [data-baseweb="tab"] {
   border-radius: var(--r-md) !important;
   color: var(--text-muted) !important;
@@ -461,6 +480,8 @@ _TABS = """
   transition: var(--t-fast) !important;
   background: transparent !important;
   border: none !important;
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
 }
 .stTabs [data-baseweb="tab"]:hover:not([aria-selected="true"]) {
   background: var(--bg-elevated) !important;
@@ -1075,8 +1096,9 @@ def inject():
             ("pages/9_BTC_DCA.py",      "🟡  BTC DCA"),
         ]),
         ("Setup", [
-            ("pages/1_Demarrage.py", "🚀  Démarrage"),
-            ("pages/Apex_Rules.py",  "🛡  Apex Rules"),
+            ("pages/1_Demarrage.py",     "🚀  Démarrage"),
+            ("pages/Apex_Rules.py",      "🛡  Apex Rules"),
+            ("pages/Quantower_Setup.py", "🖥️  Quantower Setup"),
         ]),
         ("Public", _pages_public),
     ]

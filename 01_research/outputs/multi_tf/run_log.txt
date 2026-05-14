@@ -1,0 +1,105 @@
+======================================================================
+### CHARGEMENT MNQ M1 (pour resampling) ###
+======================================================================
+Bars M1 (rollovers exclus) : 1,722,456
+Periode : 2021-05-13 00:00:00+00:00 -> 2026-05-12 23:59:00+00:00
+
+======================================================================
+### TIMEFRAME : 5min (HW=30, timeout=12 bars) ###
+======================================================================
+Resampling M1 -> 5min...
+Bars total 5min : 344,493 | session NY : 96,336
+Hurst rolling termine en 45.7s
+H valide : 58,686 / 96,336
+Stats H : {'count': 58686.0, 'mean': 0.6308466213930496, 'std': 0.11491045819672721, 'min': 0.1003740900768319, '25%': 0.5538141124649582, '50%': 0.632294614945343, '75%': 0.71061989197687, 'max': 1.0}
+Bars TV avec H : 46,893
+
+--- H par heure NY (5min) ---
+          mean    std  count   t_stat  p_value  mr_significant
+hour_ny                                                       
+12      0.6283 0.1147  12024 122.6026   0.0000           False
+13      0.6296 0.1151  11637 121.4569   0.0000           False
+14      0.6317 0.1137  11616 124.8712   0.0000           False
+15      0.6289 0.1139  11616 121.9688   0.0000           False
+Poches MR exploitables (H<0.45, p<0.01) :
+  heures : 0 ([])
+  mois   : 0 ([])
+Train : 57,726 bars | Valid : 19,227 bars
+  hour= 9 : trades= 1053 | PF=0.83 | Sharpe=-0.98 | DD=$-5,261 | WR=12.8% | PnL=$-3,450
+  hour=10 : trades=  358 | PF=0.86 | Sharpe=-0.80 | DD=$-1,559 | WR=16.2% | PnL=$-875
+  hour=11 : trades=  365 | PF=0.73 | Sharpe=-1.93 | DD=$-2,095 | WR=20.8% | PnL=$-1,692
+  hour=12 : trades=  454 | PF=0.97 | Sharpe=-0.14 | DD=$-1,545 | WR=23.8% | PnL=$-194
+  hour=13 : trades=  611 | PF=0.73 | Sharpe=-1.75 | DD=$-2,994 | WR=19.8% | PnL=$-2,815
+  hour=14 : trades=  669 | PF=0.95 | Sharpe=-0.30 | DD=$-1,211 | WR=24.5% | PnL=$-562
+  hour=15 : trades=  737 | PF=2.03 | Sharpe=2.57 | DD=$-607 | WR=26.5% | PnL=$+11,996
+
+--- Backtest par heure (5min, Train) tries par PF ---
+   hour  trades     pf  sharpe     max_dd     wr        pnl  avg_trade
+6    15     737 2.0312  2.5656  -607.2000 0.2646 11996.4756    16.2774
+3    12     454 0.9739 -0.1432 -1544.6441 0.2379  -194.4107    -0.4282
+5    14     669 0.9481 -0.3027 -1211.4799 0.2451  -561.5405    -0.8394
+1    10     358 0.8650 -0.7999 -1558.9000 0.1620  -874.8000    -2.4436
+0     9    1053 0.8256 -0.9793 -5261.0125 0.1282 -3449.7799    -3.2761
+4    13     611 0.7320 -1.7499 -2993.8975 0.1980 -2814.6952    -4.6067
+2    11     365 0.7287 -1.9312 -2095.0716 0.2082 -1692.1518    -4.6360
+
+Heures prometteuses (PF>1.5, Sharpe>1.0, trades>=100) : 1
+   hour  trades     pf  sharpe    max_dd     wr        pnl
+6    15     737 2.0312  2.5656 -607.2000 0.2646 11996.4756
+Valid pocket [15] : {'trades': 248, 'pf': np.float64(2.0215536863268206), 'sharpe': np.float64(2.7731463774046476), 'max_dd': -408.0000000000068, 'wr': np.float64(0.24193548387096775), 'pnl': np.float64(4135.6286629664555), 'avg_trade': np.float64(16.675922028090547)}
+
+======================================================================
+### TIMEFRAME : 15min (HW=20, timeout=4 bars) ###
+======================================================================
+Resampling M1 -> 15min...
+Bars total 15min : 114,831 | session NY : 32,112
+Hurst rolling termine en 4.2s
+H valide : 7,266 / 32,112
+Stats H : {'count': 7266.0, 'mean': 0.6383170753784925, 'std': 0.15847345587692926, 'min': 0.11681442437326237, '25%': 0.5269255773018129, '50%': 0.6419777025520366, '75%': 0.7516070309424301, 'max': 1.0}
+Bars TV avec H : 5,808
+
+--- H par heure NY (15min) ---
+          mean    std  count  t_stat  p_value  mr_significant
+hour_ny                                                      
+14      0.6447 0.1565   1936 40.6751   0.0000           False
+15      0.6414 0.1562   3872 56.3024   0.0000           False
+Poches MR exploitables (H<0.45, p<0.01) :
+  heures : 0 ([])
+  mois   : 0 ([])
+Train : 19,242 bars | Valid : 6,409 bars
+  hour= 9 : trades=  449 | PF=0.91 | Sharpe=-0.45 | DD=$-1,637 | WR=11.6% | PnL=$-810
+  hour=10 : trades=  511 | PF=0.55 | Sharpe=-2.87 | DD=$-4,373 | WR=10.8% | PnL=$-4,395
+  hour=11 : trades=  184 | PF=0.73 | Sharpe=-1.81 | DD=$-1,208 | WR=15.8% | PnL=$-906
+  hour=12 : trades=   69 | PF=1.09 | Sharpe=0.44 | DD=$-373 | WR=20.3% | PnL=$+103
+  hour=13 : trades=   57 | PF=0.53 | Sharpe=-3.85 | DD=$-542 | WR=14.0% | PnL=$-496
+  hour=14 : trades=  157 | PF=0.75 | Sharpe=-1.14 | DD=$-1,144 | WR=10.8% | PnL=$-758
+  hour=15 : trades=  269 | PF=2.68 | Sharpe=3.79 | DD=$-367 | WR=20.8% | PnL=$+7,749
+
+--- Backtest par heure (15min, Train) tries par PF ---
+   hour  trades     pf  sharpe     max_dd     wr        pnl  avg_trade
+6    15     269 2.6843  3.7927  -367.2000 0.2082  7749.1000    28.8071
+3    12      69 1.0864  0.4401  -372.7000 0.2029   102.6000     1.4870
+0     9     449 0.9052 -0.4521 -1636.9000 0.1158  -809.9000    -1.8038
+5    14     157 0.7487 -1.1402 -1144.1731 0.1083  -758.0627    -4.8284
+2    11     184 0.7281 -1.8078 -1208.4000 0.1576  -906.4000    -4.9261
+1    10     511 0.5530 -2.8745 -4373.0000 0.1076 -4394.6000    -8.6000
+4    13      57 0.5317 -3.8493  -541.9000 0.1404  -495.7000    -8.6965
+
+Heures prometteuses (PF>1.5, Sharpe>1.0, trades>=100) : 1
+   hour  trades     pf  sharpe    max_dd     wr       pnl
+6    15     269 2.6843  3.7927 -367.2000 0.2082 7749.1000
+Valid pocket [15] : {'trades': 62, 'pf': np.float64(3.6542894935752086), 'sharpe': np.float64(4.599800399903335), 'max_dd': -180.29999999999882, 'wr': np.float64(0.20967741935483872), 'pnl': np.float64(2809.3), 'avg_trade': np.float64(45.311290322580646)}
+
+======================================================================
+### FIN MULTI-TF ###
+======================================================================
+Fichiers generes dans 01_research\outputs\multi_tf/ :
+  - h_by_dow_15min.csv
+  - h_by_dow_5min.csv
+  - h_by_hour_15min.csv
+  - h_by_hour_5min.csv
+  - h_by_month_15min.csv
+  - h_by_month_5min.csv
+  - results_hour_train_15min.csv
+  - results_hour_train_5min.csv
+  - run_log.txt

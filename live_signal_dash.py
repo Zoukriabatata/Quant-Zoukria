@@ -33,7 +33,6 @@ except ImportError:
 # CONFIG
 # ═══════════════════════════════════════════════════════
 
-st.set_page_config(page_title="Live Signal", page_icon="⚡", layout="wide")
 from styles import inject as _inj, refresh_bar as _refresh_bar, toast as _toast; _inj()
 
 # Auto-refresh toutes les 1s (non-bloquant, pas de time.sleep)

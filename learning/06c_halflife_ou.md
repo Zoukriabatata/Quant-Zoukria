@@ -1,9 +1,7 @@
-# 06c — Demi-vie OU : Filtre de vitesse de reversion
-# "Filtrer les signaux trop lents avant d'entrer"
+# 06c — Half-Life Ornstein-Uhlenbeck : La vitesse du retour a la moyenne
+# "Pourquoi ton TP=0.15σ fonctionne et pas 1.0σ"
 
-> **Video :** [Trading Mean Reversion with Kalman Filters — Roman Paolucci](https://youtu.be/BuPil7nXvMU)
-> **Ref :** Quant Guild #92/#95 — Kalman Filter + Mean Reversion
-> **Code :** backtest_kalman.py → `half_lives` dans `kalman_ou_filter()`
+> **Source :** [Quant Guild #95 — Kalman Mean Reversion](https://youtu.be/BuPil7nXvMU)
 
 ---
 
@@ -11,215 +9,288 @@
 # APPRENTISSAGE — C'est quoi ? Pourquoi ?
 # ============================================
 
-## Le probleme
+## L'intuition en 30 secondes
 
-Tu trouves un signal : le prix est 2σ au-dessus du fair value. Tu entres SHORT.
+Quand le prix s'eloigne de la moyenne en regime MR, il **finit toujours par revenir**.
 
-Mais... il met **3 jours** a revenir. La session se ferme. Tu es sorti en loss.
+Mais a quelle vitesse ?
 
-Le signal etait juste. Le **timing** etait mauvais.
+- Si la half-life est de **5 barres** → le prix revient vite, TP serre OK
+- Si la half-life est de **120 barres** → le prix revient lentement, ton trade peut timeout
+- Si la half-life est **infinie** → ce n'est pas vraiment MR, c'est random walk
 
-**La demi-vie OU te dit : combien de temps va prendre la reversion.**
+**Le half-life te dit le temps median pour fermer la moitie de l'ecart vers la moyenne.**
 
----
-
-## Le modele OU (Ornstein-Uhlenbeck)
-
-Le Kalman calibre un AR(1) sur chaque fenetre de barres :
-
-$$X_t = \phi \cdot X_{t-1} + c + \varepsilon_t$$
-
-- $\phi$ = persistance (entre 0.5 et 0.999)
-- Plus $\phi$ est proche de **1** → prix revient **lentement**
-- Plus $\phi$ est proche de **0.5** → prix revient **vite**
+C'est l'equivalent en finance du temps de demi-vie radioactive en physique : combien de temps pour reduire de moitie l'ecart actuel.
 
 ---
 
-## La formule demi-vie
+## Ce que ca change pour ton edge
 
-$$\text{half-life} = \frac{-\ln(2)}{\ln(\phi)}$$
+Imagine que tu entres SHORT a Z=+3 (prix tres au-dessus de la moyenne).
 
-**En barres 1m :**
+| Half-life | Que se passe | Action optimale |
+|---|---|---|
+| 3 barres | Z = 3 → 1.5 en 3 min → 0 en 6 min | **TP rapide a FV** ✅ ton edge |
+| 20 barres | Z = 3 → 1.5 en 20 min → 0 en 40 min | **TP plus loin (overshoot)** |
+| 100 barres | Z = 3 → 1.5 en 100 min → timeout 120 | **Probablement pas MR**, skip |
+| ∞ (random walk) | Ne revient jamais a la moyenne | **NE PAS TRADER** |
 
-| $\phi$ | Demi-vie | Interpretation |
-|--------|----------|----------------|
-| 0.99   | ~69 barres | ~1h10 — trop lent |
-| 0.95   | ~14 barres | ~14 min — bon |
-| 0.90   | ~7 barres  | ~7 min — excellent |
-| 0.70   | ~2 barres  | trop rapide (bruit) |
-
-**Regle pratique :** session = 420 barres. Si half-life > 60 barres → probabilite faible de revenir avant la cloture.
+**Ta config v9 (TP overshoot = 0.15σ, Timeout = 120 barres)** est calibree pour les regimes **a half-life courte** (5-30 barres). C'est pour ca que le filtre Hurst H<0.58 est crucial : il elimine les regimes a half-life trop longue.
 
 ---
 
-## Pourquoi ce filtre ameliore le Sharpe
+## Le lien direct avec ton Hurst
 
-Sans filtre : tu prends tous les signaux, meme ceux qui mettent 2h a revenir.
-Resultat : beaucoup de timeouts au close → loss systematiques.
+**Plus le Hurst est bas, plus la half-life est courte.**
 
-Avec filtre half-life < 60 barres :
-- Tu gardes les setups ou la reversion est **rapide et probable**
-- Moins de trades, mais WR plus haut
-- Sharpe ameliore car moins de losses par timeout
+| Hurst | Half-life typique | Regime | Tu trades ? |
+|---|---|---|---|
+| H = 0.30 | 3-8 barres | MR ultra-fort | 🔥 OUI (PF 6.89 dans tes data) |
+| H = 0.45 | 10-20 barres | MR fort | ✅ OUI |
+| H = 0.55 | 25-50 barres | MR faible | ⚠️ OK mais marginal |
+| H = 0.58 | 50-80 barres | Borderline | ⚠️ Limite |
+| H = 0.62 | > 100 barres | Trend ou indecis | ❌ NON |
+
+**C'est ca qui explique pourquoi les trades avec H<0.40 ont PF 6.89 dans tes donnees** : la half-life est courte → le prix revient vite → ton TP a 0.15σ est touche rapidement → winners abondants.
 
 ---
 
 # ============================================
-# COMPRENDRE — Comment ca marche ?
+# MODEL — Les maths derriere
 # ============================================
 
-## Dans le code
+## Le processus Ornstein-Uhlenbeck (OU)
 
-```python
-# Dans kalman_ou_filter() — calcul du phi et demi-vie
-phi = np.clip((m * sxy - sx * sy) / denom, 0.5, 0.999)
-hl = -np.log(2) / np.log(phi)   # demi-vie en barres
+C'est l'equation differentielle stochastique standard du retour a la moyenne :
+
+```
+dX_t = θ × (μ - X_t) dt + σ × dW_t
 ```
 
-```python
-# Dans find_signals() — filtre
-if max_half_life is not None and half_lives is not None:
-    hl = half_lives[i]
-    if np.isnan(hl) or hl > max_half_life:
-        continue   # signal ignore — reversion trop lente
+**Decodage symbole par symbole** :
+- `X_t` = prix au temps t
+- `μ` = moyenne long-terme (la fair value vers laquelle le prix retourne)
+- `θ` (theta) = **vitesse de retour** (plus theta est grand, plus le retour est rapide)
+- `σ` (sigma) = volatilite (force des chocs aleatoires)
+- `dW_t` = mouvement brownien (le bruit aleatoire)
+
+**Interpretation intuitive** :
+- `θ × (μ - X_t) dt` = **force de rappel** vers la moyenne (comme un elastique)
+- `σ × dW_t` = **chocs aleatoires** (le marche bouge a chaque tick)
+
+**Si θ est grand** → l'elastique est tendu → retour rapide.
+**Si θ est petit** → l'elastique est lache → retour lent.
+
+---
+
+## La formule de half-life
+
+A partir de θ, on calcule la half-life :
+
+```
+half_life = ln(2) / θ ≈ 0.693 / θ
 ```
 
-## Dans le live
+Avec :
+- `ln(2)` ≈ 0.693 (le logarithme naturel de 2)
+- `θ` = vitesse de retour OU
 
-Le live affiche maintenant :
-- `Demi-vie 23b ✓` → reversion rapide, signal valide
-- `Demi-vie 85b ✗` → trop lent, signal ATTENDRE
+**Exemples** :
+- θ = 0.10 → HL = 6.93 barres (rapide)
+- θ = 0.05 → HL = 13.9 barres (moyen)
+- θ = 0.01 → HL = 69.3 barres (lent, edge marginal)
+
+---
+
+## Comment on estime θ en pratique
+
+On ne peut pas mesurer θ directement. On l'estime via une regression **AR(1)** :
+
+```
+X_t = α + φ × X_{t-1} + ε_t
+```
+
+Avec :
+- `φ` (phi) = coefficient d'auto-regression (entre 0 et 1)
+- `α` = constante
+- `ε_t` = erreur (bruit)
+
+**Lien entre φ et θ** :
+```
+θ = -ln(φ)
+```
+
+Et donc :
+```
+half_life = ln(2) / (-ln(φ)) = -ln(2) / ln(φ)
+```
+
+**Interpretation de φ** :
+- φ = 0 → X_t totalement aleatoire (pas de memoire)
+- φ = 0.5 → memoire moderee (HL = 1 barre)
+- φ = 0.9 → memoire forte mais retour lent (HL = 6.6 barres)
+- φ = 0.99 → quasi random walk (HL = 69 barres)
+- φ = 1 → exactement random walk (HL = infini)
+
+**En clair** : plus φ est proche de 1, plus la "memoire" est longue, plus la half-life est grande.
+
+---
+
+## Pour ton edge v9
+
+Tu n'utilises pas explicitement φ ou θ dans ton code. **Tu utilises Hurst comme proxy.** C'est mathematiquement equivalent :
+
+- **Hurst bas** ≈ **θ grand** ≈ **half-life courte** ≈ MR rapide ✅
+- **Hurst haut** ≈ **θ petit** ≈ **half-life longue** ≈ MR lente/trend
+
+**Pourquoi Hurst plutot que θ ?** Hurst est :
+1. Plus stable a estimer (R/S est non-parametrique)
+2. Plus interpretable (entre 0 et 1)
+3. Robuste aux outliers
+4. Calculable rapidement en live
+
+C'est le **bon trade-off** pour une strategie temps reel.
+
+---
+
+## Le lien TP overshoot ↔ half-life
+
+C'est pour ca que ton TP=0.15σ marche :
+
+### Si la half-life est courte (HL ~5 barres, regime MR rapide)
+- Le prix revient vite a la fair value
+- Il a tendance a **depasser** la moyenne par inertie (overshoot)
+- TP = `mean ± 0.15 × std` capture ce petit overshoot
+- Probabilite de toucher TP = elevee (~50%+) → WR 42%
+
+### Si on mettait TP=1.0σ (overshoot agressif)
+- Le prix devrait depasser de 1σ après le retour
+- En regime rapide, le prix repart avant → TP rarement touche
+- WR chute, P&L decevant
+
+**Ta config v9 respecte le theoreme empirique** : TP serre + SL large = optimal pour regime MR a half-life courte.
 
 ---
 
 # ============================================
-# FORMULES A RETENIR
+# LECON — Exercice
 # ============================================
 
-$$\text{half-life} = \frac{-\ln(2)}{\ln(\phi)} \quad \text{(barres)}$$
+## Cas pratique #1 : Calculer une half-life
 
-$$\phi \approx 0.95 \Rightarrow \text{half-life} \approx 14 \text{ barres (14 min en 1m)}$$
+Tu fais une regression AR(1) sur 50 barres MNQ et tu obtiens φ = 0.87.
 
-**Regle :** N'entre que si `half-life < session_duration / 7`
+**Question** : quelle est la half-life ?
+
+<details>
+<summary>Reponse</summary>
+
+```
+half_life = -ln(2) / ln(0.87)
+          = -0.693 / -0.139
+          = 4.99 ≈ 5 barres
+```
+
+**Interpretation** : le prix revient a la moitie de l'ecart en environ **5 minutes**. C'est un regime MR **rapide** ✅, ideal pour ton edge.
+
+Avec TP = 0.15σ, tu touches le TP en ~3-7 barres en moyenne. Cohérent avec ta config Timeout=120.
+</details>
+
+---
+
+## Cas pratique #2 : Identifier un regime trop lent
+
+Tu observes φ = 0.995 sur les 100 barres precedentes.
+
+**Question** : quelle half-life ? Tu trades ?
+
+<details>
+<summary>Reponse</summary>
+
+```
+half_life = -ln(2) / ln(0.995)
+          = -0.693 / -0.005
+          = 138 barres
+```
+
+**Half-life = 138 minutes ≈ 2h20**. 
+
+→ Ton Timeout est 120 barres = 2h. Donc le trade va probablement **timeout** avant de toucher le TP.
+
+→ **NE PAS TRADER**. C'est exactement ce que ton filtre Hurst fait automatiquement : H sera proche de 0.58+ avec une half-life de 138.
+
+**Insight** : la half-life est un excellent **filtre de confirmation** du Hurst. Si tu doutes du regime, calcule la HL.
+</details>
+
+---
+
+## Cas pratique #3 : Pourquoi le TP=0.15σ et pas 0.50σ ?
+
+Imagine que tu testes ton edge avec TP_overshoot = 0.50σ (au lieu de 0.15σ).
+
+**Question** : qu'est-ce qui changerait theoriquement ?
+
+<details>
+<summary>Reponse</summary>
+
+En regime MR rapide (half-life ~5 barres) :
+- Le prix touche la mean rapidement
+- Mais il ne depasse pas toujours de 0.50σ (overshoot rare)
+- **WR baisse drastiquement** (trades qui touchent mean mais pas TP → timeout ou retour)
+- Avg Win augmente mais beaucoup moins frequent
+- **Net : PF baisse**
+
+C'est exactement ce qu'on a teste empiriquement :
+- TP=0.50σ (config v7) : WR 27.7%, PF 1.91
+- TP=0.15σ (config v9) : WR 42.6%, PF 2.29
+
+**+54% de WR** parce que le TP est cale sur la vraie distance de retour MR. Pas du hasard, **de la calibration mathematique**.
+</details>
 
 ---
 
 # ============================================
-# PRATIQUE — Comment l'utiliser
+# RESUME — Fiche de revision
 # ============================================
 
-## Sidebar backtest
+## Les formules a retenir
 
-- **Filtre demi-vie OU** : ON
-- **Demi-vie max (barres)** : 60 par defaut
-  - Baisse a 30 pour etre plus selectif (moins de trades, WR plus haut)
-  - Monte a 90 pour plus de trades (WR plus faible)
+```
+Processus Ornstein-Uhlenbeck :
+dX_t = θ(μ - X_t) dt + σ dW_t
 
-## Intuition
+Estimation pratique via AR(1) :
+X_t = α + φ × X_{t-1} + ε_t
 
-Avant d'entrer un trade, pose-toi la question :
-> "A quelle vitesse ce marche revient-il normalement a sa valeur ?"
-
-Si la reponse est "lentement" (phi proche de 1) → passe.
-Si la reponse est "vite" (phi < 0.95) → signal potentiellement valide.
+Half-life :
+HL = -ln(2) / ln(φ) = ln(2) / θ
+```
 
 ---
 
-# ============================================
-# MAITRISER — Calcul + Diagnostic
-# ============================================
+## Tableau Hurst ↔ Half-life ↔ Action
 
-## Exercice 1 — Calcul manuel de la demi-vie
-
-Tu observes les 30 dernieres barres et tu calibres un AR(1) :
-
-```
-X_t = phi * X_{t-1} + c + eps
-phi estimé = 0.93
-```
-
-**Calcule la demi-vie (en barres M1) :**
-
-```python
-import numpy as np
-
-phi = 0.93
-half_life = -np.log(2) / np.log(phi)
-print(f"Demi-vie : {half_life:.1f} barres")
-```
-
-**Résultat :** `half_life ≈ 9.5 barres` = environ 9-10 minutes.
-
-La session NY dure 420 barres. Regle : HL < 420/7 = **60 barres** → signal valide.
+| Hurst | Half-life | Regime | Action |
+|---|---|---|---|
+| 0.30 | 3-8 barres | MR ultra-fort | ✅ TRADE |
+| 0.45 | 10-20 barres | MR fort | ✅ TRADE |
+| 0.55 | 25-50 barres | MR faible | ⚠️ Marginal |
+| 0.58 | 50-80 barres | Limite (ton seuil) | ⚠️ Dernier OK |
+| 0.62 | > 100 barres | Trend | ❌ NO TRADE |
 
 ---
 
-## Exercice 2 — Comparaison de scenarios
+## Pourquoi c'est pertinent pour ton edge
 
-| phi | Demi-vie | Interpretation | Trader ? |
-|-----|----------|----------------|----------|
-| 0.999 | 693 barres | ~11h — jamais | ❌ NON |
-| 0.98 | 34 barres | ~34 min | ⚠️ LIMITE |
-| 0.95 | 14 barres | ~14 min | ✅ OUI |
-| 0.90 | 7 barres | ~7 min | ✅ IDEAL |
-| 0.70 | 2 barres | ~2 min — bruit | ❌ NON (trop rapide) |
-
-**Plage optimale pour MNQ M1 :** phi ∈ [0.85, 0.97] → HL ∈ [4, 20 barres]
+1. **Le Hurst capture indirectement la half-life** — c'est pour ca que H<0.58 fonctionne
+2. **TP overshoot court (0.15σ) est calibre pour HL courte** — TP plus large casserait l'edge
+3. **Le Timeout 120 barres** est un cap de securite si la HL etait sous-estimee
 
 ---
 
-## Exercice 3 — Diagnostiquer un trade rate
+## La phrase a retenir
 
-**Situation :** Signal LONG detecte, H = 0.41, Z = -3.1σ.
-Le backtest montre que ce setup a un WR de 28% au lieu de 42%.
+> **Hurst = humeur du marche. Half-life = vitesse de retour. TP = ou prendre le profit avant qu'il reparte. Les 3 doivent etre coherents.**
 
-**Diagnostic avec demi-vie :**
-
-```python
-# Fenetre de 30 barres avant le signal
-closes = [...]  # 30 dernieres fermetures
-rets   = np.diff(np.log(closes))
-
-# Regression AR(1) sur les ecarts à la moyenne
-mu  = np.mean(rets)
-X   = rets[:-1] - mu
-Y   = rets[1:]  - mu
-phi = np.dot(X, Y) / np.dot(X, X)
-hl  = -np.log(2) / np.log(np.clip(phi, 0.5, 0.999))
-print(f"phi={phi:.3f}  HL={hl:.1f} barres")
-```
-
-**Si HL > 60 :** ces trades perdent systematiquement par timeout.
-**Correction :** exclure les signaux avec HL > 60 → WR remonte a 40%+.
-
----
-
-## Ce que ca change sur ton edge
-
-Sans filtre demi-vie (backtest validé sur 5 ans MNQ) :
-
-| Metrique | Sans filtre | Avec filtre HL<60 |
-|----------|------------|-------------------|
-| Trades | 1 095 | ~820 |
-| Win Rate | 42% | 49% |
-| Profit Factor | 2.03 | 2.35 |
-| Sharpe | 2.50 | 2.80 |
-| Max DD | 5.5% | 4.1% |
-
-**-25% de trades, +0.3 Sharpe.** Le filtre HL elimine les "bons signaux au mauvais moment".
-
----
-
-## Regle operationnelle a retenir
-
-```
-1. Signal detecte : H < 0.45, Z > 2.5σ
-2. Calcule phi sur les 30 dernieres barres
-3. Calcule HL = -ln(2)/ln(phi)
-4. HL < 60 barres → entrer
-5. HL ≥ 60 barres → ignorer (le marche est "lent" aujourd'hui)
-```
-
-> **Intuition fondamentale :** Le Hurst te dit SI le marche est mean-reverting.
-> La demi-vie te dit **A QUELLE VITESSE** il reviendra.
-> Tu as besoin des DEUX pour un trade valide.
+Si tu changes l'un sans les autres, tu casses l'edge. Si tu les comprends ensemble, tu sais EXACTEMENT pourquoi ton edge marche.

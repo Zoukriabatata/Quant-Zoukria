@@ -1,0 +1,32 @@
+{
+  "OLD_H058_Trail051":{
+    "pnl":323470.6798928778,
+    "n_trades":3231,
+    "wr":40.8851748685,
+    "pf":2.2400583508,
+    "sharpe":4.9289797062,
+    "dd_max_dollars":2585.9772202438,
+    "dd_max_pct":5.1719544405,
+    "dd_max_intramonth_dollars":2093.640472627,
+    "calmar":125.0864382566,
+    "n_months":61,
+    "pct_months_pos":96.7213114754,
+    "n_busted_months":2,
+    "n_passed_months":55
+  },
+  "NEW_H080_Trail050":{
+    "pnl":392455.975613575,
+    "n_trades":3531,
+    "wr":41.4613423959,
+    "pf":2.3484101179,
+    "sharpe":8.4041596276,
+    "dd_max_dollars":2698.8015657612,
+    "dd_max_pct":5.3976031315,
+    "dd_max_intramonth_dollars":1900.9771523345,
+    "calmar":145.418611206,
+    "n_months":61,
+    "pct_months_pos":100.0,
+    "n_busted_months":0,
+    "n_passed_months":60
+  }
+}

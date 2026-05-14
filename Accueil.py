@@ -27,6 +27,7 @@ pages_live = [
 pages_analyse = [
     st.Page("pages/5_Backtest.py",    title="Backtest",     icon="📊"),
     st.Page("pages/6_Multi_Model.py", title="Multi Model",  icon="🤖"),
+    st.Page("pages/7_VR_MR.py",       title="VR_MR",        icon="📈"),
     st.Page("pages/Crypto_Swing.py",  title="Crypto Swing", icon="🔮"),
 ]
 
@@ -37,8 +38,9 @@ pages_gestion = [
 ]
 
 pages_setup = [
-    st.Page("pages/1_Demarrage.py", title="Démarrage",  icon="🚀"),
-    st.Page("pages/Apex_Rules.py",  title="Apex Rules", icon="📋"),
+    st.Page("pages/1_Demarrage.py",       title="Démarrage",       icon="🚀"),
+    st.Page("pages/Apex_Rules.py",        title="Apex Rules",      icon="📋"),
+    st.Page("pages/Quantower_Setup.py",   title="Quantower Setup", icon="🖥️"),
 ]
 
 if is_authenticated():
