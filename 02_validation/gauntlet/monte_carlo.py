@@ -65,6 +65,10 @@ def permutation_test_sharpe(pnl, n_iter: int = 10_000, seed: int = 0) -> dict:
     if len(pnl) < 2:
         return dict(observed_sharpe=observed, p_value=1.0,
                     perm_mean=0.0, perm_std=0.0, n_iter=n_iter)
+    if np.std(pnl, ddof=1) == 0:
+        # PnL dégénéré (tous identiques) : Sharpe nul, aucun edge -> p_value = 1.0.
+        return dict(observed_sharpe=0.0, p_value=1.0,
+                    perm_mean=0.0, perm_std=0.0, n_iter=n_iter)
     rng = np.random.default_rng(seed)
     perms = np.empty(n_iter, dtype=float)
     for k in range(n_iter):

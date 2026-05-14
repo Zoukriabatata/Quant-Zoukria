@@ -12,7 +12,7 @@ from gauntlet.monte_carlo import (
 def test_max_drawdown_hand_calc():
     # pnl chronologique [+100, -300, +100, -300, +100]
     # equity = [100, -200, -100, -400, -300] ; peak = [100,100,100,100,100]
-    # dd = [0, -300, -200, -500, -200] ; max dd = -500
+    # dd = [0, -300, -200, -500, -400] ; max dd = -500
     pnl = np.array([100.0, -300.0, 100.0, -300.0, 100.0])
     assert _max_drawdown(pnl) == -500.0
 
@@ -53,6 +53,14 @@ def test_permutation_reproducible():
     r1 = permutation_test_sharpe(pnl, n_iter=500, seed=42)
     r2 = permutation_test_sharpe(pnl, n_iter=500, seed=42)
     assert r1["p_value"] == r2["p_value"]
+
+
+def test_permutation_zero_variance_pnl():
+    # PnL dégénéré (tous identiques) -> Sharpe nul, aucun edge -> p_value = 1.0
+    pnl = np.array([100.0, 100.0, 100.0, 100.0])
+    res = permutation_test_sharpe(pnl, n_iter=500, seed=0)
+    assert res["observed_sharpe"] == 0.0
+    assert res["p_value"] == 1.0
 
 
 def test_dd_distribution_observed_is_chronological():
