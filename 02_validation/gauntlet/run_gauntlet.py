@@ -43,7 +43,8 @@ def _prepare_splits(df_sess: pd.DataFrame, hypothesis, embargo_bars: int) -> dic
     Hurst) sont backward-looking — les calculer sur le df complet puis slicer ne fuit rien,
     et évite de recomputer le Hurst (coûteux) pour chaque tranche.
     """
-    df_feat = hypothesis.prepare_features(df_sess) if hypothesis.prepare_features else df_sess
+    df_feat = (hypothesis.prepare_features(df_sess)
+               if hypothesis.prepare_features is not None else df_sess)
     train = split_train(df_feat, embargo_bars=embargo_bars)
     valid = split_valid(df_feat, embargo_bars=embargo_bars)
     holdout = split_holdout(df_feat)
@@ -78,6 +79,10 @@ def make_run_variant(hypothesis):
     run_variant(df, params) -> (trades_df, account) : applique la signal_fn de l'hypothèse
     puis backtest_pa sur un PaAccount NEUF. C'est le callable injecté dans walk_forward /
     stress_test / pa_cycle (cf. plan Plan 2 §"Le contrat run_variant").
+
+    build_variant(params) est appelé à CHAQUE invocation (et non mis en cache) : c'est
+    voulu — walk_forward appelle run_variant avec des params différents par fenêtre, il
+    faut reconstruire (signal_fn, exit_logic, bt_kwargs) à chaque fois.
     """
     specs = INSTRUMENTS[hypothesis.instrument]
 

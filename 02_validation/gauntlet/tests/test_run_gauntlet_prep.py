@@ -83,3 +83,8 @@ def test_make_run_variant_retourne_trades_et_account():
     assert isinstance(account, PaAccount)
     assert "pnl_usd" in trades.columns
     assert len(trades) > 0
+
+    # contrat : chaque appel produit un PaAccount NEUF (pas de state qui fuit entre appels)
+    trades2, account2 = run_variant(df, {"timeout_bars": 3})
+    assert account2 is not account
+    assert isinstance(account2, PaAccount)
