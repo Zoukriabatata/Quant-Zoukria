@@ -212,7 +212,7 @@ print(f"\nn_trials = {N_TRIALS} | ranking.csv écrit ({len(ranking)} lignes)")
 # rapport markdown.
 
 # %%
-promoted = ranking[ranking['promoted'] == True]  # noqa: E712
+promoted = ranking[ranking['promoted']]
 
 cycle_summaries = {}
 for _, r in promoted.iterrows():
@@ -223,7 +223,7 @@ for _, r in promoted.iterrows():
     configs = build_exit_configs(p['bar_size_min'], p['exit_ny_min'])
     _, trades_tv = run_config(df_tv, configs[name], p['bar_size_min'], p['timeout_bars'])
     cycle = simulate_apex_cycle(trades_tv)
-    if len(cycle) > 0:
+    if not cycle.empty:
         cycle_summaries[(name, tf)] = {
             'months': len(cycle),
             'pass_rate': (cycle['status'] == 'PASSED').mean() * 100,
@@ -234,10 +234,10 @@ for _, r in promoted.iterrows():
 # %%
 lines = []
 lines.append('# Sprint Re-engineering Exit — Rapport\n')
-lines.append(f'**Date** : 2026-05-14  ')
+lines.append('**Date** : 2026-05-14  ')
 lines.append(f'**n_trials** : {N_TRIALS} (8 configs × 2 TF) — budget overfitting pour le DSR Étape 2\n')
 lines.append('## Verdict\n')
-if len(promoted) == 0:
+if promoted.empty:
     lines.append('🔴 **Aucune config ne passe le gate.** Le gate exige PF > 1.5 ∧ Sharpe > 1.0 '
                  '∧ avg_trade > coût RT sur Train Apex-compliant, ET PF ≥ 1.3 sur Valid.\n')
     lines.append('L\'edge EOD Reversal n\'est pas capturable avant le force-flat 16:00 par le '
