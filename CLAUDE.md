@@ -15,9 +15,9 @@
 
 Tu peux m'appeler **BB**.
 
-## Statut actuel — Exploration close, candidat à valider (NO LIVE)
+## Statut actuel — Sprint re-engineering exit en cours (NO LIVE)
 
-> ⚠️ **v9 NON déployable Apex — PF 1.02 · DD -$22,748 mesurés en NT8 Strategy Analyzer tick-realistic.** Aucune stratégie validée pour live actuellement. Phase d'exploration d'edge **close** : un seul candidat retenu (MR fin de journée NY sur MNQ), à valider rigoureusement en Étape 2 avant tout passage en couche live.
+> ⚠️ **v9 NON déployable Apex — PF 1.02 · DD -$22,748 mesurés en NT8 Strategy Analyzer tick-realistic.** Aucune stratégie validée pour live actuellement. Exploration d'edge **close** : un candidat baseline identifié (MR fin de journée NY sur MNQ) mais **il meurt sous contraintes Apex** (mini-val #4 — PF 0.80 Train, 0/61 mois passés). Sprint de re-engineering exit en cours pour déterminer si l'edge se capture avant le force-flat 16:00 NY.
 
 ### Backtest réaliste NT8 Strategy Analyzer — `HurstMR_Apex.cs` (5 ans MNQ, 13/05/2021 → 13/05/2026)
 
@@ -69,23 +69,23 @@ H<0.58 · HW=50 · LB=19 · k=2.75σ · SL=0.65×std (min 5 pts, max 20 pts) · 
 
 ### Phase d'exploration d'edge — CLOSE (2026-05-14)
 
-**Étape 1 terminée.** Trois mini-validations menées sur 5 ans MNQ/ES tick-realistic (wicks intra-bar, commissions $1.10/RT, slippage 1 tick, splits LdP Train 2021-05→2024-05 / Valid 2024-05→2025-05 / Holdout intouché). Résultats complets dans `01_research/outputs/` :
+**Étape 1 terminée.** Quatre mini-validations menées sur 5 ans MNQ/ES tick-realistic (wicks intra-bar, commissions $1.10/RT, slippage 1 tick, splits LdP Train 2021-05→2024-05 / Valid 2024-05→2025-05 / Holdout intouché). Résultats complets dans `01_research/outputs/` :
 
 | Mini-validation | Verdict | Détail |
 |---|---|---|
-| #1 Multi-TF MNQ (`outputs/multi_tf/`) | 🟢 **Candidat** | MR 15h NY locale — 5min PF 2.03→2.02 OOS / Sharpe 2.57→2.77 OOS ; 15min PF 2.68→3.65 OOS. Aucune autre heure robuste. |
+| #1 Multi-TF MNQ (`outputs/multi_tf/`) | 🟢 Candidat **baseline** | MR 15h NY locale — 5min PF 2.03→2.02 OOS ; 15min PF 2.68→3.65 OOS. **Mesuré sans contraintes Apex.** |
 | #2 ES cross-asset (`outputs/es/`) | 🟡 Dégradé | Edge 15h NY existe sur ES mais Sharpe 0.63 < seuil, DD -$15k. Edge **MNQ-spécifique**, pas de robustesse cross-asset. |
 | #3 Momentum MNQ (`outputs/momentum/`) | 🔴 No edge | PF 0.37, toutes heures et tous mois perdants. Hypothèse "H>0.5 ⇒ momentum intraday profitable" invalidée empiriquement. |
+| #4 Apex-compliance (`outputs/apex_compliant/`) | 🔴 **Candidat KO sous Apex** | Force-flat 15:59 + cutoff entrée 15:55 appliqués → 5min Train PF 2.03→**0.80**, 15min Train PF 2.68→**0.77**. Cycle Apex : **0/61 mois passés**. L'edge se complète après 16:00 NY (close auction) — Apex verrouille le trader dehors. |
 
-**Candidat unique retenu : MR fin de journée NY (15h locale) sur MNQ 5min / 15min.** Tient OOS sur le split Valid sans dégradation. Cohérent avec la littérature peer-reviewed (End-of-Day Reversal, gamma hedging des option market makers, flux MOC). **NON validé** : pas de Deflated Sharpe Ratio, pas de CPCV, pas de Monte Carlo permutation ; WR 20-26% asymétrique ; holdout 2025-05→2026-05 intouché.
+**Statut du candidat MR 15h NY** : edge réel en **baseline** (cohérent littérature — End-of-Day Reversal, gamma hedging des MM, flux MOC) mais **non capturable en l'état sous contraintes Apex**. Le backtester baseline laissait les trades tourner après 16:00 NY ; Apex l'interdit. L'exit actuel (z-score revient à ±0.5) est trop lent.
 
-**Étape 2 (à faire) — Validation rigoureuse du candidat MR 15h NY** :
-- Backtester Python NT8-compatible : wicks intra-bar, bracket orders, force-flat 15h59 NY, trailing DD Apex simulé intra-day
-- Critères López de Prado : Deflated Sharpe Ratio > 0, Combinatorial Purged CV, Monte Carlo permutation p < 0.05
-- Décomposition LONG/SHORT (NDX a un bias long structurel — un côté peut être systématiquement perdant)
-- Stress test par régime VIX et par phase macro
-- Cross-validation fidélité Python ↔ NT8 SA (écart < 15%) sur 5+ configs
-- Holdout ouvert UNIQUEMENT en toute fin de validation
+**Étape 2 — Sprint re-engineering exit (EN COURS)** : avant toute validation lourde, déterminer si l'edge se capture avec un exit qui se résout **avant** le force-flat 16:00. Spec : `docs/superpowers/specs/2026-05-14-sprint-reengineering-eod-reversal-design.md`.
+- Grille délibérée de 8 configs d'exit (z-score serré, TP points fixes, exit temps fixe, trailing, hybride) × {5min, 15min} = 16 trials
+- Tout mesuré **Apex-compliant dès le départ** ; config-contrôle C0 qui doit reproduire mini-val #4
+- Gate de promotion : PF > 1.5 ∧ Sharpe > 1.0 sur Train Apex-compliant, tient sur Valid
+- Issue : config promue → vraie validation LdP (DSR/CPCV/Monte Carlo, backtester NT8-compatible, décomposition LONG/SHORT, stress test régime) ; ou aucune → edge EOD acté Apex-mort, nouvelle hypothèse
+- Holdout 2025-05→2026-05 **INTOUCHÉ** jusqu'à la fin de la validation rigoureuse
 
 ## Données
 
