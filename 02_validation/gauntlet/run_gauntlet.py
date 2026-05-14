@@ -24,6 +24,13 @@ from gauntlet.pa_account import PaAccount
 from gauntlet.backtest import backtest_pa
 from gauntlet.splits import split_train, split_valid, split_holdout
 from gauntlet.deflated_sharpe import probability_backtest_overfitting
+from gauntlet.walk_forward import purged_walk_forward, walk_forward_summary
+from gauntlet.monte_carlo import permutation_test_sharpe, dd_distribution_shuffle
+from gauntlet.cpcv import sharpe_distribution_cpcv
+from gauntlet.deflated_sharpe import deflated_sharpe_ratio
+from gauntlet.stress_test import run_stress_test, stress_test_passed
+from gauntlet.pa_cycle import analyze_pa_cycle
+from gauntlet.verdict import build_verdict, DSR_GO_THRESHOLD
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -172,3 +179,112 @@ def _compute_pbo(fulltv_results: list, n_splits: int = 10):
     if len(pnl_matrix_df) < n_splits:
         return None
     return float(probability_backtest_overfitting(pnl_matrix_df.to_numpy(), n_splits=n_splits))
+
+
+# ════════════════════════════════════════════════════════════════════
+# L'orchestrateur
+# ════════════════════════════════════════════════════════════════════
+
+# Fallback du sr_variance du Deflated Sharpe quand la grille a < 2 variants exploitables.
+# 0.09 = 0.3^2, convention héritée de run_final_validation.py.
+_SR_VARIANCE_FALLBACK = 0.09
+
+
+def run_gauntlet(hypothesis, splits: dict = None, out_dir=None,
+                 mc_iter: int = 10_000, seed: int = 0,
+                 n_windows: int = 4, cpcv_n_groups: int = 10,
+                 pbo_n_splits: int = 10):
+    """Exécute le gauntlet complet sur une hypothèse -> Verdict.
+
+    Args:
+        hypothesis: l'Hypothesis à juger.
+        splits: dict(train, valid, holdout, full_tv) DÉJÀ préparé. None -> prepare_data
+                charge les vraies données (I/O fichier). L'injection sert aux tests.
+        out_dir: dossier où écrire le rapport (None -> pas de rapport écrit).
+        mc_iter: itérations Monte Carlo.
+        seed: graine RNG (Monte Carlo).
+        n_windows: fenêtres du walk-forward.
+        cpcv_n_groups: groupes du CPCV.
+        pbo_n_splits: blocs temporels du PBO.
+
+    Returns:
+        Verdict.
+    """
+    run_variant = make_run_variant(hypothesis)
+    embargo = _extract_embargo(hypothesis)
+    if splits is None:
+        splits = prepare_data(hypothesis, embargo_bars=embargo)
+    train, full_tv, holdout = splits["train"], splits["full_tv"], splits["holdout"]
+
+    # ── Sélection du meilleur variant sur Train ─────────────────
+    train_results = _run_grid_on(train, hypothesis, run_variant)
+    best_params, _best_idx, train_sharpes = _select_best_on_train(train_results)
+
+    # ── Bloc 3a — Walk-forward purgé sur Train+Valid ────────────
+    wf = purged_walk_forward(full_tv, hypothesis.param_grid, run_variant,
+                             n_windows=n_windows, embargo_bars=embargo)
+    wf_sum = walk_forward_summary(wf)
+
+    # ── Run plein Train+Valid + grille complète sur full_tv ─────
+    fulltv_results = _run_grid_on(full_tv, hypothesis, run_variant)
+    best_on_fulltv = next(r for r in fulltv_results if r["params"] == best_params)
+    full_trades = best_on_fulltv["trades"]
+    full_account = best_on_fulltv["account"]
+    full_metrics = best_on_fulltv["metrics"]
+
+    # ── Bloc 3b — Monte Carlo + CPCV + Deflated Sharpe + PBO ────
+    pnl = full_trades["pnl_usd"].to_numpy() if len(full_trades) else np.array([])
+    mc = permutation_test_sharpe(pnl, n_iter=mc_iter, seed=seed)
+    dd = dd_distribution_shuffle(pnl, n_iter=mc_iter, seed=seed)
+    cpcv = (sharpe_distribution_cpcv(full_trades, n_groups=cpcv_n_groups, k_test=2,
+                                     date_col="date", pnl_col="pnl_usd")
+            if len(full_trades) else np.array([]))
+    daily = (full_trades.groupby("date")["pnl_usd"].sum().to_numpy()
+             if len(full_trades) else np.array([]))
+    finite_sharpes = [s for s in train_sharpes if np.isfinite(s)]
+    sr_variance = (max(float(np.var(finite_sharpes, ddof=1)), 1e-4)
+                   if len(finite_sharpes) >= 2 else _SR_VARIANCE_FALLBACK)
+    dsr = (float(deflated_sharpe_ratio(daily, n_trials=hypothesis.n_trials,
+                                       sr_variance=sr_variance))
+           if len(daily) >= 5 else 0.0)
+    pbo = _compute_pbo(fulltv_results, n_splits=pbo_n_splits)
+
+    # ── Bloc 4 — Stress test + cycle PA ─────────────────────────
+    stress = run_stress_test(full_tv, best_params, run_variant)
+    cycle = analyze_pa_cycle(full_account)
+    cycle["n_trades"] = len(full_trades)
+
+    # ── Holdout — ouvert UNE seule fois, confiance dégradée ─────
+    holdout_trades, _holdout_account = run_variant(holdout, best_params)
+    holdout_metrics = compute_trade_metrics(holdout_trades)
+    holdout_note = (
+        f"Holdout 2025-05->2026-05 (confiance DÉGRADÉE — partiellement contaminé par le "
+        f"grid-search dual-config) : {holdout_metrics['trades']} trades, "
+        f"PF {holdout_metrics['pf']:.2f}, Sharpe {holdout_metrics['sharpe']:.2f}, "
+        f"PnL ${holdout_metrics['pnl']:.0f}. Confirmation indicative, pas un critère GO."
+    )
+
+    # ── Bloc 5 — Verdict ────────────────────────────────────────
+    verdict = build_verdict(
+        hypothesis_name=hypothesis.name,
+        account_survived=(full_account.status != "dead_eod"),
+        wf_summary=wf_sum, mc=mc, dsr=dsr, pbo=pbo,
+        full_max_dd=full_metrics["max_dd"],
+        stress_passed=stress_test_passed(stress),
+        reached_lock=cycle["reached_lock"],
+        inactivity_safe=cycle["inactivity_safe"],
+        holdout_note=holdout_note, dsr_threshold=DSR_GO_THRESHOLD,
+    )
+
+    # ── Rapport (import paresseux : report.py n'existe qu'à partir de Task 6) ──
+    if out_dir is not None:
+        from gauntlet.report import write_gauntlet_report
+        write_gauntlet_report(verdict, dict(
+            hypothesis=hypothesis, wf=wf, wf_summary=wf_sum, mc=mc, dd=dd,
+            cpcv=cpcv, dsr=dsr, sr_variance=sr_variance, pbo=pbo,
+            full_metrics=full_metrics, full_account=full_account,
+            stress=stress, cycle=cycle, holdout_metrics=holdout_metrics,
+            fulltv_results=fulltv_results, best_params=best_params,
+        ), out_dir)
+
+    return verdict
