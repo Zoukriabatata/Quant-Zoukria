@@ -133,3 +133,18 @@ def test_trailing_std_short_retrace_hits():
     assert touched is True
     assert price == 93.25
     assert reason == 'trail'
+
+
+def test_trailing_std_short_no_hit():
+    # short : excursion favorable min low = min(92,88,87) = 87 -> trail_price = 92
+    # high[3]=90 < 92 -> pas de hit
+    df = pd.DataFrame({
+        'high':  [100.0, 96.0, 92.0, 90.0],
+        'low':   [100.0, 92.0, 88.0, 87.0],
+        'close': [100.0, 93.0, 89.0, 88.0],
+    })
+    touched, price, reason = exit_logic_trailing_std(
+        df, i=0, j=3, direction=-1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        trail_std_mult=1.0)
+    assert touched is False

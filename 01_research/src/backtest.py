@@ -293,6 +293,10 @@ def exit_logic_trailing_std(df, i, j, direction, entry_price, std_i, mid_i,
     i+1..j. Vérifié sur wicks. Stop order -> fill avec 1 tick de slippage défavorable
     (trail_slip_pts, défaut 0.25 = 1 tick MNQ). Recalcule l'excursion à chaque appel
     (O(n) par bar, acceptable pour la grille du sprint). Config C6 du sprint.
+
+    IMPORTANT : backtest_apex appelle exit_logic sans kwargs spécifiques. Pour sweeper
+    trail_std_mult, cette fonction doit être bindée via functools.partial(..., trail_std_mult=...)
+    avant d'être passée à backtest_apex.
     """
     trail_dist = trail_std_mult * std_i
     if direction == 1:
