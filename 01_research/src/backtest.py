@@ -334,3 +334,24 @@ def exit_logic_hybrid_zscore_time(df, i, j, direction, entry_price, std_i, mid_i
     if close_min_ny >= exit_ny_min:
         return True, df.at[j, 'close'], 'time_stop'
     return False, 0.0, ''
+
+
+def exit_logic_return_to_open(df, i, j, direction, entry_price, std_i, mid_i,
+                              or_high, or_low, or_range, sl_pts):
+    """TP Opening Drive Failure : retour au prix d'open du jour (le 'corps').
+
+    Le faux spike est censé revenir vers open_ref. TP = open_ref, vérifié sur wicks
+    (high/low de la bougie). Fill au prix exact — limit order, pas de slippage (comme
+    exit_logic_orb / exit_logic_fixed_tp_std).
+
+    Nécessite la colonne 'open_ref' dans df (via compute_features_opening_drive).
+    """
+    tp_price = df.at[j, 'open_ref'] if 'open_ref' in df.columns else np.nan
+    if pd.isna(tp_price):
+        return False, 0.0, ''
+    hj = df.at[j, 'high']
+    lj = df.at[j, 'low']
+    tp_touched = (direction == 1 and hj >= tp_price) or (direction == -1 and lj <= tp_price)
+    if tp_touched:
+        return True, tp_price, 'TP_return_to_open'
+    return False, 0.0, ''
