@@ -246,3 +246,41 @@ def exit_logic_orb(df, i, j, direction, entry_price, std_i, mid_i,
     if tp_touched:
         return True, tp_price, 'TP_orb_1R'
     return False, 0.0, ''
+
+
+def exit_logic_time_stop(df, i, j, direction, entry_price, std_i, mid_i,
+                         or_high, or_low, or_range, sl_pts,
+                         **kwargs):
+    """Stub — Task 3. Not implemented yet."""
+    raise NotImplementedError("exit_logic_time_stop: Task 3 non encore implémentée")
+
+
+def exit_logic_trailing_std(df, i, j, direction, entry_price, std_i, mid_i,
+                            or_high, or_low, or_range, sl_pts,
+                            **kwargs):
+    """Stub — Task 4. Not implemented yet."""
+    raise NotImplementedError("exit_logic_trailing_std: Task 4 non encore implémentée")
+
+
+def exit_logic_hybrid_zscore_time(df, i, j, direction, entry_price, std_i, mid_i,
+                                  or_high, or_low, or_range, sl_pts,
+                                  **kwargs):
+    """Stub — Task 5. Not implemented yet."""
+    raise NotImplementedError("exit_logic_hybrid_zscore_time: Task 5 non encore implémentée")
+
+
+def exit_logic_fixed_tp_std(df, i, j, direction, entry_price, std_i, mid_i,
+                            or_high, or_low, or_range, sl_pts,
+                            tp_std_mult: float = 0.75):
+    """TP fixe : entry +/- tp_std_mult * std_i, vérifié sur wicks (high/low).
+
+    TP de type limit order : fill au prix exact, pas de slippage (cf. exit_logic_orb).
+    Configs C3 (tp_std_mult=0.75) et C4 (0.40) du sprint re-engineering exit.
+    """
+    tp_price = entry_price + direction * tp_std_mult * std_i
+    hj = df.at[j, 'high']
+    lj = df.at[j, 'low']
+    tp_touched = (direction == 1 and hj >= tp_price) or (direction == -1 and lj <= tp_price)
+    if tp_touched:
+        return True, tp_price, 'TP_fixed_std'
+    return False, 0.0, ''
