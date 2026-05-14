@@ -314,6 +314,23 @@ def exit_logic_trailing_std(df, i, j, direction, entry_price, std_i, mid_i,
 
 def exit_logic_hybrid_zscore_time(df, i, j, direction, entry_price, std_i, mid_i,
                                   or_high, or_low, or_range, sl_pts,
-                                  **kwargs):
-    """Stub — Task 5. Pas encore implémenté."""
-    raise NotImplementedError("exit_logic_hybrid_zscore_time: Task 5 non encore implémentée")
+                                  zscore_exit: float = 1.0,
+                                  exit_ny_min: int = 955, bar_size_min: int = 5):
+    """Hybride : TP z-score serré OU exit temps fixe, le premier touché.
+
+    Combine un TP rapide (z revient dans [-zscore_exit, +zscore_exit]) avec un hard
+    time stop une barre avant le force-flat Apex. Config C7 du sprint.
+
+    IMPORTANT : backtest_apex appelle exit_logic sans kwargs spécifiques. Cette fonction
+    doit être bindée via functools.partial(..., exit_ny_min=..., bar_size_min=...) avant
+    d'être passée à backtest_apex, sinon les défauts faussent le cutoff sur les bars != 5min.
+    """
+    z_j = df.at[j, 'zscore'] if 'zscore' in df.columns else float('nan')
+    if pd.notna(z_j):
+        tp = (direction == 1 and z_j >= -zscore_exit) or (direction == -1 and z_j <= zscore_exit)
+        if tp:
+            return True, df.at[j, 'close'], 'TP_zscore'
+    close_min_ny = df.at[j, 'hour_ny'] * 60 + df.at[j, 'min_ny'] + bar_size_min
+    if close_min_ny >= exit_ny_min:
+        return True, df.at[j, 'close'], 'time_stop'
+    return False, 0.0, ''

@@ -148,3 +148,43 @@ def test_trailing_std_short_no_hit():
         or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
         trail_std_mult=1.0)
     assert touched is False
+
+
+def test_hybrid_zscore_fires_first():
+    # short trade (entré sur z>2). j=1 : z=0.8 <= zscore_exit=1.0 -> TP_zscore au close
+    df = pd.DataFrame({
+        'zscore': [2.5, 0.8], 'hour_ny': [15, 15], 'min_ny': [10, 15], 'close': [100.0, 99.0],
+    })
+    touched, price, reason = exit_logic_hybrid_zscore_time(
+        df, i=0, j=1, direction=-1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        zscore_exit=1.0, exit_ny_min=955, bar_size_min=5)
+    assert touched is True
+    assert price == 99.0
+    assert reason == 'TP_zscore'
+
+
+def test_hybrid_time_fires_when_zscore_silent():
+    # short trade. j=1 : z=1.8 > 1.0 -> pas de TP z. close_min_ny=15*60+50+5=955 -> time_stop
+    df = pd.DataFrame({
+        'zscore': [2.5, 1.8], 'hour_ny': [15, 15], 'min_ny': [45, 50], 'close': [100.0, 99.5],
+    })
+    touched, price, reason = exit_logic_hybrid_zscore_time(
+        df, i=0, j=1, direction=-1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        zscore_exit=1.0, exit_ny_min=955, bar_size_min=5)
+    assert touched is True
+    assert price == 99.5
+    assert reason == 'time_stop'
+
+
+def test_hybrid_no_exit_when_both_silent():
+    # j=1 : z=1.8 > 1.0 (pas de TP z) ET close_min_ny=15*60+10+5=915 < 955 -> rien
+    df = pd.DataFrame({
+        'zscore': [2.5, 1.8], 'hour_ny': [15, 15], 'min_ny': [5, 10], 'close': [100.0, 99.5],
+    })
+    touched, price, reason = exit_logic_hybrid_zscore_time(
+        df, i=0, j=1, direction=-1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        zscore_exit=1.0, exit_ny_min=955, bar_size_min=5)
+    assert touched is False
