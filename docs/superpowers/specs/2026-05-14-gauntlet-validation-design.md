@@ -152,7 +152,7 @@ Chaque composant a ses tests unitaires sur données synthétiques (TDD strict, c
 - Cross-validation NT8 Strategy Analyzer + sim live (étapes manuelles APRÈS un GO Python — le verdict les liste comme next steps).
 - Acquisition de nouvelles données (utilise le Databento OHLCV-1m existant).
 - Portfolio / combinaison multi-stratégies.
-- **La première vraie hypothèse de recherche** à faire passer dans le gauntlet — cycle spec→plan séparé, après que le gauntlet existe et est calibré.
+- **La première vraie hypothèse de recherche** reste un cycle spec→plan distinct (le gauntlet doit exister et être calibré avant de pouvoir y faire passer quoi que ce soit) — mais on **enchaîne directement** dessus dès le gauntlet calibré, sans pause.
 
 ---
 
