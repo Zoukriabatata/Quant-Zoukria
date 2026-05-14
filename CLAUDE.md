@@ -5,12 +5,11 @@
 - Trader systématique sur **MNQ** (Micro Nasdaq futures)
 - Compte **Apex Trader Funding $50K Eval** — règles complètes en §"Règles Apex"
 - **Je ne code pas.** Je dirige la conception, Claude implémente. Quand je décris une logique, traduis-la en code propre sans me demander d'écrire les bouts.
-- Stack technique :
-  - **Python** (recherche, backtest, signaux) — JupyterLab principal, Streamlit pour interfaces finales uniquement
-  - **SQLite** (journal de trades, persistance)
-  - **NinjaTrader 8 + Rithmic** (exécution)
-  - **C# / NinjaScript** (stratégies live full auto + bridge `rithmic_bridge.cs` mode semi-auto)
-- Application actuelle : 14 pages Streamlit (journal, backtester, live signal MNQ, alertes, crypto swing, SOL live, etc.)
+- Stack technique (architecture 3 couches, depuis restructuration 2026-05-14) :
+  - **Couche 1 — Recherche** : Python + JupyterLab + VectorBT (`01_research/`)
+  - **Couche 2 — Validation** : Python (backtrader) + NinjaScript Strategy Analyzer (`02_validation/`)
+  - **Couche 3 — Live full auto** : C# / NinjaScript sur NinjaTrader + Rithmic (`03_live/`)
+  - **Plus de Streamlit** — supprimé pour passer en pro Jupyter/notebooks
 
 ## Appellation
 
