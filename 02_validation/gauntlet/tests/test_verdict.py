@@ -107,3 +107,26 @@ def test_hard_fails_property_lists_failed_eliminatory_criteria():
     v = build_verdict(**kw)
     names = {c.name for c in v.hard_fails}
     assert names == {"deflated_sharpe", "monte_carlo"}
+
+
+def test_dsr_exact_boundary_095_is_nogo():
+    # DSR == 0.95 doit ÉCHOUER (le code utilise dsr > 0.95, strict — décision BB).
+    # Ce test verrouille la frontière : un passage à `>=` serait détecté.
+    kw = _passing_kwargs()
+    kw["dsr"] = 0.95
+    v = build_verdict(**kw)
+    assert v.verdict == "NO-GO"
+    dsr_c = next(c for c in v.criteria if c.name == "deflated_sharpe")
+    assert dsr_c.passed is False
+    assert dsr_c.is_hard_fail is True
+
+
+def test_pa_cycle_soft_fail_gives_conditional():
+    # reached_lock=False (critère mou pa_cycle échoué), aucun hard fail -> CONDITIONAL.
+    kw = _passing_kwargs()
+    kw["reached_lock"] = False
+    v = build_verdict(**kw)
+    assert v.verdict == "CONDITIONAL"
+    cycle_c = next(c for c in v.criteria if c.name == "pa_cycle")
+    assert cycle_c.passed is False
+    assert cycle_c.hard_fail is False
