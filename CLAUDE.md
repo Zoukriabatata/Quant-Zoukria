@@ -3,12 +3,12 @@
 ## Profil opérateur
 
 - Trader systématique sur **MNQ** (Micro Nasdaq futures)
-- Compte **Apex Trader Funding $50K Eval** — règles complètes en §"Règles Apex"
+- Compte **Apex Trader Funding $50K PA EOD** (Performance Account, Simulated Funded) — règles complètes en §"Règles Apex". ⚠️ Migré de l'Eval vers un PA EOD le 2026-05-14 — les anciennes règles Eval ne s'appliquent plus.
 - **Je ne code pas.** Je dirige la conception, Claude implémente. Quand je décris une logique, traduis-la en code propre sans me demander d'écrire les bouts.
 - Stack technique (architecture 3 couches, depuis restructuration 2026-05-14) :
   - **Couche 1 — Recherche** : Python + JupyterLab + VectorBT (`01_research/`)
   - **Couche 2 — Validation** : Python (backtrader) + NinjaScript Strategy Analyzer (`02_validation/`)
-  - **Couche 3 — Live full auto** : C# / NinjaScript sur NinjaTrader + Rithmic (`03_live/`)
+  - **Couche 3 — Live** : C# / NinjaScript sur NinjaTrader + Rithmic (`03_live/`) — ⚠️ le "full auto" est en question : Apex interdit l'automatisation (Prohibited Activities), clarification envoyée à Apex le 2026-05-14, réponse en attente
   - **Plus de Streamlit** — supprimé pour passer en pro Jupyter/notebooks
 
 ## Appellation
@@ -96,30 +96,40 @@ H<0.58 · HW=50 · LB=19 · k=2.75σ · SL=0.65×std (min 5 pts, max 20 pts) · 
 
 ## Règles Apex à intégrer dans TOUT backtest
 
-### Apex Trader Funding — $50K Evaluation (config officielle 2026)
+### Apex Trader Funding — $50K Performance Account EOD (règles officielles, vérifiées depuis le help-center Apex 2026-05-14)
 
-| Règle | Valeur | Note |
-|-------|--------|------|
-| **Profit Target** | **$3,000** | À atteindre pour passer en Performance Account (PA) |
-| **Trailing DD (SL max)** | **$2,000** | Plafond cumulé en intraday, simulé en temps réel |
-| **Daily Loss Limit** | **$1,000** | Stop trading le jour si atteint |
-| **Contrats max mini** | **10** | ES, NQ, CL, GC, ZN, etc. |
-| **Contrats max micro** | **40** | MNQ, MES, MCL, MGC, MNG, M2K, MYM, etc. |
-| **Flat obligatoire** | **avant 16h NY** | Aucune position ne peut être ouverte après 16h00 NY locale |
-| **Durée max challenge** | **1 mois** | Si target $3,000 pas atteint en 1 mois → challenge échoué |
+> Compte **PA EOD** (Performance Account, Simulated Funded) — **plus l'Eval**. Pas de profit target, pas de limite de temps. Le compte vit tant qu'on ne touche pas le seuil EOD et qu'on respecte la règle d'inactivité.
+
+| Règle | Valeur PA EOD 50K | Note |
+|-------|-------------------|------|
+| **Drawdown EOD** | **$2,000** | Seuil calculé 1×/jour à la clôture (16:59:59 ET) sur la balance de clôture. Trail les **clôtures journalières** les plus hautes, ne descend JAMAIS. **Enforced en temps réel intraday** : si la balance (PnL non réalisé inclus) touche le seuil à tout moment → liquidation + **PA fermé définitivement**. Seuil initial = $48,000. |
+| **Lock du seuil EOD** | **$50,100** | Une fois qu'une clôture journalière atteint ≥ $52,100, le seuil se fige à $50,100 **à vie**. Objectif stratégique nº1 : verrouiller ce plancher au plus vite. |
+| **Daily Loss Limit (DLL)** | **tier-based** | $1,000 (L1/L2) · $2,000 (L3) · $3,000 (L4). Fixe pour la session, monitored intraday sur l'equity totale (réalisé + non réalisé). Touché = positions liquidées + journée stoppée, **compte survit**, reprise session suivante (reset 18h ET). |
+| **Contrats max** | **tier-based** | 2 / 3 / 4 / 4 contrats standard = **20 / 30 / 40 / 40 MNQ** (10 micros = 1 standard). Ordre au-delà = rejeté sans pénalité. Limite sur l'exposition totale tous instruments confondus. |
+| **Scaling tiers (50K)** | balance EOD → tier | L1 $0-1,499 (2 ctr · DLL $1k) · L2 $1,500-2,999 (3 ctr · DLL $1k) · L3 $3,000-5,999 (4 ctr · DLL $2k) · L4 $6,000+ (4 ctr · DLL $3k). Tier figé 1×/jour à la clôture sur la balance EOD, vaut pour la session suivante. Plancher L1, plafond L4. |
+| **Profit target** | **aucun** | Compte funded — pas de cible à atteindre. |
+| **Limite de temps** | **aucune** | Confirmé. |
+| **Inactivité** | **≥ 2 jours à ≥ $50 net / 30 j glissants** | Sinon dormant à 15 j, fermeture définitive à 30 j. La strat doit produire des journées vertes régulières — un edge "rare big wins" pur risque la fermeture pour inactivité. |
+| **Flat à la clôture** | **15:55 NY** | Règle perso BB (= 21:55 Paris), plus conservateur que le hard rule Apex "before market close" (~16:59:59 ET). Aucune position ouverte après **15:55 America/New_York** — force-flat MTM de toute position à 15:55 NY, aucune entrée qui resterait ouverte au-delà. |
+| **Hedging** | **interdit** | Long + short simultané même instrument OU corrélé = prohibé. Un dual-config LONG/SHORT doit être **mutuellement exclusif** (machine à états, jamais les deux ouverts). |
+| **Stratégies high-risk** | **interdit** | "Small TP + disproportionately large SL" (ex. 5 ticks TP / 150 ticks SL) = prohibé. ⚠️ Tension directe avec le théorème de Leung — le ratio risk:reward ne doit pas tomber dans la zone prohibée. |
+| **Automatisation** | **interdite** | "No Automation or Algorithm Usage allowed" (Prohibited Activities). ⚠️ **Contredit frontalement "Couche 3 — Live full auto".** Ticket de clarification envoyé à Apex le 2026-05-14 — **réponse en attente**. Tant que non tranché : ne pas présumer que le full-auto est déployable. |
 
 ### Impact sur la conception du backtester
 
-1. **Trailing DD intra-journalier** simulé en temps réel (pas en EOD seulement). Un backtest qui ne le simule pas est **invalide** pour décision Apex.
-2. **Force-flat 15h59 NY** : tout trade ouvert à 15h59 NY doit être liquidé MTM. Pas de position carry-over jusqu'à 16h.
-3. **Pas d'entrée après 15h55 NY** (marge de sécurité 4 min pour fermer proprement).
-4. **Time-to-target** : sur 21-22 jours de trading dans le mois, le P&L moyen requis est ~$140-$150/jour à 1 contrat. Sizing Kelly indispensable pour atteindre $3K en 1 mois.
-5. **News blackout** (FOMC, NFP, CPI) : filtre recommandé, pas obligatoire Apex mais bonnes pratiques.
+1. **DD EOD, pas intraday** : le seuil ne bouge que sur les **clôtures** journalières. Les swings intraday sont "gratuits" tant qu'on ne touche pas le seuil. Bien plus tolérant que le trailing intraday de l'Eval — mais le seuil reste "collé en haut" après un repli (il ne suit pas la balance vers le bas). Modéliser : `seuil = min(plus_haute_clôture_EOD − 2000, 50100)`, monotone croissant.
+2. **DLL + contrats tier-based** : le backtester doit recalculer le tier chaque jour sur la balance EOD de la veille, et appliquer la DLL + le plafond contrats du tier sur la session.
+3. **DLL ≠ fin de compte** : DLL touchée = journée stoppée, compte vivant. Seuil EOD touché = compte mort. Deux mécaniques distinctes à simuler.
+4. **Force-flat à 15:55 NY** (règle perso BB, fuseau `America/New_York` — gère le DST automatiquement) : toute position liquidée MTM à 15:55 NY, aucune entrée qui resterait ouverte au-delà.
+5. **Pas de hedging** : si la stratégie a un volet LONG et un volet SHORT, ils doivent être mutuellement exclusifs.
+6. **Ratio risk:reward** : éviter la zone "high-risk strategy" prohibée (TP minuscule / SL énorme).
+7. **News blackout** (FOMC, NFP, CPI) : recommandé. Le news-trading "qui chase le marché" est prohibé ; une stratégie systématique normale pendant les news est autorisée.
 
-### À vérifier (non-confirmé dans la spec ci-dessus)
+### À confirmer
 
-- **Consistency rule** : applicable en Eval ou seulement en Performance Account ? (Règle : meilleur jour ≤ X% du profit total — Apex PA = 50%, Eval potentiellement libre). À confirmer Apex docs.
-- **Mix mini + micro** : Apex permet généralement les deux en équivalent (1 mini = 4 micros). À confirmer avant tout sizing combiné.
+- **Automatisation** : ticket envoyé à Apex le 2026-05-14, réponse en attente. Détermine si le livrable final est un algo full-auto ou un edge systématique à exécution manuelle.
+
+> Force-flat **résolu** (2026-05-14) : BB fixe sa propre coupure à **15:55 NY** — plus conservateur que le cutoff Apex. Le sprint EOD reversal ("Apex-mort", force-flat 15:55-15:59) reste donc valide, son verdict ne change pas avec le passage en PA EOD.
 
 ## Workflow standard
 
@@ -151,7 +161,7 @@ Backtest NinjaTrader Strategy Analyzer  →  Sim live 2-4 semaines  →  Live Ap
 - ❌ "Ça marche en backtest donc on déploie" — sim live obligatoire avant Apex
 - ❌ Sharpe brut sans Deflated Sharpe quand on a testé plusieurs configs
 - ❌ Backtest sans modélisation du slippage et des commissions futures (CME $4-5 aller-retour)
-- ❌ Backtest sans simulation du trailing DD Apex en temps réel
+- ❌ Backtest sans simulation du DD EOD Apex (seuil sur clôtures journalières, enforced intraday) ni de la DLL tier-based
 - ❌ Stop loss serré + take profit lointain sur stratégie MR (théorème de Leung : MR demande SL large + TP court)
 - ❌ Pine Script TradingView comme source de validation finale
 - ❌ Streamlit pour de la recherche lourde (utiliser Jupyter)
@@ -190,7 +200,7 @@ Avant qu'une stratégie passe sur mon compte live Apex, valide chacun de ces poi
 - [ ] Walk-forward sur ≥ 3 fenêtres avec ≥ 70% de fenêtres OOS rentables
 - [ ] Monte Carlo permutation : p-value < 0.05 sur le Sharpe vs aléatoire
 - [ ] Deflated Sharpe Ratio > 0 (compense le nombre de configs testées)
-- [ ] Max DD simulé < 50% du trailing DD Apex ($1,000 sur $2,000)
+- [ ] Max DD simulé < 50% du DD EOD Apex ($1,000 sur $2,000) — et aucune journée ne touche le seuil EOD en intraday
 - [ ] Stress test sur les périodes rouges historiques (Oct 2018, Mar 2020, Sep 2022, Oct historique)
 - [ ] Re-backtest dans NinjaTrader Strategy Analyzer cohérent avec backtest Python (écart P&L < 10%)
 - [ ] Sim live ≥ 2 semaines sur compte démo NinjaTrader, cohérent avec backtest
