@@ -8,3 +8,4 @@ ruff>=0.5
 # Jupyter pour Couche 1 (notebooks recherche)
 jupyterlab>=4.0
 ipykernel>=6.20
+jupytext>=1.16
