@@ -15,9 +15,9 @@
 
 Tu peux m'appeler **BB**.
 
-## Statut actuel — Recherche d'edge en cours (NO LIVE)
+## Statut actuel — Exploration close, candidat à valider (NO LIVE)
 
-> ⚠️ **v9 NON déployable Apex — PF 1.02 · DD -$22,748 mesurés en NT8 Strategy Analyzer tick-realistic.** Aucune stratégie validée pour live actuellement. Phase de recherche d'edge ouverte sur MNQ.
+> ⚠️ **v9 NON déployable Apex — PF 1.02 · DD -$22,748 mesurés en NT8 Strategy Analyzer tick-realistic.** Aucune stratégie validée pour live actuellement. Phase d'exploration d'edge **close** : un seul candidat retenu (MR fin de journée NY sur MNQ), à valider rigoureusement en Étape 2 avant tout passage en couche live.
 
 ### Backtest réaliste NT8 Strategy Analyzer — `HurstMR_Apex.cs` (5 ans MNQ, 13/05/2021 → 13/05/2026)
 
@@ -67,10 +67,25 @@ Les paramètres v9 restent figés dans `ninjatrader/HurstMR_Apex.cs` et `pages/5
 
 H<0.58 · HW=50 · LB=19 · k=2.75σ · SL=0.65×std (min 5 pts, max 20 pts) · TP overshoot=0.15σ · Timeout=120 bars · Trail ON @ H>0.51 · std_min=1.0 (Python only) · Skip 14h UTC (Python only) · Kelly 12%, plafond 12 MNQ.
 
-### Phase de recherche d'edge en cours
+### Phase d'exploration d'edge — CLOSE (2026-05-14)
 
-- **Étape 1** — Exploration Jupyter `01_research/notebooks/01_exploration_MR_MNQ.ipynb` : identifier si un edge MR existe dans des "poches" temporelles (heure NY locale, mois, jour de semaine) sur MNQ tick-realistic. Méthodologie López de Prado stricte (Train 2021-05→2024-05 / Valid 2024-05→2025-05 / Holdout 2025-05→2026-05 intouchable).
-- **Étape 2** (conditionnelle) — Construction d'un backtester Python NT8-compatible (wicks intra-bar, commissions $1.10/RT, slippage 1 tick, bracket orders) pour grid search massive **uniquement si Étape 1 trouve une poche avec PF>1.5, Sharpe>1, DD<$1.5k sur 6 mois glissants**. Validation fidélité Python ↔ NT8 obligatoire sur 5+ configs (écart < 15%) avant tout usage.
+**Étape 1 terminée.** Trois mini-validations menées sur 5 ans MNQ/ES tick-realistic (wicks intra-bar, commissions $1.10/RT, slippage 1 tick, splits LdP Train 2021-05→2024-05 / Valid 2024-05→2025-05 / Holdout intouché). Résultats complets dans `01_research/outputs/` :
+
+| Mini-validation | Verdict | Détail |
+|---|---|---|
+| #1 Multi-TF MNQ (`outputs/multi_tf/`) | 🟢 **Candidat** | MR 15h NY locale — 5min PF 2.03→2.02 OOS / Sharpe 2.57→2.77 OOS ; 15min PF 2.68→3.65 OOS. Aucune autre heure robuste. |
+| #2 ES cross-asset (`outputs/es/`) | 🟡 Dégradé | Edge 15h NY existe sur ES mais Sharpe 0.63 < seuil, DD -$15k. Edge **MNQ-spécifique**, pas de robustesse cross-asset. |
+| #3 Momentum MNQ (`outputs/momentum/`) | 🔴 No edge | PF 0.37, toutes heures et tous mois perdants. Hypothèse "H>0.5 ⇒ momentum intraday profitable" invalidée empiriquement. |
+
+**Candidat unique retenu : MR fin de journée NY (15h locale) sur MNQ 5min / 15min.** Tient OOS sur le split Valid sans dégradation. Cohérent avec la littérature peer-reviewed (End-of-Day Reversal, gamma hedging des option market makers, flux MOC). **NON validé** : pas de Deflated Sharpe Ratio, pas de CPCV, pas de Monte Carlo permutation ; WR 20-26% asymétrique ; holdout 2025-05→2026-05 intouché.
+
+**Étape 2 (à faire) — Validation rigoureuse du candidat MR 15h NY** :
+- Backtester Python NT8-compatible : wicks intra-bar, bracket orders, force-flat 15h59 NY, trailing DD Apex simulé intra-day
+- Critères López de Prado : Deflated Sharpe Ratio > 0, Combinatorial Purged CV, Monte Carlo permutation p < 0.05
+- Décomposition LONG/SHORT (NDX a un bias long structurel — un côté peut être systématiquement perdant)
+- Stress test par régime VIX et par phase macro
+- Cross-validation fidélité Python ↔ NT8 SA (écart < 15%) sur 5+ configs
+- Holdout ouvert UNIQUEMENT en toute fin de validation
 
 ## Données
 
