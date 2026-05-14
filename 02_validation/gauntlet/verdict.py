@@ -162,13 +162,17 @@ def build_verdict(
                ("Le compte touche le seuil DD EOD sur au moins une période rouge."),
     ))
 
-    # 8. Cycle PA — lock + inactivité — MOU
-    cycle_ok = bool(reached_lock and inactivity_safe)
+    # 8. Cycle PA — survie + lock + inactivité — MOU (spec : "survit + lock + inactivity-safe").
+    # La survie est aussi le critère hard #1 ; on la garde ici pour que le critère pa_cycle
+    # soit cohérent avec son énoncé (un compte mort ne "réussit" pas son cycle PA).
+    cycle_ok = bool(account_survived and reached_lock and inactivity_safe)
     criteria.append(CriterionResult(
         name="pa_cycle", passed=cycle_ok,
-        value=f"lock={reached_lock}, inactivity_safe={inactivity_safe}",
-        threshold="lock atteint ET inactivity-safe", hard_fail=False,
-        detail=f"Cycle PA continu : lock $50,100 "
+        value=f"survived={account_survived}, lock={reached_lock}, "
+              f"inactivity_safe={inactivity_safe}",
+        threshold="compte survit ET lock atteint ET inactivity-safe", hard_fail=False,
+        detail=f"Cycle PA continu : compte "
+               f"{'vivant' if account_survived else 'MORT'}, lock $50,100 "
                f"{'atteint' if reached_lock else 'NON atteint'}, règle d'inactivité "
                f"{'respectée' if inactivity_safe else 'VIOLÉE'}.",
     ))

@@ -130,3 +130,13 @@ def test_pa_cycle_soft_fail_gives_conditional():
     cycle_c = next(c for c in v.criteria if c.name == "pa_cycle")
     assert cycle_c.passed is False
     assert cycle_c.hard_fail is False
+
+
+def test_pa_cycle_includes_survival():
+    # le critère pa_cycle inclut la survie (spec : "survit + lock + inactivity-safe").
+    # un compte mort ne réussit pas son cycle PA, même avec lock + inactivity OK.
+    kw = _passing_kwargs()
+    kw["account_survived"] = False
+    v = build_verdict(**kw)
+    cycle_c = next(c for c in v.criteria if c.name == "pa_cycle")
+    assert cycle_c.passed is False
