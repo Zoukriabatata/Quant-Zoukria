@@ -198,3 +198,80 @@ ranking = pd.DataFrame(rows).sort_values(
     ['promoted', 'train_pf'], ascending=[False, False]).reset_index(drop=True)
 ranking.to_csv(OUT_DIR / 'ranking.csv', index=False)
 print(f"\nn_trials = {N_TRIALS} | ranking.csv écrit ({len(ranking)} lignes)")
+
+# %% [markdown]
+# ## Cycle Apex (contexte) + rapport
+#
+# `simulate_apex_cycle` sur les trades Train+Valid des configs promues — affiché pour
+# contexte, n'entre PAS dans le gate (pass rate sizing-dépendant). Puis génération du
+# rapport markdown.
+
+# %%
+promoted = ranking[ranking['promoted'] == True]  # noqa: E712
+
+cycle_summaries = {}
+for _, r in promoted.iterrows():
+    name, tf = r['config'], r['tf']
+    p = TF_PARAMS[tf]
+    df_all = _PREPARED[tf]
+    df_tv = df_all.loc[(df_all.index >= TRAIN_START) & (df_all.index < VALID_END)].copy()
+    configs = build_exit_configs(p['bar_size_min'], p['exit_ny_min'])
+    _, trades_tv = run_config(df_tv, configs[name], p['bar_size_min'], p['timeout_bars'])
+    cycle = simulate_apex_cycle(trades_tv)
+    if len(cycle) > 0:
+        cycle_summaries[(name, tf)] = {
+            'months': len(cycle),
+            'pass_rate': (cycle['status'] == 'PASSED').mean() * 100,
+            'bust_dd_rate': (cycle['status'] == 'BUSTED_DD').mean() * 100,
+            'avg_pnl_month': cycle['final_pnl'].mean(),
+        }
+
+# %%
+lines = []
+lines.append('# Sprint Re-engineering Exit — Rapport\n')
+lines.append(f'**Date** : 2026-05-14  ')
+lines.append(f'**n_trials** : {N_TRIALS} (8 configs × 2 TF) — budget overfitting pour le DSR Étape 2\n')
+lines.append('## Verdict\n')
+if len(promoted) == 0:
+    lines.append('🔴 **Aucune config ne passe le gate.** Le gate exige PF > 1.5 ∧ Sharpe > 1.0 '
+                 '∧ avg_trade > coût RT sur Train Apex-compliant, ET PF ≥ 1.3 sur Valid.\n')
+    lines.append('L\'edge EOD Reversal n\'est pas capturable avant le force-flat 16:00 par le '
+                 'seul levier exit. **Recommandation : acter l\'edge EOD Apex-mort, Étape 2 '
+                 'pivote sur une nouvelle hypothèse.**\n')
+else:
+    lines.append(f'🟢 **{len(promoted)} config(s) passe(nt) le gate :**\n')
+    for _, r in promoted.iterrows():
+        lines.append(f"- `{r['config']}` ({r['tf']}) — Train PF {r['train_pf']:.2f} / "
+                     f"Sharpe {r['train_sharpe']:.2f} ; Valid PF {r['valid_pf']:.2f} / "
+                     f"Sharpe {r['valid_sharpe']:.2f}")
+    lines.append('\n**Recommandation : promouvoir la config la plus robuste (cohérence '
+                 'Train/Valid) vers une vraie Étape 2** — backtester NT8-compatible, '
+                 'DSR/CPCV/Monte Carlo, décomposition LONG/SHORT, stress test régime.\n')
+
+lines.append('## Classement complet\n')
+cols = ['config', 'tf', 'train_trades', 'train_pf', 'train_sharpe', 'train_avg_trade',
+        'gate_train', 'valid_pf', 'valid_sharpe', 'promoted']
+lines.append(ranking[cols].to_markdown(index=False, floatfmt='.2f'))
+lines.append('')
+
+if cycle_summaries:
+    lines.append('## Cycle Apex (contexte — hors gate)\n')
+    for (name, tf), s in cycle_summaries.items():
+        lines.append(f"- `{name}` ({tf}) : {s['months']} mois — pass {s['pass_rate']:.1f}% / "
+                     f"bust DD {s['bust_dd_rate']:.1f}% / PnL moyen ${s['avg_pnl_month']:.0f}/mois "
+                     f"(1 contrat)")
+    lines.append('')
+
+lines.append('## Limites connues\n')
+lines.append('- `backtest_apex` non audité — le contrôle C0 ne couvre qu\'un bug non-commun '
+             'à mini-val #4 et au sprint.')
+lines.append('- Trailing stop (C6) : fill modélisé avec 1 tick de slippage ; pas de modélisation '
+             'de gap intra-tick. À durcir en Étape 2.')
+lines.append('- Sharpe = per-trade × √252 (convention repo, cohérente avec mini-vals #1-4).')
+lines.append('- Holdout 2025-05→2026-05 INTOUCHÉ.')
+
+report = '\n'.join(lines)
+(OUT_DIR / 'sprint_exit_report.md').write_text(report, encoding='utf-8')
+sys.stdout.buffer.write((report + '\n').encode('utf-8', errors='replace'))
+sys.stdout.buffer.flush()
+print(f"\nRapport écrit : {OUT_DIR / 'sprint_exit_report.md'}")
