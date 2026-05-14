@@ -286,9 +286,26 @@ def exit_logic_time_stop(df, i, j, direction, entry_price, std_i, mid_i,
 
 def exit_logic_trailing_std(df, i, j, direction, entry_price, std_i, mid_i,
                             or_high, or_low, or_range, sl_pts,
-                            **kwargs):
-    """Stub — Task 4. Pas encore implémenté."""
-    raise NotImplementedError("exit_logic_trailing_std: Task 4 non encore implémentée")
+                            trail_std_mult: float = 1.0, trail_slip_pts: float = 0.25):
+    """Trailing stop : trail_std_mult * std_i derrière l'excursion favorable.
+
+    Excursion favorable = plus haut high (long) / plus bas low (short) sur les barres
+    i+1..j. Vérifié sur wicks. Stop order -> fill avec 1 tick de slippage défavorable
+    (trail_slip_pts, défaut 0.25 = 1 tick MNQ). Recalcule l'excursion à chaque appel
+    (O(n) par bar, acceptable pour la grille du sprint). Config C6 du sprint.
+    """
+    trail_dist = trail_std_mult * std_i
+    if direction == 1:
+        max_fav = df['high'].iloc[i + 1:j + 1].max()
+        trail_price = max_fav - trail_dist
+        if df.at[j, 'low'] <= trail_price:
+            return True, trail_price - trail_slip_pts, 'trail'
+    else:
+        min_fav = df['low'].iloc[i + 1:j + 1].min()
+        trail_price = min_fav + trail_dist
+        if df.at[j, 'high'] >= trail_price:
+            return True, trail_price + trail_slip_pts, 'trail'
+    return False, 0.0, ''
 
 
 def exit_logic_hybrid_zscore_time(df, i, j, direction, entry_price, std_i, mid_i,

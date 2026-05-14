@@ -83,3 +83,53 @@ def test_time_stop_15min_cutoff_945():
     assert touched is True
     assert price == 102.0
     assert reason == 'time_stop'
+
+
+def test_trailing_std_long_retrace_hits():
+    # bars 1..3 : excursion favorable max high = max(108,112,111) = 112
+    # trail_dist = 1.0 * 5 = 5 -> trail_price = 107 ; low[3]=106 <= 107 -> hit
+    # fill = 107 - trail_slip_pts(0.25) = 106.75
+    df = pd.DataFrame({
+        'high':  [100.0, 108.0, 112.0, 111.0],
+        'low':   [100.0, 104.0, 109.0, 106.0],
+        'close': [100.0, 107.0, 111.0, 107.0],
+    })
+    touched, price, reason = exit_logic_trailing_std(
+        df, i=0, j=3, direction=1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        trail_std_mult=1.0)
+    assert touched is True
+    assert price == 106.75
+    assert reason == 'trail'
+
+
+def test_trailing_std_long_no_hit():
+    # excursion max high = 113 -> trail_price = 108 ; low[3]=110 > 108 -> pas de hit
+    df = pd.DataFrame({
+        'high':  [100.0, 108.0, 112.0, 113.0],
+        'low':   [100.0, 104.0, 109.0, 110.0],
+        'close': [100.0, 107.0, 111.0, 112.0],
+    })
+    touched, price, reason = exit_logic_trailing_std(
+        df, i=0, j=3, direction=1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        trail_std_mult=1.0)
+    assert touched is False
+
+
+def test_trailing_std_short_retrace_hits():
+    # short : excursion favorable min low = min(92,88,89) = 88
+    # trail_dist = 5 -> trail_price = 93 ; high[3]=94 >= 93 -> hit
+    # fill = 93 + trail_slip_pts(0.25) = 93.25
+    df = pd.DataFrame({
+        'high':  [100.0, 96.0, 91.0, 94.0],
+        'low':   [100.0, 92.0, 88.0, 89.0],
+        'close': [100.0, 93.0, 89.0, 93.0],
+    })
+    touched, price, reason = exit_logic_trailing_std(
+        df, i=0, j=3, direction=-1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        trail_std_mult=1.0)
+    assert touched is True
+    assert price == 93.25
+    assert reason == 'trail'
