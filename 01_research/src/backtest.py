@@ -325,7 +325,7 @@ def exit_logic_hybrid_zscore_time(df, i, j, direction, entry_price, std_i, mid_i
     doit être bindée via functools.partial(..., exit_ny_min=..., bar_size_min=...) avant
     d'être passée à backtest_apex, sinon les défauts faussent le cutoff sur les bars != 5min.
     """
-    z_j = df.at[j, 'zscore'] if 'zscore' in df.columns else float('nan')
+    z_j = df.at[j, 'zscore'] if 'zscore' in df.columns else np.nan
     if pd.notna(z_j):
         tp = (direction == 1 and z_j >= -zscore_exit) or (direction == -1 and z_j <= zscore_exit)
         if tp:

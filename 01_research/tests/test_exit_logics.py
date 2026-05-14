@@ -188,3 +188,17 @@ def test_hybrid_no_exit_when_both_silent():
         or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
         zscore_exit=1.0, exit_ny_min=955, bar_size_min=5)
     assert touched is False
+
+
+def test_hybrid_zscore_fires_first_long():
+    # long trade (entré sur z<-2). j=1 : z=-0.8 >= -zscore_exit=-1.0 -> TP_zscore au close
+    df = pd.DataFrame({
+        'zscore': [-2.5, -0.8], 'hour_ny': [15, 15], 'min_ny': [10, 15], 'close': [100.0, 101.0],
+    })
+    touched, price, reason = exit_logic_hybrid_zscore_time(
+        df, i=0, j=1, direction=1, entry_price=100.0, std_i=5.0, mid_i=100.0,
+        or_high=float('nan'), or_low=float('nan'), or_range=float('nan'), sl_pts=7.5,
+        zscore_exit=1.0, exit_ny_min=955, bar_size_min=5)
+    assert touched is True
+    assert price == 101.0
+    assert reason == 'TP_zscore'
