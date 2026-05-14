@@ -69,10 +69,14 @@ MINIVAL4 = {
 }
 
 # %%
-def prepare_tf(rule: str, lookback: int = 20) -> pd.DataFrame:
+def prepare_tf(rule: str, lookback: int = 20, df_m1: pd.DataFrame | None = None) -> pd.DataFrame:
     """Charge MNQ M1, resample au TF, ajoute colonnes temporelles, filtre session NY,
-    calcule mid/std/zscore. Pipeline identique à mini-val #4 (lookback=20)."""
-    df_m1 = load_continuous(INSTRUMENTS['MNQ']['path'], 'MNQ')
+    calcule mid/std/zscore. Pipeline identique à mini-val #4 (lookback=20).
+
+    Si df_m1 est fourni, le réutilise au lieu de recharger le CSV (évite des lectures
+    répétées du fichier ~1.7M lignes quand on prépare plusieurs TF)."""
+    if df_m1 is None:
+        df_m1 = load_continuous(INSTRUMENTS['MNQ']['path'], 'MNQ')
     df_tf = resample_ohlcv(df_m1, rule)
     df_tf = add_temporal_columns(df_tf)
     df_sess = filter_session_ny(df_tf)
@@ -116,16 +120,20 @@ def run_config(df_split: pd.DataFrame, exit_logic, bar_size_min: int, timeout_ba
 # inline de mini-val #4 — STOP, investiguer avant de faire confiance à C1-C7.
 
 # %%
-# Cache des DataFrames préparés par TF (réutilisés par la grille complète)
-_PREPARED = {tf: prepare_tf(TF_PARAMS[tf]['rule']) for tf in TF_PARAMS}
-
-
-def split_train(df):
+def split_train(df: pd.DataFrame) -> pd.DataFrame:
+    """Slice le split Train (TRAIN_START <= index < TRAIN_END)."""
     return df.loc[(df.index >= TRAIN_START) & (df.index < TRAIN_END)].copy()
 
 
-def split_valid(df):
+def split_valid(df: pd.DataFrame) -> pd.DataFrame:
+    """Slice le split Valid (VALID_START <= index < VALID_END)."""
     return df.loc[(df.index >= VALID_START) & (df.index < VALID_END)].copy()
+
+
+# M1 chargé une seule fois, partagé entre les TF (évite 2 lectures du CSV ~1.7M lignes)
+_M1 = load_continuous(INSTRUMENTS['MNQ']['path'], 'MNQ')
+# Cache des DataFrames préparés par TF (réutilisés par la grille complète)
+_PREPARED = {tf: prepare_tf(TF_PARAMS[tf]['rule'], df_m1=_M1) for tf in TF_PARAMS}
 
 
 for tf, p in TF_PARAMS.items():
@@ -135,6 +143,7 @@ for tf, p in TF_PARAMS.items():
     ref = MINIVAL4[tf]
     assert m['trades'] == ref['trades'], (
         f"C0 {tf} : {m['trades']} trades vs mini-val #4 {ref['trades']} — HARNESS DIVERGÉ")
+    # 2% : marge float, tolérance intentionnelle — tout écart > 0 doit être investigué
     assert abs(m['pf'] - ref['pf']) / ref['pf'] < 0.02, (
         f"C0 {tf} : PF {m['pf']:.4f} vs mini-val #4 {ref['pf']} — HARNESS DIVERGÉ")
     print(f"C0 {tf} OK : {m['trades']} trades, PF {m['pf']:.4f} (réf {ref['pf']})")
