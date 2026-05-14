@@ -39,24 +39,36 @@ def run_stress_test(df, best_params, run_variant, red_periods: dict = RED_PERIOD
 
     Returns:
         DataFrame, une ligne par période :
-        [period, start, end, n_trades, pnl, max_dd, survived].
+        [period, start, end, n_trades, pnl, trade_seq_max_dd, survived].
         survived = le compte n'a PAS touché le seuil DD EOD (account.status != 'dead_eod').
-        Période hors plage de données -> n_trades=0, pnl=0, max_dd=0, survived=True
+        trade_seq_max_dd = drawdown cumulé de la SÉQUENCE de trades ($, départ 0) — ce n'est
+        PAS le drawdown de l'equity du compte vs le seuil Apex $2,000. Indicatif uniquement.
+        Période hors plage de données -> n_trades=0, pnl=0, trade_seq_max_dd=0, survived=True
         (vacuité : pas de trading, pas de mort).
+
+    Raises:
+        ValueError: si run_variant retourne account=None (contrat run_variant violé —
+            stress_test exige un PaAccount pour vérifier la survie).
     """
     rows = []
     for name, (start, end) in red_periods.items():
         sub = df.loc[(df.index >= start) & (df.index < end)]
         if len(sub) == 0:
             rows.append({"period": name, "start": start, "end": end,
-                         "n_trades": 0, "pnl": 0.0, "max_dd": 0.0, "survived": True})
+                         "n_trades": 0, "pnl": 0.0, "trade_seq_max_dd": 0.0,
+                         "survived": True})
             continue
         trades, account = run_variant(sub, best_params)
+        if account is None:
+            raise ValueError(
+                f"run_variant a retourné account=None pour la période '{name}'. "
+                "stress_test exige un PaAccount — utiliser un run_variant qui en retourne un."
+            )
         m = compute_trade_metrics(trades)
-        survived = account is None or account.status != "dead_eod"
+        survived = account.status != "dead_eod"
         rows.append({
             "period": name, "start": start, "end": end,
-            "n_trades": m["trades"], "pnl": m["pnl"], "max_dd": m["max_dd"],
+            "n_trades": m["trades"], "pnl": m["pnl"], "trade_seq_max_dd": m["max_dd"],
             "survived": survived,
         })
     return pd.DataFrame(rows)

@@ -1,6 +1,7 @@
 """Tests du stress test sur périodes rouges."""
 import numpy as np
 import pandas as pd
+import pytest
 
 from gauntlet.stress_test import run_stress_test, stress_test_passed, RED_PERIODS
 from gauntlet.pa_account import PaAccount
@@ -44,6 +45,11 @@ def test_stress_flags_dead_account():
     assert not res.loc["bear_2022", "survived"]
     assert res.loc["yen_unwind_aug2024", "survived"]
     assert stress_test_passed(res.reset_index()) is False
+    # les valeurs de compute_trade_metrics se propagent dans la ligne de résultat :
+    # _trades([-500, -600]) -> pnl -1100, max DD de la séquence -600 (cumsum [-500,-1100])
+    assert res.loc["bear_2022", "n_trades"] == 2
+    assert res.loc["bear_2022", "pnl"] == -1100.0
+    assert res.loc["bear_2022", "trade_seq_max_dd"] == -600.0
 
 
 def test_stress_empty_period_handled():
@@ -79,3 +85,14 @@ def test_stress_test_passed_all_survive():
 
     res = run_stress_test(df, {"x": 1}, rv)
     assert stress_test_passed(res) is True
+
+
+def test_stress_raises_on_none_account():
+    # run_variant qui viole le contrat (account=None) -> ValueError, pas un faux "survived"
+    df = _make_df()
+
+    def rv_bad(sub, params):
+        return _trades([1.0]), None
+
+    with pytest.raises(ValueError):
+        run_stress_test(df, {"x": 1}, rv_bad)
