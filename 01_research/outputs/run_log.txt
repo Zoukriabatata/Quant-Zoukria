@@ -1,0 +1,177 @@
+======================================================================
+### ENVIRONNEMENT ###
+======================================================================
+numpy   2.4.1
+pandas  2.3.3
+scipy   scipy.stats ok
+
+Train   : 2021-05-13 -> 2024-05-13
+Valid   : 2024-05-13 -> 2025-05-13
+Holdout : 2025-05-13 -> 2026-05-13  (INTOUCHABLE)
+
+======================================================================
+### SECTION 1 — CHARGEMENT DONNEES MNQ 5 ans ###
+======================================================================
+Bars charges : 1,722,456
+Periode     : 2021-05-13 00:00:00+00:00 -> 2026-05-12 23:59:00+00:00
+Bars en session NY 9h30-16h : 481,680
+
+======================================================================
+### SECTION 2 — HURST ROLLING (5-15 min attendus) ###
+======================================================================
+Lancement compute_rolling_hurst_by_session(hwin=50) sur 481,680 bars...
+Termine en 268.3s (4.5 min). H calcule pour 418,930 / 481,680 bars.
+
+Statistiques globales H :
+count   418930.0000
+mean         0.6158
+std          0.0870
+min          0.0266
+25%          0.5574
+50%          0.6168
+75%          0.6752
+max          0.9687
+Name: hurst, dtype: float64
+
+======================================================================
+### SECTION 3 — DISTRIBUTION H PAR HEURE/MOIS/JOUR ###
+======================================================================
+Bars Train+Valid avec H : 334,665
+Bars Holdout (reserves) : 96,915
+
+--- Hurst par heure NY (Train+Valid) ---
+          mean    std  count   t_stat  p_value  mr_significant
+hour_ny                                                       
+10      0.6245 0.0866  40080 287.7742   0.0000           False
+11      0.6210 0.0862  60120 344.2528   0.0000           False
+12      0.6172 0.0873  60120 329.1122   0.0000           False
+13      0.6167 0.0859  58185 327.6787   0.0000           False
+14      0.6142 0.0874  58080 315.0757   0.0000           False
+15      0.6128 0.0853  58080 318.6693   0.0000           False
+-> sauvegarde 01_research\outputs\h_by_hour.csv
+
+--- Hurst par mois calendaire (Train+Valid) ---
+        mean    std  count   t_stat  p_value  mr_significant
+month                                                       
+1     0.6164 0.0827  28180 236.0866   0.0000           False
+2     0.6245 0.0853  26820 239.1101   0.0000           False
+3     0.6282 0.0838  27540 253.9536   0.0000           False
+4     0.6180 0.0885  27880 222.5014   0.0000           False
+5     0.6172 0.0837  29540 240.8413   0.0000           False
+6     0.6178 0.0866  25640 217.7876   0.0000           False
+7     0.6162 0.0858  28530 228.7892   0.0000           False
+8     0.6176 0.0851  30600 241.7459   0.0000           False
+9     0.6139 0.0866  25800 211.2735   0.0000           False
+10    0.6141 0.0873  29580 224.7533   0.0000           False
+11    0.6134 0.0862  28200 221.1160   0.0000           False
+12    0.6115 0.0955  26355 189.5297   0.0000           False
+-> sauvegarde 01_research\outputs\h_by_month.csv
+
+--- Hurst par jour de semaine (Train+Valid) ---
+           mean    std  count   t_stat  p_value  mr_significant
+Lundi    0.6128 0.0898  61855 312.4672   0.0000           False
+Mardi    0.6179 0.0862  69355 360.2104   0.0000           False
+Mercredi 0.6204 0.0854  69695 372.1746   0.0000           False
+Jeudi    0.6196 0.0869  67780 358.3735   0.0000           False
+Vendredi 0.6157 0.0843  65980 352.4491   0.0000           False
+-> sauvegarde 01_research\outputs\h_by_dow.csv
+-> sauvegarde 01_research\outputs\hurst_distribution.png
+
+======================================================================
+### SECTION 4 — POCHES MR EXPLOITABLES (H<0.45, p<0.01) ###
+======================================================================
+
+--- Heures MR significatives ---
+(aucune)
+
+--- Mois MR significatifs ---
+(aucun)
+
+--- Jours MR significatifs ---
+(aucun)
+
+======================================================================
+### SECTION 5 — SPLITS + FEATURES SIGNAL ###
+======================================================================
+Train   : 288,630 bars  · 2021-05-13 13:30:00+00:00 -> 2024-05-10 19:59:00+00:00
+Valid   : 96,135 bars  · 2024-05-13 13:30:00+00:00 -> 2025-05-12 19:59:00+00:00
+Holdout : 96,915 bars  · INTOUCHABLE
+
+======================================================================
+### SECTION 6 — BACKTEST PAR HEURE NY (Train uniquement) ###
+======================================================================
+  hour= 9 : trades= 1716 | PF=0.91 | Sharpe=-0.51 | DD=$-3,718 | WR=22.8% | PnL=$-2,469
+  hour=10 : trades= 2859 | PF=0.93 | Sharpe=-0.48 | DD=$-4,741 | WR=33.0% | PnL=$-2,970
+  hour=11 : trades= 2702 | PF=0.92 | Sharpe=-0.54 | DD=$-3,760 | WR=38.3% | PnL=$-2,780
+  hour=12 : trades= 2680 | PF=0.91 | Sharpe=-0.58 | DD=$-2,843 | WR=41.9% | PnL=$-2,603
+  hour=13 : trades= 2723 | PF=0.91 | Sharpe=-0.55 | DD=$-3,318 | WR=40.8% | PnL=$-2,818
+  hour=14 : trades= 2905 | PF=1.05 | Sharpe=0.26 | DD=$-1,261 | WR=41.5% | PnL=$+1,631
+  hour=15 : trades= 3024 | PF=1.30 | Sharpe=1.08 | DD=$-1,729 | WR=38.4% | PnL=$+10,895
+
+--- Resultats par heure (tries par PF decroissant) ---
+   hour  trades     pf  sharpe     max_dd     wr        pnl  avg_trade
+6    15    3024 1.3002  1.0791 -1729.2752 0.3843 10894.7961     3.6028
+5    14    2905 1.0505  0.2602 -1260.9312 0.4148  1631.4752     0.5616
+1    10    2859 0.9262 -0.4782 -4741.2181 0.3302 -2970.0385    -1.0388
+2    11    2702 0.9169 -0.5447 -3759.9043 0.3834 -2780.3612    -1.0290
+0     9    1716 0.9131 -0.5128 -3718.4304 0.2284 -2468.8049    -1.4387
+3    12    2680 0.9125 -0.5802 -2843.0094 0.4187 -2602.7968    -0.9712
+4    13    2723 0.9076 -0.5497 -3317.6237 0.4084 -2818.3868    -1.0350
+-> sauvegarde 01_research\outputs\results_hour_train.csv
+
+======================================================================
+### SECTION 7 — BACKTEST PAR MOIS CALENDAIRE (Train uniquement) ###
+======================================================================
+  mois= 1 : trades= 1617 | PF=0.89 | Sharpe=-0.67 | DD=$-2,688 | WR=34.1% | PnL=$-2,263
+  mois= 2 : trades= 1524 | PF=1.52 | Sharpe=0.39 | DD=$-1,539 | WR=36.5% | PnL=$+10,211
+  mois= 3 : trades= 1567 | PF=1.09 | Sharpe=0.41 | DD=$-1,504 | WR=34.5% | PnL=$+1,801
+  mois= 4 : trades= 1517 | PF=0.88 | Sharpe=-0.72 | DD=$-2,626 | WR=34.0% | PnL=$-2,427
+  mois= 5 : trades= 1638 | PF=0.82 | Sharpe=-1.30 | DD=$-3,946 | WR=35.0% | PnL=$-3,728
+  mois= 6 : trades= 1408 | PF=0.87 | Sharpe=-0.78 | DD=$-2,534 | WR=38.7% | PnL=$-2,108
+  mois= 7 : trades= 1520 | PF=0.83 | Sharpe=-1.28 | DD=$-3,303 | WR=38.2% | PnL=$-3,133
+  mois= 8 : trades= 1576 | PF=1.34 | Sharpe=0.35 | DD=$-1,188 | WR=40.4% | PnL=$+6,169
+  mois= 9 : trades= 1374 | PF=1.56 | Sharpe=0.43 | DD=$-762 | WR=39.2% | PnL=$+9,364
+  mois=10 : trades= 1589 | PF=1.14 | Sharpe=0.75 | DD=$-764 | WR=41.0% | PnL=$+2,567
+  mois=11 : trades= 1548 | PF=0.97 | Sharpe=-0.17 | DD=$-1,067 | WR=40.4% | PnL=$-490
+  mois=12 : trades= 1409 | PF=1.56 | Sharpe=1.53 | DD=$-1,223 | WR=39.0% | PnL=$+9,543
+
+--- Resultats par mois (tries par PF decroissant) ---
+    month  trades     pf  sharpe     max_dd     wr        pnl  avg_trade
+11     12    1409 1.5639  1.5336 -1222.5074 0.3903  9543.0268     6.7729
+8       9    1374 1.5607  0.4318  -761.7063 0.3916  9363.5376     6.8148
+1       2    1524 1.5179  0.3927 -1539.4279 0.3648 10210.9768     6.7001
+7       8    1576 1.3407  0.3465 -1188.4090 0.4036  6169.2561     3.9145
+9      10    1589 1.1351  0.7473  -764.2435 0.4097  2567.0559     1.6155
+2       3    1567 1.0858  0.4107 -1503.5083 0.3446  1801.2352     1.1495
+10     11    1548 0.9724 -0.1735 -1066.6364 0.4044  -489.7059    -0.3163
+0       1    1617 0.8949 -0.6680 -2688.3610 0.3414 -2263.0982    -1.3996
+3       4    1517 0.8807 -0.7217 -2626.3213 0.3401 -2426.8987    -1.5998
+5       6    1408 0.8743 -0.7846 -2534.2468 0.3871 -2108.2762    -1.4974
+6       7    1520 0.8259 -1.2837 -3302.6164 0.3816 -3133.1549    -2.0613
+4       5    1638 0.8214 -1.2953 -3945.5750 0.3498 -3727.5826    -2.2757
+-> sauvegarde 01_research\outputs\results_month_train.csv
+
+======================================================================
+### SECTION 8 — PROMOTION HEURES + VALIDATION VALID ###
+======================================================================
+Seuils Train : PF>1.5 ET Sharpe>1.0 ET trades>=100
+Heures prometteuses sur Train : 0
+Aucune heure prometteuse sur Train — pas de validation a faire.
+
+======================================================================
+### FIN EXECUTION — verdict NON appele (a faire manuellement apres lecture) ###
+======================================================================
+
+Pour appeler le verdict :
+    emit_verdict(pocket_hours, train_metrics_consolidated, m_v, max_dd_6m_usd, valid_trades=m_v["trades"])
+
+Fichiers generes dans 01_research/outputs/ :
+  - h_by_dow.csv
+  - h_by_hour.csv
+  - h_by_month.csv
+  - hurst_distribution.png
+  - results_hour_train.csv
+  - results_month_train.csv
+  - run_log.txt
+
+======================================================================

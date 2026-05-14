@@ -1,0 +1,14 @@
+[runner_v10] Loading & building day_cache from C:\Users\ryadb\Downloads\5 ANS DATA MNQ OHLCV M1\glbx-mdp3-20210405-20260404.ohlcv-1m.csv ...
+[runner_v10] 1259 jours dans le cache.
+[runner_v10] Running config: OLD_H058_Trail051 ...
+  -> OLD_H058_Trail051: PnL=$323471 PF=2.24 Sharpe=4.93 DD_glob=$2586 DD_intramonth=$2094 Trades=3231 %M+=96.7% Bust=2 Pass=55
+[runner_v10] Running config: NEW_H080_Trail050 ...
+  -> NEW_H080_Trail050: PnL=$392456 PF=2.35 Sharpe=8.40 DD_glob=$2699 DD_intramonth=$1901 Trades=3531 %M+=100.0% Bust=0 Pass=60
+
+Elapsed: 390.8s
+
+=== COMPARAISON OLD vs NEW config — 5 ANS MNQ ===
+                             pnl  n_trades         wr        pf   sharpe  dd_max_dollars  dd_max_pct  dd_max_intramonth_dollars      calmar  n_months  pct_months_pos  n_busted_months  n_passed_months
+config                                                                                                                                                                                                 
+OLD_H058_Trail051  323470.679893      3231  40.885175  2.240058  4.92898     2585.977220    5.171954                2093.640473  125.086438        61       96.721311                2               55
+NEW_H080_Trail050  392455.975614      3531  41.461342  2.348410  8.40416     2698.801566    5.397603                1900.977152  145.418611        61      100.000000                0               60

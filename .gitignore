@@ -1,13 +1,77 @@
+# ============================================================
+# .gitignore — Projet Quant MNQ (restructure-v1)
+# ============================================================
+
+# === Caches Python ===
 __pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.egg-info/
+
+# === Environnements virtuels ===
+.venv/
+venv/
+env/
+
+# === Node ===
+node_modules/
+
+# === IDE / Editeurs ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Claude Code / Dev containers ===
+.claude/
+.devcontainer/
+
+# === Secrets & config locale ===
+.env
+.streamlit/secrets.toml
+
+# === Logs ===
+*.log
+
+# === Bases de données & state local ===
 sol_journal.db
 .sol_last_signal.json
-*.pyc
-.claude/
-*.ipynb
-.streamlit/secrets.toml
-.env
-node_modules/
 .checklist.json
 .progress.json
 .watched.json
-*.log
+
+# === Notebooks (existant — à revoir Phase 2) ===
+*.ipynb
+
+# === Data massives (non versionnées) ===
+ES 5ANS DATA/
+NQ 5ANS DATA/
+
+# Exclure tous les CSV/formats binaires data par défaut
+*.csv
+*.parquet
+*.feather
+*.h5
+
+# Mais autoriser les CSV de config/lookup (petits fichiers métier)
+!config/**/*.csv
+!04_live/ninjascript/lookups/*.csv
+!03_spec/**/*.csv
+
+# === Backups ===
+.backup_*/
+backup_*/
+
+# === NinjaScript / C# compilation ===
+*.user
+bin/
+obj/
+*.suo

@@ -1,11 +1,13 @@
-streamlit>=1.36.0
-plotly>=5.18.0
-numpy>=1.24.0
-scipy>=1.11.0
-pandas>=2.0.0
-yfinance>=0.2.40
-requests>=2.28.0
-pytz>=2023.3
-python-dotenv>=1.0.0
-streamlit-autorefresh>=1.0.1
-statsmodels>=0.14.0
+numpy>=2.0
+pandas>=2.0
+scipy>=1.10
+matplotlib>=3.7
+statsmodels>=0.14
+zstandard>=0.20
+
+# Couche 1 — Recherche
+vectorbt>=0.27
+
+# Couche 2 — Validation event-driven
+backtrader>=1.9
+quantstats>=0.0.8
