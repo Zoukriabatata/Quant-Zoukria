@@ -53,7 +53,7 @@ ignore = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["02_validation/v10/tests", "tests"]
+testpaths = ["01_research/tests", "02_validation/v10/tests", "tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

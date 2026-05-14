@@ -246,3 +246,91 @@ def exit_logic_orb(df, i, j, direction, entry_price, std_i, mid_i,
     if tp_touched:
         return True, tp_price, 'TP_orb_1R'
     return False, 0.0, ''
+
+
+def exit_logic_fixed_tp_std(df, i, j, direction, entry_price, std_i, mid_i,
+                            or_high, or_low, or_range, sl_pts,
+                            tp_std_mult: float = 0.75):
+    """TP fixe : entry +/- tp_std_mult * std_i, vérifié sur wicks (high/low).
+
+    TP de type limit order : fill au prix exact, pas de slippage (cf. exit_logic_orb).
+    Configs C3 (tp_std_mult=0.75) et C4 (0.40) du sprint re-engineering exit.
+    """
+    tp_price = entry_price + direction * tp_std_mult * std_i
+    hj = df.at[j, 'high']
+    lj = df.at[j, 'low']
+    tp_touched = (direction == 1 and hj >= tp_price) or (direction == -1 and lj <= tp_price)
+    if tp_touched:
+        return True, tp_price, 'TP_fixed_std'
+    return False, 0.0, ''
+
+
+def exit_logic_time_stop(df, i, j, direction, entry_price, std_i, mid_i,
+                         or_high, or_low, or_range, sl_pts,
+                         exit_ny_min: int = 955, bar_size_min: int = 5):
+    """Exit temps fixe : flat MTM au close de la 1ère barre dont close >= exit_ny_min NY.
+
+    exit_ny_min est calibré une barre avant le force-flat Apex (959) :
+    5min -> 955 (barre 15:50->15:55), 15min -> 945 (barre 15:30->15:45).
+    Ignore le z-score : teste si le drift entrée->close paie seul. Config C5 du sprint.
+
+    IMPORTANT : backtest_apex ne thread PAS bar_size_min dans l'appel exit_logic.
+    Cette fonction DOIT être bindée via functools.partial(..., bar_size_min=...) avant
+    d'être passée à backtest_apex, sinon le défaut (5) fausse le cutoff sur les bars != 5min.
+    """
+    close_min_ny = df.at[j, 'hour_ny'] * 60 + df.at[j, 'min_ny'] + bar_size_min
+    if close_min_ny >= exit_ny_min:
+        return True, df.at[j, 'close'], 'time_stop'
+    return False, 0.0, ''
+
+
+def exit_logic_trailing_std(df, i, j, direction, entry_price, std_i, mid_i,
+                            or_high, or_low, or_range, sl_pts,
+                            trail_std_mult: float = 1.0, trail_slip_pts: float = 0.25):
+    """Trailing stop : trail_std_mult * std_i derrière l'excursion favorable.
+
+    Excursion favorable = plus haut high (long) / plus bas low (short) sur les barres
+    i+1..j. Vérifié sur wicks. Stop order -> fill avec 1 tick de slippage défavorable
+    (trail_slip_pts, défaut 0.25 = 1 tick MNQ). Recalcule l'excursion à chaque appel
+    (O(n) par bar, acceptable pour la grille du sprint). Config C6 du sprint.
+
+    IMPORTANT : backtest_apex appelle exit_logic sans kwargs spécifiques. Pour sweeper
+    trail_std_mult, cette fonction doit être bindée via functools.partial(..., trail_std_mult=...)
+    avant d'être passée à backtest_apex.
+    """
+    trail_dist = trail_std_mult * std_i
+    if direction == 1:
+        max_fav = df['high'].iloc[i + 1:j + 1].max()
+        trail_price = max_fav - trail_dist
+        if df.at[j, 'low'] <= trail_price:
+            return True, trail_price - trail_slip_pts, 'trail'
+    else:
+        min_fav = df['low'].iloc[i + 1:j + 1].min()
+        trail_price = min_fav + trail_dist
+        if df.at[j, 'high'] >= trail_price:
+            return True, trail_price + trail_slip_pts, 'trail'
+    return False, 0.0, ''
+
+
+def exit_logic_hybrid_zscore_time(df, i, j, direction, entry_price, std_i, mid_i,
+                                  or_high, or_low, or_range, sl_pts,
+                                  zscore_exit: float = 1.0,
+                                  exit_ny_min: int = 955, bar_size_min: int = 5):
+    """Hybride : TP z-score serré OU exit temps fixe, le premier touché.
+
+    Combine un TP rapide (z revient dans [-zscore_exit, +zscore_exit]) avec un hard
+    time stop une barre avant le force-flat Apex. Config C7 du sprint.
+
+    IMPORTANT : backtest_apex appelle exit_logic sans kwargs spécifiques. Cette fonction
+    doit être bindée via functools.partial(..., exit_ny_min=..., bar_size_min=...) avant
+    d'être passée à backtest_apex, sinon les défauts faussent le cutoff sur les bars != 5min.
+    """
+    z_j = df.at[j, 'zscore'] if 'zscore' in df.columns else np.nan
+    if pd.notna(z_j):
+        tp = (direction == 1 and z_j >= -zscore_exit) or (direction == -1 and z_j <= zscore_exit)
+        if tp:
+            return True, df.at[j, 'close'], 'TP_zscore'
+    close_min_ny = df.at[j, 'hour_ny'] * 60 + df.at[j, 'min_ny'] + bar_size_min
+    if close_min_ny >= exit_ny_min:
+        return True, df.at[j, 'close'], 'time_stop'
+    return False, 0.0, ''
