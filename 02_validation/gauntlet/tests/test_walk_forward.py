@@ -48,6 +48,17 @@ def test_wf_selects_best_param_on_is():
     assert wf["oos_profitable"].all()
 
 
+def test_wf_losing_oos():
+    # un seul param edge=False -> chaque fenêtre OOS perd
+    df = _make_df(220)
+    rv = _fake_run_variant_factory([])
+    wf = purged_walk_forward(df, [{"edge": False}], rv, n_windows=4, embargo_bars=5)
+    s = walk_forward_summary(wf)
+    assert s["pct_oos_profitable"] == 0.0
+    assert s["all_profitable"] is False
+    assert s["oos_sharpe_mean"] < 0
+
+
 def test_wf_embargo_trims_is():
     df = _make_df(220)
     log = []
@@ -56,6 +67,9 @@ def test_wf_embargo_trims_is():
     # 5 tranches de 44 barres. Fenêtre 0 : IS ancré = tranche 0 = 44 barres, moins
     # embargo 7 -> 37. Premier appel journalisé = IS de la fenêtre 0.
     assert log[0][0] == 44 - 7
+    # fenêtre 1 : IS ancré = tranches 0+1 = 88 barres, moins embargo 7.
+    # log : [IS w0, OOS w0, IS w1, OOS w1, ...] -> log[2] = IS de la fenêtre 1.
+    assert log[2][0] == 88 - 7
 
 
 def test_wf_all_params_tried_on_is():
@@ -66,6 +80,26 @@ def test_wf_all_params_tried_on_is():
     purged_walk_forward(df, grid, rv, n_windows=3, embargo_bars=5)
     # par fenêtre : 2 appels IS (un par param) + 1 appel OOS = 3. 3 fenêtres -> 9 appels.
     assert len(log) == 9
+
+
+def test_wf_no_signal_window_does_not_crash():
+    # run_variant qui ne produit JAMAIS de trade ET indexe params["edge"] :
+    # si le guard best_params=None marche, run_variant n'est appelé qu'en IS (params
+    # réels), jamais en OOS avec None -> pas de TypeError.
+    df = _make_df(220)
+
+    def rv_no_trades(df_slice, params):
+        _ = params["edge"]            # crasherait si appelé avec params=None
+        empty = pd.DataFrame({"pnl_usd": [], "date": []})
+        return empty, None
+
+    wf = purged_walk_forward(df, [{"edge": True}], rv_no_trades, n_windows=3, embargo_bars=5)
+    assert len(wf) == 3
+    assert wf["best_params"].isna().all()
+    assert wf["oos_no_signal"].all()
+    assert (wf["oos_trades"] == 0).all()
+    s = walk_forward_summary(wf)
+    assert s["n_windows_no_signal"] == 3
 
 
 def test_wf_summary_aggregates():
